@@ -18,7 +18,7 @@ import androidx.core.content.ContextCompat
 import com.example.ui.*
 import com.example.ui.theme.MyApplicationTheme
 
-class MainActivity : ComponentActivity() {
+class MainActivity : ComponentActivity() { // Cache bust
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
