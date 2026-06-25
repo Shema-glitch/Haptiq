@@ -116,45 +116,6 @@ class MainActivity : ComponentActivity() {
                                     }
                                 )
                             }
-                            "library_scan" -> {
-                                LibraryScanScreen(
-                                    onScanClicked = {
-                                        currentScreen = "library"
-                                    }
-                                )
-                            }
-                            "search" -> {
-                                SearchScreen(
-                                    state = haptiqState,
-                                    onSearchQueryChanged = { query ->
-                                        haptiqViewModel.handleAction(HaptiqUiAction.Search(query))
-                                    },
-                                    onSongSelected = { list, index ->
-                                        haptiqViewModel.handleAction(HaptiqUiAction.SelectSong(list, index))
-                                        currentScreen = "player"
-                                    },
-                                    onNavigateHome = { currentScreen = "library_scan" },
-                                    onNavigateLibrary = { currentScreen = "library" },
-                                    onNavigateSettings = { currentScreen = "settings" }
-                                )
-                            }
-                            "calibration" -> {
-                                CalibrationScreen(
-                                    state = haptiqState,
-                                    onPlayTestPulse = {
-                                        haptiqViewModel.handleAction(HaptiqUiAction.RunTestPulse)
-                                    },
-                                    onStrengthSelected = { strength ->
-                                        haptiqViewModel.handleAction(HaptiqUiAction.SelectCalibrationStrength(strength))
-                                    },
-                                    onSaveCalibration = {
-                                        haptiqViewModel.handleAction(HaptiqUiAction.SaveCalibration)
-                                    },
-                                    onBack = {
-                                        currentScreen = "settings"
-                                    }
-                                )
-                            }
                             "library" -> {
                                 LibraryScreen(
                                     state = haptiqState,
@@ -176,12 +137,6 @@ class MainActivity : ComponentActivity() {
                                     },
                                     onSettingsClicked = {
                                         currentScreen = "settings"
-                                    },
-                                    onSearchClicked = {
-                                        currentScreen = "search"
-                                    },
-                                    onHomeClicked = {
-                                        currentScreen = "library_scan"
                                     },
                                     onHapticStudioClicked = {
                                         currentScreen = "studio"

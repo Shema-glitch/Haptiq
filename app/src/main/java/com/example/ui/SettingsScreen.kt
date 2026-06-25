@@ -33,7 +33,88 @@ fun SettingsScreen(
     onBatterySaverToggled: (Boolean) -> Unit,
     onAction: (HaptiqUiAction) -> Unit
 ) {
-    var isCalibrationExpanded by remember { mutableStateOf(false) }
+    var showCalibrationSheet by remember { mutableStateOf(false) }
+
+    if (showCalibrationSheet) {
+        ModalBottomSheet(
+            onDismissRequest = { showCalibrationSheet = false },
+            containerColor = ColorSurface,
+            dragHandle = { BottomSheetDefaults.DragHandle(color = ColorOnSurface60) }
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp, vertical = 16.dp)
+                    .padding(bottom = 32.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(24.dp)
+            ) {
+                Text(
+                    text = "Device Calibration",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = ColorOnSurface,
+                    fontWeight = FontWeight.Bold
+                )
+
+                Text(
+                    text = "Let's calibrate the haptic engine for your device.",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = ColorOnSurface60,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
+
+                Button(
+                    onClick = { onAction(HaptiqUiAction.RunTestPulse) },
+                    colors = ButtonDefaults.buttonColors(containerColor = ColorSurfaceVariant, contentColor = ColorOnSurface),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth().height(56.dp)
+                ) {
+                    Icon(Icons.Default.Vibration, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Play Test Pulse")
+                }
+
+                if (state.calibrationStep >= 2) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = "How strong was that?",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = ColorOnSurface
+                        )
+                        Spacer(Modifier.height(16.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            listOf("Weak", "Medium", "Strong").forEach { strength ->
+                                FilterChip(
+                                    selected = state.calibrationStrength == strength,
+                                    onClick = { onAction(HaptiqUiAction.SelectCalibrationStrength(strength)) },
+                                    label = { Text(strength) },
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = ColorHapticAccent,
+                                        selectedLabelColor = ColorBackground,
+                                        containerColor = ColorBackground,
+                                        labelColor = ColorOnSurface
+                                    )
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Button(
+                    onClick = {
+                        onAction(HaptiqUiAction.SaveCalibration)
+                        showCalibrationSheet = false
+                    },
+                    enabled = state.calibrationStep >= 2,
+                    colors = ButtonDefaults.buttonColors(containerColor = ColorHapticAccent, contentColor = ColorBackground),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth().height(56.dp)
+                ) {
+                    Text("Save Profile", fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+    }
 
     Scaffold(
         modifier = Modifier
@@ -110,120 +191,8 @@ fun SettingsScreen(
                         iconColor = ColorHapticAccent,
                         title = "Haptic Calibration",
                         subtitle = "Multiplier: ${state.calibrationMultiplier}x",
-                        onClick = { isCalibrationExpanded = !isCalibrationExpanded }
+                        onClick = { showCalibrationSheet = true }
                     )
-
-                    // Calibration Wizard Box
-                    AnimatedVisibility(
-                        visible = isCalibrationExpanded,
-                        enter = expandVertically(),
-                        exit = shrinkVertically()
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .background(ColorSurfaceVariant.copy(alpha = 0.5f))
-                                .padding(16.dp)
-                        ) {
-                            when (state.calibrationStep) {
-                                1 -> {
-                                    Column(
-                                        verticalArrangement = Arrangement.spacedBy(12.dp),
-                                        horizontalAlignment = Alignment.CenterHorizontally,
-                                        modifier = Modifier.fillMaxWidth()
-                                    ) {
-                                        Text(
-                                            text = "Let's calibrate your device. Click the button to feel a test haptic pulse.",
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            color = ColorOnSurfaceVariant,
-                                            lineHeight = 20.sp
-                                        )
-
-                                        Button(
-                                            onClick = { onAction(HaptiqUiAction.RunTestPulse) },
-                                            colors = ButtonDefaults.buttonColors(
-                                                containerColor = ColorHapticAccent,
-                                                contentColor = ColorSurface
-                                            ),
-                                            shape = RoundedCornerShape(20.dp)
-                                        ) {
-                                            Text("Play Test Pulse")
-                                        }
-                                    }
-                                }
-                                2 -> {
-                                    Column(
-                                        verticalArrangement = Arrangement.spacedBy(12.dp),
-                                        horizontalAlignment = Alignment.CenterHorizontally,
-                                        modifier = Modifier.fillMaxWidth()
-                                    ) {
-                                        Text(
-                                            text = "Select preferred perception strength:",
-                                            style = MaterialTheme.typography.titleMedium,
-                                            color = ColorOnSurface
-                                        )
-
-                                        Row(
-                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                        ) {
-                                            listOf("Weak", "Medium", "Strong").forEach { strength ->
-                                                val isSelected = state.calibrationStrength == strength
-                                                FilterChip(
-                                                    selected = isSelected,
-                                                    onClick = { onAction(HaptiqUiAction.SelectCalibrationStrength(strength)) },
-                                                    label = { Text(strength) },
-                                                    colors = FilterChipDefaults.filterChipColors(
-                                                        selectedContainerColor = ColorHapticAccent,
-                                                        selectedLabelColor = ColorSurface,
-                                                        containerColor = ColorSurface,
-                                                        labelColor = ColorOnSurface
-                                                    )
-                                                )
-                                            }
-                                        }
-
-                                        Button(
-                                            onClick = { onAction(HaptiqUiAction.SaveCalibration) },
-                                            colors = ButtonDefaults.buttonColors(
-                                                containerColor = ColorHapticAccent,
-                                                contentColor = ColorSurface
-                                            ),
-                                            shape = RoundedCornerShape(20.dp)
-                                        ) {
-                                            Text("Generate Multiplier")
-                                        }
-                                    }
-                                }
-                                3 -> {
-                                    Column(
-                                        verticalArrangement = Arrangement.spacedBy(12.dp),
-                                        horizontalAlignment = Alignment.CenterHorizontally,
-                                        modifier = Modifier.fillMaxWidth()
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.CheckCircle,
-                                            contentDescription = null,
-                                            tint = ColorHapticAccent,
-                                            modifier = Modifier.size(32.dp)
-                                        )
-
-                                        Text(
-                                            text = "Calibration complete! Device multiplier is set to ${state.calibrationMultiplier}x.",
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            color = ColorOnSurface,
-                                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                                        )
-
-                                        TextButton(
-                                            onClick = { onAction(HaptiqUiAction.ResetCalibrationWizard) }
-                                        ) {
-                                            Text("Recalibrate", color = ColorHapticAccent)
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
                 }
             }
 

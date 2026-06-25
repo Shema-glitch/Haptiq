@@ -20,6 +20,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -39,9 +40,7 @@ fun LibraryScreen(
     onSettingsClicked: () -> Unit,
     onHapticStudioClicked: () -> Unit,
     onMenuClicked: () -> Unit,
-    onMiniPlayerExpanded: () -> Unit,
-    onSearchClicked: () -> Unit = {},
-    onHomeClicked: () -> Unit = {}
+    onMiniPlayerExpanded: () -> Unit
 ) {
     // Filter songs based on search query
     val filteredSongs = remember(state.songs, state.searchQuery) {
@@ -105,32 +104,6 @@ fun LibraryScreen(
                     containerColor = ColorSurface,
                     modifier = Modifier.height(72.dp)
                 ) {
-                    NavigationBarItem(
-                        selected = false,
-                        onClick = onHomeClicked,
-                        icon = { Icon(imageVector = Icons.Default.Home, contentDescription = "Home") },
-                        label = { Text("Home", style = MaterialTheme.typography.labelSmall) },
-                        colors = NavigationBarItemDefaults.colors(
-                            unselectedIconColor = ColorOnSurface60,
-                            unselectedTextColor = ColorOnSurface60,
-                            selectedIconColor = ColorOnSurface,
-                            selectedTextColor = ColorOnSurface,
-                            indicatorColor = ColorSurfaceVariant
-                        )
-                    )
-                    NavigationBarItem(
-                        selected = false,
-                        onClick = onSearchClicked,
-                        icon = { Icon(imageVector = Icons.Default.Search, contentDescription = "Search") },
-                        label = { Text("Search", style = MaterialTheme.typography.labelSmall) },
-                        colors = NavigationBarItemDefaults.colors(
-                            unselectedIconColor = ColorOnSurface60,
-                            unselectedTextColor = ColorOnSurface60,
-                            selectedIconColor = ColorOnSurface,
-                            selectedTextColor = ColorOnSurface,
-                            indicatorColor = ColorSurfaceVariant
-                        )
-                    )
                     NavigationBarItem(
                         selected = true,
                         onClick = {},
@@ -256,21 +229,42 @@ fun LibraryScreen(
                     fontWeight = FontWeight.Bold
                 )
 
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.clickable {}
-                ) {
-                    Text(
-                        text = "Sort by",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = ColorOnSurface60
-                    )
-                    Icon(
-                        imageVector = Icons.Default.ArrowDropDown,
-                        contentDescription = null,
-                        tint = ColorOnSurface60,
-                        modifier = Modifier.size(16.dp)
-                    )
+                var showSortMenu by remember { mutableStateOf(false) }
+                Box {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.clickable { showSortMenu = true }
+                    ) {
+                        Text(
+                            text = "Sort by",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = ColorOnSurface60
+                        )
+                        Icon(
+                            imageVector = Icons.Default.ArrowDropDown,
+                            contentDescription = null,
+                            tint = ColorOnSurface60,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                    DropdownMenu(
+                        expanded = showSortMenu,
+                        onDismissRequest = { showSortMenu = false },
+                        containerColor = ColorSurface
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("Title") },
+                            onClick = { showSortMenu = false }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Artist") },
+                            onClick = { showSortMenu = false }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Date Added") },
+                            onClick = { showSortMenu = false }
+                        )
+                    }
                 }
             }
 
@@ -300,11 +294,51 @@ fun LibraryScreen(
                             .padding(32.dp),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text(
-                            text = "No songs found.",
-                            color = ColorOnSurface60,
-                            style = MaterialTheme.typography.bodyMedium
-                        )
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(120.dp)
+                                    .background(ColorSurfaceVariant, CircleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.LibraryMusic,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(64.dp),
+                                    tint = ColorOnSurface60
+                                )
+                            }
+                            
+                            Spacer(modifier = Modifier.height(32.dp))
+                            
+                            Text(
+                                text = "Your library is empty. Let's find your music.",
+                                style = MaterialTheme.typography.titleLarge,
+                                color = ColorOnSurface,
+                                textAlign = TextAlign.Center
+                            )
+                            
+                            Spacer(modifier = Modifier.height(48.dp))
+                            
+                            Button(
+                                onClick = { /* To be wired if needed, or already scanned */ },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = ColorHapticAccent,
+                                    contentColor = ColorOnBackground
+                                ),
+                                shape = CircleShape, // Pill shaped
+                                modifier = Modifier.height(56.dp).padding(horizontal = 32.dp)
+                            ) {
+                                Text(
+                                    "Scan Device for Audio", 
+                                    fontWeight = FontWeight.Bold, 
+                                    style = MaterialTheme.typography.labelLarge // Enforcing Inter via Typography
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -393,6 +427,7 @@ fun TrackRow(
     onClick: () -> Unit
 ) {
     val infiniteTransition = rememberInfiniteTransition(label = "bouncing_bars")
+    var showDropdown by remember { mutableStateOf(false) }
 
     Row(
         modifier = Modifier
@@ -464,12 +499,29 @@ fun TrackRow(
             )
         }
 
-        IconButton(onClick = {}) {
-            Icon(
-                imageVector = Icons.Default.MoreVert,
-                contentDescription = "Options",
-                tint = ColorOnSurface60
-            )
+        Box {
+            IconButton(onClick = { showDropdown = true }) {
+                Icon(
+                    imageVector = Icons.Default.MoreVert,
+                    contentDescription = "Options",
+                    tint = ColorOnSurface60
+                )
+            }
+            DropdownMenu(
+                expanded = showDropdown,
+                onDismissRequest = { showDropdown = false },
+                containerColor = ColorSurface
+            ) {
+                DropdownMenuItem(text = { Text("Shuffle play") }, onClick = { showDropdown = false })
+                DropdownMenuItem(text = { Text("Start radio") }, onClick = { showDropdown = false })
+                DropdownMenuItem(text = { Text("Play next") }, onClick = { showDropdown = false })
+                DropdownMenuItem(text = { Text("Add to queue") }, onClick = { showDropdown = false })
+                DropdownMenuItem(text = { Text("Add album to library") }, onClick = { showDropdown = false })
+                DropdownMenuItem(text = { Text("Download") }, onClick = { showDropdown = false })
+                DropdownMenuItem(text = { Text("Add to playlist") }, onClick = { showDropdown = false })
+                DropdownMenuItem(text = { Text("Go to artist") }, onClick = { showDropdown = false })
+                DropdownMenuItem(text = { Text("Share") }, onClick = { showDropdown = false })
+            }
         }
     }
 }
