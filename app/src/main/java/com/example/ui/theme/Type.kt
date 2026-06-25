@@ -4,25 +4,10 @@ import androidx.compose.material3.Typography
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.googlefonts.Font
-import androidx.compose.ui.text.googlefonts.GoogleFont
 import androidx.compose.ui.unit.sp
 
-val provider = GoogleFont.Provider(
-    providerAuthority = "com.google.android.gms.fonts",
-    providerPackage = "com.google.android.gms",
-    certificates = com.example.R.array.com_google_android_gms_fonts_certs
-)
-
-val robotoFontName = GoogleFont("Roboto")
-val RobotoFamily = FontFamily(
-    Font(googleFont = robotoFontName, fontProvider = provider)
-)
-
-val interFontName = GoogleFont("Inter")
-val InterFamily = FontFamily(
-    Font(googleFont = interFontName, fontProvider = provider)
-)
+val RobotoFamily = FontFamily.SansSerif
+val InterFamily = FontFamily.SansSerif
 
 val Typography = Typography(
     headlineLarge = TextStyle(
@@ -82,3 +67,4 @@ val Typography = Typography(
         letterSpacing = 0.5.sp
     )
 )
+
