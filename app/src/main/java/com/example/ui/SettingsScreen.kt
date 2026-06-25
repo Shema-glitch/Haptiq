@@ -183,7 +183,7 @@ fun SettingsScreen(
                         onCheckedChange = onBatterySaverToggled
                     )
 
-                    Divider(color = ColorOutlineVariant.copy(alpha = 0.2f), thickness = 1.dp)
+                    HorizontalDivider(color = ColorOutlineVariant.copy(alpha = 0.2f), thickness = 1.dp)
 
                     // Interactive calibration row
                     SettingsRow(
