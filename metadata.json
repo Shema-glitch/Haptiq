@@ -1,0 +1,6 @@
+{
+  "name": "Haptiq",
+  "description": "Real-time haptic enhancement engine for music playback",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
