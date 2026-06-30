@@ -400,18 +400,7 @@ fun MediaCard(
             }
         }
         Spacer(Modifier.height(Spacing.xs))
-        Text(
-            text = buildAnnotatedString {
-                withStyle(style = SpanStyle(color = ColorHapticAccent, fontWeight = FontWeight.Bold)) {
-                    append("| ")
-                }
-                append(song.title)
-            },
-            style = MaterialTheme.typography.labelLarge,
-            color = ColorOnSurface,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
+        Text(song.title, style = MaterialTheme.typography.labelLarge, color = ColorOnSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
         Text(song.artist, style = MaterialTheme.typography.bodyMedium, color = ColorOnSurface60, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
@@ -460,19 +449,7 @@ fun TrackRow(
         }
         Spacer(Modifier.width(Spacing.md))
         Column(Modifier.weight(1f)) {
-            Text(
-                text = buildAnnotatedString {
-                    withStyle(style = SpanStyle(color = ColorHapticAccent, fontWeight = FontWeight.Bold)) {
-                        append("| ")
-                    }
-                    append(song.title)
-                },
-                style = MaterialTheme.typography.labelLarge,
-                color = ColorOnSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                fontWeight = FontWeight.Bold
-            )
+            Text(song.title, style = MaterialTheme.typography.labelLarge, color = ColorOnSurface, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.Bold)
             Text(song.artist, style = MaterialTheme.typography.bodyMedium, color = ColorOnSurface60, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         IconButton(onClick = onToggleFavorite, modifier = Modifier.size(ComponentSize.touchTarget)) {

@@ -2,6 +2,7 @@ package com.haptiq.app.ui
 
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.border
 import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
@@ -98,18 +99,42 @@ fun PlayerScreen(
         ) {
             // ─── Top Bar ────────────────────────────────────────
             Row(
-                modifier = Modifier.fillMaxWidth().height(ComponentSize.topBarHeight),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(ComponentSize.topBarHeight),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                IconButton(onClick = onBackClicked, modifier = Modifier.size(ComponentSize.touchTarget)) {
-                    Icon(Icons.Default.KeyboardArrowDown, "Minimize", tint = ColorOnSurface, modifier = Modifier.size(ComponentSize.iconXL))
+                // Back button in a circular outline capsule
+                IconButton(
+                    onClick = onBackClicked,
+                    modifier = Modifier
+                        .size(44.dp)
+                        .shadow(Elevation.low, CircleShape)
+                        .background(ColorSurface, CircleShape)
+                        .border(1.dp, ColorOutline, CircleShape)
+                ) {
+                    Icon(Icons.Default.ArrowBack, "Minimize", tint = ColorOnSurface, modifier = Modifier.size(20.dp))
                 }
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("NOW PLAYING", fontSize = 10.sp, color = ColorOnSurface60, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
-                }
-                IconButton(onClick = { showQueue = true }, modifier = Modifier.size(ComponentSize.touchTarget)) {
-                    Icon(Icons.Default.QueueMusic, "Queue", tint = ColorOnSurface)
+
+                Text(
+                    text = "NOW PLAYING",
+                    fontSize = 11.sp,
+                    color = ColorOnSurface60,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 2.sp
+                )
+
+                // Settings/Studio button in a circular capsule
+                IconButton(
+                    onClick = onHapticStudioClicked,
+                    modifier = Modifier
+                        .size(44.dp)
+                        .shadow(Elevation.low, CircleShape)
+                        .background(ColorSurface, CircleShape)
+                        .border(1.dp, ColorOutline, CircleShape)
+                ) {
+                    Icon(Icons.Default.Settings, "Tuning Studio", tint = ColorOnSurface, modifier = Modifier.size(20.dp))
                 }
             }
 
@@ -126,244 +151,141 @@ fun PlayerScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .aspectRatio(1f)
-                    .shadow(Elevation.hero, RoundedCornerShape(Radius.lg))
-                    .clip(RoundedCornerShape(Radius.lg))
+                    .shadow(Elevation.hero, RoundedCornerShape(24.dp))
+                    .clip(RoundedCornerShape(24.dp))
             ) {
                 ArtworkImage(
                     model = currentSong.artworkUrl,
                     contentDescription = "Album Artwork",
                     modifier = Modifier.fillMaxSize(),
                     iconSize = 64.dp,
-                    cornerRadius = Radius.lg
-                )
-                // Subtle glare
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(
-                            Brush.linearGradient(
-                                colors = listOf(Color.White.copy(alpha = 0.06f), Color.Transparent)
-                            )
-                        )
+                    cornerRadius = 24.dp
                 )
             }
 
             Spacer(Modifier.weight(0.15f))
 
-            // ─── Track Info + Favorite ──────────────────────────
+            // ─── Centered Track Info ────────────────────────────
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = currentSong.title,
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = ColorHapticAccent, // Orange title
+                    maxLines = 1,
+                    modifier = Modifier.basicMarquee()
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = "by ${currentSong.artist}",
+                    fontSize = 14.sp,
+                    color = ColorOnSurface60,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+
+            Spacer(Modifier.height(Spacing.sm))
+
+            // ─── Horizontal Options Strip ───────────────────────
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Heart Favorite
+                IconButton(onClick = { onToggleFavorite(currentSong.id) }) {
+                    Icon(
+                        imageVector = if (isFav) Icons.Default.Favorite else Icons.Outlined.FavoriteBorder,
+                        contentDescription = "Favorite",
+                        tint = if (isFav) ColorPrimary else ColorOnSurface60,
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
+                Spacer(Modifier.width(16.dp))
+                // Save/Download icon
+                IconButton(onClick = { /* Save/Download */ }) {
+                    Icon(
+                        imageVector = Icons.Default.ArrowDownward,
+                        contentDescription = "Download",
+                        tint = ColorOnSurface60,
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
+                Spacer(Modifier.width(16.dp))
+                // Share icon
+                IconButton(onClick = { /* Share */ }) {
+                    Icon(
+                        imageVector = Icons.Default.Share,
+                        contentDescription = "Share",
+                        tint = ColorOnSurface60,
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
+            }
+
+            Spacer(Modifier.weight(0.2f))
+
+            // ─── Linear Seek Slider ─────────────────────────────
+            var sliderValue by remember(state.playbackProgress) { mutableStateOf(state.playbackProgress) }
+            var isDraggingSlider by remember { mutableStateOf(false) }
+
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Slider(
+                    value = if (isDraggingSlider) sliderValue else state.playbackProgress,
+                    onValueChange = { isDraggingSlider = true; sliderValue = it },
+                    onValueChangeFinished = { isDraggingSlider = false; onSeek(sliderValue) },
+                    colors = SliderDefaults.colors(
+                        thumbColor = Color.White,
+                        activeTrackColor = ColorHapticAccent,
+                        inactiveTrackColor = ColorOutlineVariant
+                    ),
+                    modifier = Modifier.fillMaxWidth(),
+                    thumb = {
+                        SliderDefaults.Thumb(
+                            interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                            colors = SliderDefaults.colors(thumbColor = Color.White),
+                            modifier = Modifier
+                                .size(16.dp)
+                                .shadow(Elevation.low, CircleShape)
+                                .border(1.dp, ColorOutline, CircleShape)
+                        )
+                    }
+                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = Spacing.xxs),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(state.currentTimeText, style = MaterialTheme.typography.labelSmall, color = ColorOnSurface60)
+                    Text(state.remainingTimeText, style = MaterialTheme.typography.labelSmall, color = ColorOnSurface60)
+                }
+            }
+
+            Spacer(Modifier.weight(0.3f))
+
+            // ─── Transport Controls ─────────────────────────────
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        currentSong.title,
-                        style = MaterialTheme.typography.headlineSmall,
-                        color = ColorOnSurface,
-                        maxLines = 1,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.basicMarquee()
-                    )
-                    Spacer(Modifier.height(Spacing.xxs))
-                    Text(
-                        currentSong.artist,
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = ColorOnSurface60,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-                IconButton(onClick = { onToggleFavorite(currentSong.id) }, modifier = Modifier.size(ComponentSize.touchTarget)) {
+                // Queue Button
+                IconButton(onClick = { showQueue = true }) {
                     Icon(
-                        if (isFav) Icons.Default.Favorite else Icons.Outlined.FavoriteBorder,
-                        if (isFav) "Remove from favorites" else "Add to favorites",
-                        tint = if (isFav) ColorPrimary else ColorOnSurface60,
-                        modifier = Modifier.size(ComponentSize.iconLarge)
-                    )
-                }
-            }
-
-            Spacer(Modifier.weight(1f))
-
-            // ─── Core Circular Playback Console (TuneHive style) ───
-            var isDraggingSlider by remember { mutableStateOf(false) }
-            var dragProgress by remember { mutableStateOf(0f) }
-            val currentProgress = if (isDraggingSlider) dragProgress else state.playbackProgress
-
-            val infiniteTransition = rememberInfiniteTransition(label = "visualizer_rings")
-            val pulseScale1 by infiniteTransition.animateFloat(
-                initialValue = 1.0f, targetValue = 1.06f,
-                animationSpec = infiniteRepeatable(tween(800, easing = EaseInOutSine), RepeatMode.Reverse),
-                label = "pulse1"
-            )
-            val pulseScale2 by infiniteTransition.animateFloat(
-                initialValue = 1.0f, targetValue = 1.12f,
-                animationSpec = infiniteRepeatable(tween(1200, easing = EaseInOutSine), RepeatMode.Reverse),
-                label = "pulse2"
-            )
-
-            Box(
-                modifier = Modifier
-                    .size(280.dp)
-                    .pointerInput(Unit) {
-                        detectDragGestures(
-                            onDragStart = { isDraggingSlider = true },
-                            onDragEnd = {
-                                isDraggingSlider = false
-                                onSeek(dragProgress)
-                            },
-                            onDragCancel = { isDraggingSlider = false },
-                            onDrag = { change, _ ->
-                                val size = size
-                                val center = Offset(size.width / 2f, size.height / 2f)
-                                val touch = change.position
-
-                                val dx = touch.x - center.x
-                                val dy = touch.y - center.y
-                                val angleRad = kotlin.math.atan2(dy, dx)
-                                var angleDeg = Math.toDegrees(angleRad.toDouble()).toFloat()
-                                if (angleDeg < 0) angleDeg += 360f
-
-                                // Map 135..405 deg to progress 0..1
-                                var relativeAngle = angleDeg - 135f
-                                if (relativeAngle < 0) relativeAngle += 360f
-
-                                if (relativeAngle <= 270f) {
-                                    val newProgress = (relativeAngle / 270f).coerceIn(0f, 1f)
-                                    dragProgress = newProgress
-                                    change.consume()
-                                }
-                            }
-                        )
-                    },
-                contentAlignment = Alignment.Center
-            ) {
-                // Background & Active Arcs + Thumb
-                Canvas(modifier = Modifier.fillMaxSize()) {
-                    val strokeWidthPx = 6.dp.toPx()
-                    val dialRadius = 110.dp.toPx()
-
-                    // 1. Draw outer background track arc (gap at bottom: 45 to 135 deg)
-                    drawArc(
-                        color = ColorOutlineVariant,
-                        startAngle = 135f,
-                        sweepAngle = 270f,
-                        useCenter = false,
-                        topLeft = Offset(center.x - dialRadius, center.y - dialRadius),
-                        size = Size(dialRadius * 2, dialRadius * 2),
-                        style = Stroke(width = strokeWidthPx, cap = StrokeCap.Round)
-                    )
-
-                    // 2. Draw active progress track arc
-                    drawArc(
-                        color = ColorHapticAccent,
-                        startAngle = 135f,
-                        sweepAngle = currentProgress * 270f,
-                        useCenter = false,
-                        topLeft = Offset(center.x - dialRadius, center.y - dialRadius),
-                        size = Size(dialRadius * 2, dialRadius * 2),
-                        style = Stroke(width = strokeWidthPx, cap = StrokeCap.Round)
-                    )
-
-                    // 3. Draw thumb knob dot
-                    val thumbAngleDeg = 135f + currentProgress * 270f
-                    val thumbAngleRad = Math.toRadians(thumbAngleDeg.toDouble())
-                    val thumbX = center.x + dialRadius * kotlin.math.cos(thumbAngleRad).toFloat()
-                    val thumbY = center.y + dialRadius * kotlin.math.sin(thumbAngleRad).toFloat()
-                    drawCircle(
-                        color = Color.White,
-                        radius = 7.dp.toPx(),
-                        center = Offset(thumbX, thumbY)
-                    )
-
-                    // 4. Draw concentric acoustic visualization circles
-                    val scale1 = if (state.isPlaying) pulseScale1 else 1.0f
-                    val scale2 = if (state.isPlaying) pulseScale2 else 1.0f
-
-                    drawCircle(
-                        color = ColorHapticAccent.copy(alpha = 0.12f),
-                        radius = 48.dp.toPx() * scale1,
-                        center = center,
-                        style = Stroke(width = 1.dp.toPx())
-                    )
-                    drawCircle(
-                        color = ColorHapticAccent.copy(alpha = 0.06f),
-                        radius = 60.dp.toPx() * scale2,
-                        center = center,
-                        style = Stroke(width = 1.dp.toPx())
-                    )
-                }
-
-                // Play/Pause circular FAB in the center
-                Box(
-                    modifier = Modifier
-                        .size(56.dp)
-                        .shadow(Elevation.medium, CircleShape)
-                        .background(Color.White, CircleShape)
-                        .clickable(onClick = onTogglePlayPause),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = if (state.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                        contentDescription = "Play or Pause",
-                        tint = Color.Black,
-                        modifier = Modifier.size(28.dp)
-                    )
-                }
-
-                // Heart Favorite button above play
-                IconButton(
-                    onClick = { onToggleFavorite(currentSong.id) },
-                    modifier = Modifier.offset(y = (-62).dp)
-                ) {
-                    Icon(
-                        imageVector = if (isFav) Icons.Default.Favorite else Icons.Outlined.FavoriteBorder,
-                        contentDescription = "Favorite",
-                        tint = if (isFav) ColorPrimary else ColorOnSurface60,
+                        imageVector = Icons.Default.QueueMusic,
+                        contentDescription = "Queue",
+                        tint = ColorOnSurface60,
                         modifier = Modifier.size(24.dp)
                     )
                 }
 
-                // Time progress text
-                Text(
-                    text = "${state.currentTimeText} / ${state.remainingTimeText}",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = ColorOnSurface60,
-                    modifier = Modifier.offset(y = (-24).dp)
-                )
-
-                // Shuffle button (top-left shoulder)
-                IconButton(
-                    onClick = onToggleShuffle,
-                    modifier = Modifier.offset(x = (-72).dp, y = (-72).dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Shuffle,
-                        contentDescription = "Shuffle",
-                        tint = if (state.isShuffle) ColorPrimary else ColorOnSurface60,
-                        modifier = Modifier.size(24.dp)
-                    )
-                }
-
-                // Repeat button (top-right shoulder)
-                IconButton(
-                    onClick = onToggleRepeat,
-                    modifier = Modifier.offset(x = 72.dp, y = (-72).dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Repeat,
-                        contentDescription = "Repeat",
-                        tint = if (state.isRepeat) ColorPrimary else ColorOnSurface60,
-                        modifier = Modifier.size(24.dp)
-                    )
-                }
-
-                // Skip Previous (bottom-left)
-                IconButton(
-                    onClick = onPrevClicked,
-                    modifier = Modifier.offset(x = (-105).dp, y = 48.dp)
-                ) {
+                // Prev
+                IconButton(onClick = onPrevClicked) {
                     Icon(
                         imageVector = Icons.Default.SkipPrevious,
                         contentDescription = "Previous",
@@ -372,11 +294,25 @@ fun PlayerScreen(
                     )
                 }
 
-                // Skip Next (bottom-right)
-                IconButton(
-                    onClick = onNextClicked,
-                    modifier = Modifier.offset(x = 105.dp, y = 48.dp)
+                // Play/Pause circular FAB with soft orange shadow
+                Box(
+                    modifier = Modifier
+                        .size(64.dp)
+                        .shadow(Elevation.medium, CircleShape, ambientColor = ColorHapticAccent, spotColor = ColorHapticAccent)
+                        .background(ColorHapticAccent, CircleShape)
+                        .clickable(onClick = onTogglePlayPause),
+                    contentAlignment = Alignment.Center
                 ) {
+                    Icon(
+                        imageVector = if (state.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                        contentDescription = "Play or Pause",
+                        tint = Color.White,
+                        modifier = Modifier.size(32.dp)
+                    )
+                }
+
+                // Next
+                IconButton(onClick = onNextClicked) {
                     Icon(
                         imageVector = Icons.Default.SkipNext,
                         contentDescription = "Next",
@@ -384,14 +320,27 @@ fun PlayerScreen(
                         modifier = Modifier.size(32.dp)
                     )
                 }
+
+                // Repeat
+                IconButton(onClick = onToggleRepeat) {
+                    Icon(
+                        imageVector = Icons.Default.Repeat,
+                        contentDescription = "Repeat",
+                        tint = if (state.isRepeat) ColorHapticAccent else ColorOnSurface60,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
             }
 
-            Spacer(Modifier.weight(1f))
+            Spacer(Modifier.weight(0.3f))
 
             // ─── Haptic Toggle Row ──────────────────────────────
             Surface(
-                modifier = Modifier.fillMaxWidth().clip(CircleShape).clickable { onToggleHaptics(!state.hapticActive) },
-                color = if (state.hapticActive) ColorHapticAccent.copy(alpha = 0.1f) else ColorSurfaceVariant.copy(alpha = 0.5f),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(CircleShape)
+                    .clickable { onToggleHaptics(!state.hapticActive) },
+                color = if (state.hapticActive) ColorHapticAccent.copy(alpha = 0.12f) else ColorOutline.copy(alpha = 0.3f),
                 shape = CircleShape
             ) {
                 Row(
@@ -418,7 +367,7 @@ fun PlayerScreen(
                             checkedThumbColor = ColorSurface,
                             checkedTrackColor = ColorHapticAccent,
                             uncheckedThumbColor = ColorOnSurface60,
-                            uncheckedTrackColor = ColorSurfaceVariant
+                            uncheckedTrackColor = ColorBackground
                         )
                     )
                     IconButton(onClick = onHapticStudioClicked, modifier = Modifier.size(ComponentSize.touchTarget)) {

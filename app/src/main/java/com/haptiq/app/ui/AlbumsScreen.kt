@@ -115,19 +115,7 @@ private fun AlbumGridCard(
             )
         }
         Spacer(Modifier.height(Spacing.xs))
-        Text(
-            text = buildAnnotatedString {
-                withStyle(style = SpanStyle(color = ColorHapticAccent, fontWeight = FontWeight.Bold)) {
-                    append("| ")
-                }
-                append(artist)
-            },
-            style = MaterialTheme.typography.labelLarge,
-            color = ColorOnSurface,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            fontWeight = FontWeight.Bold
-        )
+        Text(artist, style = MaterialTheme.typography.labelLarge, color = ColorOnSurface, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.Bold)
         Text("$songCount tracks", style = MaterialTheme.typography.bodySmall, color = ColorOnSurface60)
     }
 }

@@ -45,10 +45,13 @@ fun HaptiqScaffold(
         containerColor = ColorBackground,
         bottomBar = {
             Surface(
-                shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+                shape = RoundedCornerShape(0.dp),
                 color = ColorSurface,
-                tonalElevation = 8.dp,
-                modifier = Modifier.fillMaxWidth()
+                tonalElevation = 0.dp,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(ColorOutline)
+                    .padding(top = 1.dp)
             ) {
                 NavigationBar(
                     containerColor = Color.Transparent,
@@ -162,7 +165,7 @@ fun HaptiqScaffold(
 private fun navItemColors() = NavigationBarItemDefaults.colors(
     unselectedIconColor = ColorOnSurface60,
     unselectedTextColor = ColorOnSurface60,
-    selectedIconColor = ColorOnPrimary, // Black icon when active
-    selectedTextColor = ColorHapticAccent, // Neon-lime text when active
-    indicatorColor = ColorHapticAccent // Neon-lime active circular background
+    selectedIconColor = ColorHapticAccent, // Orange active icon
+    selectedTextColor = ColorHapticAccent, // Orange active text
+    indicatorColor = ColorHapticAccent.copy(alpha = 0.12f) // Soft orange active background pill
 )
