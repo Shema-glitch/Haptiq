@@ -16,3 +16,8 @@
 local.properties
 .env
 debug.keystore
+
+# Logs & temp files
+*.log
+.claude/
+.idea/

@@ -1,0 +1,24 @@
+# Haptic Engine Math Update: Project Handoff
+
+## 1. Current State & Goal
+We recovered a frozen session. Our Android `Visualizer` is actively capturing audio and sending it to our `BassAudioProcessor.kt`, but it currently goes "blind" during heavy, compressed hardstyle drops (like Ran-D's *Zombie*) because the delta flux zeroes out. 
+
+We want to implement a **Dual-Engine Haptic Algorithm** so trap kicks trigger a sharp pulse, and heavy bass drops trigger a sustained buzz.
+
+**CRITICAL DIRECTIVE:** Do NOT rewrite the app architecture. Do NOT implement a custom ExoPlayer `AudioProcessor` or change how we capture audio. We are keeping the current Android `Visualizer` implementation. Only update the math inside the processor and mapper files.
+
+## 2. The Required Math Updates
+
+Please update `BassAudioProcessor.kt` and `HapticMapper.kt` with the following logic:
+
+### Engine 1: The Kick Punch (Sharp "Buz")
+- Compare the raw energy of the kick band directly to the last frame (do not use heavy smoothing for this delta).
+- If it exceeds the threshold, trigger a short, sharp `VibrationEffect` (e.g., 40ms at max amplitude).
+- Put a small cooldown (e.g., 100ms) so rapid kicks don't overlap.
+
+### Engine 2: The Sub Drone (Sustained "Buzzzz")
+- Track the absolute energy of the lowest sub-bass band.
+- If no sharp kick was just fired, and the sub-bass energy is sitting above a high threshold, fire a slightly longer `VibrationEffect` (e.g., 60ms) and scale the physical vibration intensity based directly on how loud the bass is.
+
+## 3. Next Steps
+Please provide the exact, contained code edits for `BassAudioProcessor.kt` and `HapticMapper.kt` to make this dual-engine logic work with our existing Visualizer data.
