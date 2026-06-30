@@ -1,6 +1,7 @@
 package com.haptiq.app.data
 
 import com.haptiq.app.audio.HapticTuningState
+import androidx.media3.exoplayer.ExoPlayer
 import kotlinx.coroutines.flow.StateFlow
 
 interface PlayerManager {
@@ -28,4 +29,5 @@ interface PlayerManager {
     fun toggleRepeat()
     fun stopPlayback()
     fun updateTuning(state: HapticTuningState)
+    fun getPlayer(): ExoPlayer?
 }

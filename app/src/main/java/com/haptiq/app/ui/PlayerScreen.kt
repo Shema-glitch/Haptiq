@@ -2,6 +2,7 @@ package com.haptiq.app.ui
 
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -60,8 +61,7 @@ fun PlayerScreen(
                     radius = 1200f
                 )
             )
-            .statusBarsPadding()
-            .navigationBarsPadding()
+            .systemBarsPadding()
             .testTag("player_screen")
     ) {
         // Ambient glow behind artwork
@@ -150,8 +150,8 @@ fun PlayerScreen(
                         style = MaterialTheme.typography.headlineSmall,
                         color = ColorOnSurface,
                         maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.basicMarquee()
                     )
                     Spacer(Modifier.height(Spacing.xxs))
                     Text(
@@ -207,9 +207,9 @@ fun PlayerScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Shuffle
+                // Shuffle — scaled icon up to iconXL (32.dp)
                 IconButton(onClick = onToggleShuffle, modifier = Modifier.size(ComponentSize.touchTarget)) {
-                    Icon(Icons.Default.Shuffle, "Shuffle", tint = if (state.isShuffle) ColorPrimary else ColorOnSurface60, modifier = Modifier.size(ComponentSize.iconLarge))
+                    Icon(Icons.Default.Shuffle, "Shuffle", tint = if (state.isShuffle) ColorPrimary else ColorOnSurface60, modifier = Modifier.size(ComponentSize.iconXL))
                 }
 
                 // Prev / Play / Next
@@ -217,14 +217,15 @@ fun PlayerScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(Spacing.lg)
                 ) {
-                    IconButton(onClick = onPrevClicked, modifier = Modifier.size(ComponentSize.touchTarget)) {
-                        Icon(Icons.Default.SkipPrevious, "Previous", tint = ColorOnSurface, modifier = Modifier.size(36.dp))
+                    // Prev — scaled icon up to 40.dp
+                    IconButton(onClick = onPrevClicked, modifier = Modifier.size(52.dp)) {
+                        Icon(Icons.Default.SkipPrevious, "Previous", tint = ColorOnSurface, modifier = Modifier.size(40.dp))
                     }
 
-                    // Play/Pause — large circular button
+                    // Play/Pause — scaled down from 64.dp to 56.dp
                     Box(
                         modifier = Modifier
-                            .size(ComponentSize.playPauseFAB)
+                            .size(56.dp)
                             .shadow(Elevation.medium, CircleShape)
                             .background(ColorPrimary, CircleShape)
                             .clickable(onClick = onTogglePlayPause),
@@ -234,18 +235,19 @@ fun PlayerScreen(
                             if (state.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                             "Play or Pause",
                             tint = ColorOnPrimary,
-                            modifier = Modifier.size(32.dp)
+                            modifier = Modifier.size(ComponentSize.iconLarge) // 28.dp
                         )
                     }
 
-                    IconButton(onClick = onNextClicked, modifier = Modifier.size(ComponentSize.touchTarget)) {
-                        Icon(Icons.Default.SkipNext, "Next", tint = ColorOnSurface, modifier = Modifier.size(36.dp))
+                    // Next — scaled icon up to 40.dp
+                    IconButton(onClick = onNextClicked, modifier = Modifier.size(52.dp)) {
+                        Icon(Icons.Default.SkipNext, "Next", tint = ColorOnSurface, modifier = Modifier.size(40.dp))
                     }
                 }
 
-                // Repeat
+                // Repeat — scaled icon up to iconXL (32.dp)
                 IconButton(onClick = onToggleRepeat, modifier = Modifier.size(ComponentSize.touchTarget)) {
-                    Icon(Icons.Default.Repeat, "Repeat", tint = if (state.isRepeat) ColorPrimary else ColorOnSurface60, modifier = Modifier.size(ComponentSize.iconLarge))
+                    Icon(Icons.Default.Repeat, "Repeat", tint = if (state.isRepeat) ColorPrimary else ColorOnSurface60, modifier = Modifier.size(ComponentSize.iconXL))
                 }
             }
 
@@ -253,9 +255,9 @@ fun PlayerScreen(
 
             // ─── Haptic Toggle Row ──────────────────────────────
             Surface(
-                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(Radius.md)).clickable { onToggleHaptics(!state.hapticActive) },
+                modifier = Modifier.fillMaxWidth().clip(CircleShape).clickable { onToggleHaptics(!state.hapticActive) },
                 color = if (state.hapticActive) ColorHapticAccent.copy(alpha = 0.1f) else ColorSurfaceVariant.copy(alpha = 0.5f),
-                shape = RoundedCornerShape(Radius.md)
+                shape = CircleShape
             ) {
                 Row(
                     modifier = Modifier.padding(horizontal = Spacing.md, vertical = Spacing.sm),

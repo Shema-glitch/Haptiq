@@ -37,6 +37,7 @@ fun AlbumsScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .systemBarsPadding()
             .padding(horizontal = Layout.screenHorizontalPadding)
     ) {
         // Consistent HAPTIQ app bar with screen name

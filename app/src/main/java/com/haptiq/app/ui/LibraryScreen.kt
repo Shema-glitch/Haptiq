@@ -54,6 +54,7 @@ fun LibraryScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .systemBarsPadding()
             .testTag("library_screen")
     ) {
         // ─── HAPTIQ Top App Bar ─────────────────────────────────
@@ -368,15 +369,20 @@ fun MediaCard(
                 iconSize = ComponentSize.iconXXL,
                 cornerRadius = Radius.md
             )
-            IconButton(
-                onClick = onToggleFavorite,
-                modifier = Modifier.align(Alignment.TopEnd).padding(Spacing.xxs).size(ComponentSize.touchTarget)
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(Spacing.xs)
+                    .size(32.dp)
+                    .background(Color.Black.copy(alpha = 0.4f), CircleShape)
+                    .clickable(onClick = onToggleFavorite),
+                contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    if (isFavorite) Icons.Default.Favorite else Icons.Outlined.FavoriteBorder,
-                    if (isFavorite) "Remove from favorites" else "Add to favorites",
-                    tint = if (isFavorite) ColorPrimary else Color.White.copy(alpha = 0.7f),
-                    modifier = Modifier.size(ComponentSize.iconMedium)
+                    imageVector = if (isFavorite) Icons.Default.Favorite else Icons.Outlined.FavoriteBorder,
+                    contentDescription = if (isFavorite) "Remove from favorites" else "Add to favorites",
+                    tint = if (isFavorite) ColorPrimary else Color.White,
+                    modifier = Modifier.size(ComponentSize.iconSmall)
                 )
             }
             if (isActiveHaptic) {
@@ -497,7 +503,12 @@ fun MiniPlayer(
     )
 
     Surface(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onExpand).testTag("mini_player"),
+        modifier = Modifier
+            .fillMaxWidth()
+            .shadow(elevation = 8.dp, shape = RoundedCornerShape(topStart = Radius.md, topEnd = Radius.md))
+            .padding(bottom = 6.dp)
+            .clickable(onClick = onExpand)
+            .testTag("mini_player"),
         color = ColorSurface,
         tonalElevation = Elevation.low
     ) {

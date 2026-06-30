@@ -2,40 +2,26 @@ package com.haptiq.app.playback
 
 import android.app.PendingIntent
 import android.content.Intent
-import android.os.Build
-import androidx.annotation.OptIn
-import androidx.media3.common.AudioAttributes
-import androidx.media3.common.MediaItem
-import androidx.media3.common.Player
-import androidx.media3.common.util.UnstableApi
-import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import com.haptiq.app.MainActivity
+import com.haptiq.app.data.HaptiqPlayerManager
 
 /**
  * MediaSessionService for background playback.
- * Provides:
- * - Lock screen media controls
- * - Bluetooth media controls
- * - Persistent notification with playback controls
- * - Background playback survival
+ * Provides system Media Notification, lock screen controls, and background playback.
+ * Uses the shared ExoPlayer instance from HaptiqPlayerManager.
  */
 class HaptiqPlaybackService : MediaSessionService() {
 
     private var mediaSession: MediaSession? = null
 
-    @OptIn(UnstableApi::class)
     override fun onCreate() {
         super.onCreate()
 
-        val player = ExoPlayer.Builder(this)
-            .setAudioAttributes(
-                AudioAttributes.DEFAULT,
-                true // Handle audio focus automatically
-            )
-            .setHandleAudioBecomingNoisy(true)
-            .build()
+        // Bind to the existing singleton ExoPlayer from HaptiqPlayerManager
+        val playerManager = HaptiqPlayerManager.getInstance(applicationContext)
+        val player = playerManager.getPlayer() ?: return
 
         val intent = Intent(this, MainActivity::class.java)
         val pendingIntent = PendingIntent.getActivity(
@@ -63,7 +49,8 @@ class HaptiqPlaybackService : MediaSessionService() {
 
     override fun onDestroy() {
         mediaSession?.run {
-            player.release()
+            // DO NOT release player here. The player is a singleton owned by HaptiqPlayerManager
+            // and should survive the service lifecycle.
             release()
         }
         mediaSession = null

@@ -133,7 +133,7 @@ fun HaptiqScaffold(
 private fun navItemColors() = NavigationBarItemDefaults.colors(
     unselectedIconColor = ColorOnSurface60,
     unselectedTextColor = ColorOnSurface60,
-    selectedIconColor = ColorOnSurface,
-    selectedTextColor = ColorOnSurface,
-    indicatorColor = ColorSurfaceVariant
+    selectedIconColor = ColorHapticAccent,
+    selectedTextColor = ColorHapticAccent,
+    indicatorColor = ColorHapticAccent.copy(alpha = 0.12f)
 )

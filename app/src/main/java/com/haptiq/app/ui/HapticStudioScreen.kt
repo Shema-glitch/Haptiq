@@ -52,6 +52,7 @@ fun HapticStudioScreen(
     Scaffold(
         modifier = Modifier
             .fillMaxSize()
+            .systemBarsPadding()
             .testTag("haptic_studio_screen"),
         containerColor = ColorBackground,
         topBar = {

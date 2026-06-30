@@ -1,6 +1,7 @@
 package com.haptiq.app.data
 
 import android.content.Context
+import android.content.Intent
 import android.media.AudioAttributes
 import android.media.AudioFocusRequest
 import android.media.AudioManager
@@ -17,6 +18,7 @@ import com.haptiq.app.audio.BassEnergy
 import com.haptiq.app.audio.FftProcessor
 import com.haptiq.app.audio.HapticMapper
 import com.haptiq.app.audio.HapticTuningState
+import com.haptiq.app.playback.HaptiqPlaybackService
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -95,7 +97,10 @@ class HaptiqPlayerManager private constructor(private val context: Context) : Pl
     }
 
     private fun initExoPlayer() {
-        val player = ExoPlayer.Builder(context).build().apply {
+        val player = ExoPlayer.Builder(context)
+            .setAudioAttributes(androidx.media3.common.AudioAttributes.DEFAULT, true)
+            .setHandleAudioBecomingNoisy(true)
+            .build().apply {
             addListener(object : Player.Listener {
                 override fun onAudioSessionIdChanged(audioSessionId: Int) {
                     Log.d("HaptiqPlayer", "onAudioSessionIdChanged: $audioSessionId")
@@ -239,6 +244,7 @@ class HaptiqPlayerManager private constructor(private val context: Context) : Pl
             Log.d("HaptiqPlayer", "Audio focus granted: $focusGranted")
             if (focusGranted) {
                 player.playWhenReady = true
+                startPlaybackService()
             }
         } catch (e: Exception) {
             Log.e("HaptiqPlayer", "Error loading song: ${e.message}", e)
@@ -259,6 +265,7 @@ class HaptiqPlayerManager private constructor(private val context: Context) : Pl
             exoPlayer?.playWhenReady = true
             _isPlaying.value = true
             startProgressUpdate()
+            startPlaybackService()
         }
     }
 
@@ -403,6 +410,21 @@ class HaptiqPlayerManager private constructor(private val context: Context) : Pl
         exoPlayer?.release()
         exoPlayer = null
         INSTANCE = null
+    }
+
+    override fun getPlayer(): ExoPlayer? = exoPlayer
+
+    private fun startPlaybackService() {
+        try {
+            val intent = Intent(context, HaptiqPlaybackService::class.java)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(intent)
+            } else {
+                context.startService(intent)
+            }
+        } catch (e: Exception) {
+            Log.e("HaptiqPlayer", "Failed to start HaptiqPlaybackService: ${e.message}")
+        }
     }
 
     companion object {
