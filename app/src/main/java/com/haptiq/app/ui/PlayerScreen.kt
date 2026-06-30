@@ -1,6 +1,7 @@
 package com.haptiq.app.ui
 
 import androidx.compose.animation.core.*
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
@@ -24,6 +25,16 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
 import com.haptiq.app.data.Song
 import com.haptiq.app.ui.theme.*
 
@@ -45,6 +56,7 @@ fun PlayerScreen(
     onToggleFavorite: (String) -> Unit = {}
 ) {
     val currentSong = state.currentSong ?: return
+    val isFav = currentSong.id in state.favoriteIds
 
     LaunchedEffect(Unit) { onRefreshDndStatus() }
 
@@ -162,7 +174,6 @@ fun PlayerScreen(
                         overflow = TextOverflow.Ellipsis
                     )
                 }
-                val isFav = currentSong.id in state.favoriteIds
                 IconButton(onClick = { onToggleFavorite(currentSong.id) }, modifier = Modifier.size(ComponentSize.touchTarget)) {
                     Icon(
                         if (isFav) Icons.Default.Favorite else Icons.Outlined.FavoriteBorder,
@@ -173,85 +184,209 @@ fun PlayerScreen(
                 }
             }
 
-            Spacer(Modifier.height(Spacing.lg))
+            Spacer(Modifier.weight(1f))
 
-            // ─── Seek Slider ────────────────────────────────────
-            Slider(
-                value = if (isDraggingSlider) sliderValue else state.playbackProgress,
-                onValueChange = { isDraggingSlider = true; sliderValue = it },
-                onValueChangeFinished = { isDraggingSlider = false; onSeek(sliderValue) },
-                colors = SliderDefaults.colors(
-                    thumbColor = ColorPrimary,
-                    activeTrackColor = ColorPrimary,
-                    inactiveTrackColor = ColorOutlineVariant.copy(alpha = 0.4f)
-                ),
-                modifier = Modifier.fillMaxWidth(),
-                thumb = {
-                    SliderDefaults.Thumb(
-                        interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
-                        colors = SliderDefaults.colors(thumbColor = ColorPrimary),
-                        modifier = Modifier.size(16.dp)
+            // ─── Core Circular Playback Console (TuneHive style) ───
+            var isDraggingSlider by remember { mutableStateOf(false) }
+            var dragProgress by remember { mutableStateOf(0f) }
+            val currentProgress = if (isDraggingSlider) dragProgress else state.playbackProgress
+
+            val infiniteTransition = rememberInfiniteTransition(label = "visualizer_rings")
+            val pulseScale1 by infiniteTransition.animateFloat(
+                initialValue = 1.0f, targetValue = 1.06f,
+                animationSpec = infiniteRepeatable(tween(800, easing = EaseInOutSine), RepeatMode.Reverse),
+                label = "pulse1"
+            )
+            val pulseScale2 by infiniteTransition.animateFloat(
+                initialValue = 1.0f, targetValue = 1.12f,
+                animationSpec = infiniteRepeatable(tween(1200, easing = EaseInOutSine), RepeatMode.Reverse),
+                label = "pulse2"
+            )
+
+            Box(
+                modifier = Modifier
+                    .size(280.dp)
+                    .pointerInput(Unit) {
+                        detectDragGestures(
+                            onDragStart = { isDraggingSlider = true },
+                            onDragEnd = {
+                                isDraggingSlider = false
+                                onSeek(dragProgress)
+                            },
+                            onDragCancel = { isDraggingSlider = false },
+                            onDrag = { change, _ ->
+                                val size = size
+                                val center = Offset(size.width / 2f, size.height / 2f)
+                                val touch = change.position
+
+                                val dx = touch.x - center.x
+                                val dy = touch.y - center.y
+                                val angleRad = kotlin.math.atan2(dy, dx)
+                                var angleDeg = Math.toDegrees(angleRad.toDouble()).toFloat()
+                                if (angleDeg < 0) angleDeg += 360f
+
+                                // Map 135..405 deg to progress 0..1
+                                var relativeAngle = angleDeg - 135f
+                                if (relativeAngle < 0) relativeAngle += 360f
+
+                                if (relativeAngle <= 270f) {
+                                    val newProgress = (relativeAngle / 270f).coerceIn(0f, 1f)
+                                    dragProgress = newProgress
+                                    change.consume()
+                                }
+                            }
+                        )
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                // Background & Active Arcs + Thumb
+                Canvas(modifier = Modifier.fillMaxSize()) {
+                    val strokeWidthPx = 6.dp.toPx()
+                    val dialRadius = 110.dp.toPx()
+
+                    // 1. Draw outer background track arc (gap at bottom: 45 to 135 deg)
+                    drawArc(
+                        color = ColorOutlineVariant,
+                        startAngle = 135f,
+                        sweepAngle = 270f,
+                        useCenter = false,
+                        topLeft = Offset(center.x - dialRadius, center.y - dialRadius),
+                        size = Size(dialRadius * 2, dialRadius * 2),
+                        style = Stroke(width = strokeWidthPx, cap = StrokeCap.Round)
+                    )
+
+                    // 2. Draw active progress track arc
+                    drawArc(
+                        color = ColorHapticAccent,
+                        startAngle = 135f,
+                        sweepAngle = currentProgress * 270f,
+                        useCenter = false,
+                        topLeft = Offset(center.x - dialRadius, center.y - dialRadius),
+                        size = Size(dialRadius * 2, dialRadius * 2),
+                        style = Stroke(width = strokeWidthPx, cap = StrokeCap.Round)
+                    )
+
+                    // 3. Draw thumb knob dot
+                    val thumbAngleDeg = 135f + currentProgress * 270f
+                    val thumbAngleRad = Math.toRadians(thumbAngleDeg.toDouble())
+                    val thumbX = center.x + dialRadius * kotlin.math.cos(thumbAngleRad).toFloat()
+                    val thumbY = center.y + dialRadius * kotlin.math.sin(thumbAngleRad).toFloat()
+                    drawCircle(
+                        color = Color.White,
+                        radius = 7.dp.toPx(),
+                        center = Offset(thumbX, thumbY)
+                    )
+
+                    // 4. Draw concentric acoustic visualization circles
+                    val scale1 = if (state.isPlaying) pulseScale1 else 1.0f
+                    val scale2 = if (state.isPlaying) pulseScale2 else 1.0f
+
+                    drawCircle(
+                        color = ColorHapticAccent.copy(alpha = 0.12f),
+                        radius = 48.dp.toPx() * scale1,
+                        center = center,
+                        style = Stroke(width = 1.dp.toPx())
+                    )
+                    drawCircle(
+                        color = ColorHapticAccent.copy(alpha = 0.06f),
+                        radius = 60.dp.toPx() * scale2,
+                        center = center,
+                        style = Stroke(width = 1.dp.toPx())
                     )
                 }
-            )
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(state.currentTimeText, style = MaterialTheme.typography.labelSmall, color = ColorOnSurface60)
-                Text(state.remainingTimeText, style = MaterialTheme.typography.labelSmall, color = ColorOnSurface60)
-            }
 
-            Spacer(Modifier.weight(0.1f))
-
-            // ─── Transport Controls ─────────────────────────────
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // Shuffle — scaled icon up to iconXL (32.dp)
-                IconButton(onClick = onToggleShuffle, modifier = Modifier.size(ComponentSize.touchTarget)) {
-                    Icon(Icons.Default.Shuffle, "Shuffle", tint = if (state.isShuffle) ColorPrimary else ColorOnSurface60, modifier = Modifier.size(ComponentSize.iconXL))
-                }
-
-                // Prev / Play / Next
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(Spacing.lg)
+                // Play/Pause circular FAB in the center
+                Box(
+                    modifier = Modifier
+                        .size(56.dp)
+                        .shadow(Elevation.medium, CircleShape)
+                        .background(Color.White, CircleShape)
+                        .clickable(onClick = onTogglePlayPause),
+                    contentAlignment = Alignment.Center
                 ) {
-                    // Prev — scaled icon up to 40.dp
-                    IconButton(onClick = onPrevClicked, modifier = Modifier.size(52.dp)) {
-                        Icon(Icons.Default.SkipPrevious, "Previous", tint = ColorOnSurface, modifier = Modifier.size(40.dp))
-                    }
-
-                    // Play/Pause — scaled down from 64.dp to 56.dp
-                    Box(
-                        modifier = Modifier
-                            .size(56.dp)
-                            .shadow(Elevation.medium, CircleShape)
-                            .background(ColorPrimary, CircleShape)
-                            .clickable(onClick = onTogglePlayPause),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            if (state.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                            "Play or Pause",
-                            tint = ColorOnPrimary,
-                            modifier = Modifier.size(ComponentSize.iconLarge) // 28.dp
-                        )
-                    }
-
-                    // Next — scaled icon up to 40.dp
-                    IconButton(onClick = onNextClicked, modifier = Modifier.size(52.dp)) {
-                        Icon(Icons.Default.SkipNext, "Next", tint = ColorOnSurface, modifier = Modifier.size(40.dp))
-                    }
+                    Icon(
+                        imageVector = if (state.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                        contentDescription = "Play or Pause",
+                        tint = Color.Black,
+                        modifier = Modifier.size(28.dp)
+                    )
                 }
 
-                // Repeat — scaled icon up to iconXL (32.dp)
-                IconButton(onClick = onToggleRepeat, modifier = Modifier.size(ComponentSize.touchTarget)) {
-                    Icon(Icons.Default.Repeat, "Repeat", tint = if (state.isRepeat) ColorPrimary else ColorOnSurface60, modifier = Modifier.size(ComponentSize.iconXL))
+                // Heart Favorite button above play
+                IconButton(
+                    onClick = { onToggleFavorite(currentSong.id) },
+                    modifier = Modifier.offset(y = (-62).dp)
+                ) {
+                    Icon(
+                        imageVector = if (isFav) Icons.Default.Favorite else Icons.Outlined.FavoriteBorder,
+                        contentDescription = "Favorite",
+                        tint = if (isFav) ColorPrimary else ColorOnSurface60,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+
+                // Time progress text
+                Text(
+                    text = "${state.currentTimeText} / ${state.remainingTimeText}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = ColorOnSurface60,
+                    modifier = Modifier.offset(y = (-24).dp)
+                )
+
+                // Shuffle button (top-left shoulder)
+                IconButton(
+                    onClick = onToggleShuffle,
+                    modifier = Modifier.offset(x = (-72).dp, y = (-72).dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Shuffle,
+                        contentDescription = "Shuffle",
+                        tint = if (state.isShuffle) ColorPrimary else ColorOnSurface60,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+
+                // Repeat button (top-right shoulder)
+                IconButton(
+                    onClick = onToggleRepeat,
+                    modifier = Modifier.offset(x = 72.dp, y = (-72).dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Repeat,
+                        contentDescription = "Repeat",
+                        tint = if (state.isRepeat) ColorPrimary else ColorOnSurface60,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+
+                // Skip Previous (bottom-left)
+                IconButton(
+                    onClick = onPrevClicked,
+                    modifier = Modifier.offset(x = (-105).dp, y = 48.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.SkipPrevious,
+                        contentDescription = "Previous",
+                        tint = ColorOnSurface,
+                        modifier = Modifier.size(32.dp)
+                    )
+                }
+
+                // Skip Next (bottom-right)
+                IconButton(
+                    onClick = onNextClicked,
+                    modifier = Modifier.offset(x = 105.dp, y = 48.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.SkipNext,
+                        contentDescription = "Next",
+                        tint = ColorOnSurface,
+                        modifier = Modifier.size(32.dp)
+                    )
                 }
             }
 
-            Spacer(Modifier.weight(0.15f))
+            Spacer(Modifier.weight(1f))
 
             // ─── Haptic Toggle Row ──────────────────────────────
             Surface(

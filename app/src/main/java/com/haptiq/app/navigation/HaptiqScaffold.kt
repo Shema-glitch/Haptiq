@@ -2,10 +2,13 @@ package com.haptiq.app.navigation
 
 import androidx.compose.animation.*
 import androidx.compose.foundation.background
+import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -41,67 +44,93 @@ fun HaptiqScaffold(
         modifier = Modifier.fillMaxSize(),
         containerColor = ColorBackground,
         bottomBar = {
-            // Only the nav bar is in bottomBar — Scaffold calculates inset from this alone
-            NavigationBar(
-                containerColor = ColorSurface,
-                tonalElevation = 0.dp
+            Surface(
+                shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+                color = ColorSurface,
+                tonalElevation = 8.dp,
+                modifier = Modifier.fillMaxWidth()
             ) {
-                NavigationBarItem(
-                    selected = currentRoute == Routes.LIBRARY,
-                    onClick = {
-                        if (currentRoute != Routes.LIBRARY) {
-                            navController.navigate(Routes.LIBRARY) {
-                                popUpTo(Routes.LIBRARY) { inclusive = true }
-                                launchSingleTop = true
+                NavigationBar(
+                    containerColor = Color.Transparent,
+                    tonalElevation = 0.dp
+                ) {
+                    NavigationBarItem(
+                        selected = currentRoute == Routes.LIBRARY,
+                        onClick = {
+                            if (currentRoute != Routes.LIBRARY) {
+                                navController.navigate(Routes.LIBRARY) {
+                                    popUpTo(Routes.LIBRARY) { inclusive = true }
+                                    launchSingleTop = true
+                                }
                             }
-                        }
-                    },
-                    icon = { Icon(Icons.Default.LibraryMusic, "Library") },
-                    label = { Text("Library", style = MaterialTheme.typography.labelSmall) },
-                    colors = navItemColors()
-                )
-                NavigationBarItem(
-                    selected = currentRoute == Routes.ALBUMS,
-                    onClick = {
-                        if (currentRoute != Routes.ALBUMS) {
-                            navController.navigate(Routes.ALBUMS) {
-                                popUpTo(Routes.LIBRARY) { inclusive = false }
-                                launchSingleTop = true
+                        },
+                        icon = {
+                            Icon(
+                                imageVector = if (currentRoute == Routes.LIBRARY) Icons.Default.LibraryMusic else Icons.Outlined.LibraryMusic,
+                                contentDescription = "Library"
+                            )
+                        },
+                        label = { Text("Library", style = MaterialTheme.typography.labelSmall) },
+                        colors = navItemColors()
+                    )
+                    NavigationBarItem(
+                        selected = currentRoute == Routes.ALBUMS,
+                        onClick = {
+                            if (currentRoute != Routes.ALBUMS) {
+                                navController.navigate(Routes.ALBUMS) {
+                                    popUpTo(Routes.LIBRARY) { inclusive = false }
+                                    launchSingleTop = true
+                                }
                             }
-                        }
-                    },
-                    icon = { Icon(Icons.Default.Album, "Albums") },
-                    label = { Text("Albums", style = MaterialTheme.typography.labelSmall) },
-                    colors = navItemColors()
-                )
-                NavigationBarItem(
-                    selected = currentRoute == Routes.FAVORITES,
-                    onClick = {
-                        if (currentRoute != Routes.FAVORITES) {
-                            navController.navigate(Routes.FAVORITES) {
-                                popUpTo(Routes.LIBRARY) { inclusive = false }
-                                launchSingleTop = true
+                        },
+                        icon = {
+                            Icon(
+                                imageVector = if (currentRoute == Routes.ALBUMS) Icons.Default.Album else Icons.Outlined.Album,
+                                contentDescription = "Albums"
+                            )
+                        },
+                        label = { Text("Albums", style = MaterialTheme.typography.labelSmall) },
+                        colors = navItemColors()
+                    )
+                    NavigationBarItem(
+                        selected = currentRoute == Routes.FAVORITES,
+                        onClick = {
+                            if (currentRoute != Routes.FAVORITES) {
+                                navController.navigate(Routes.FAVORITES) {
+                                    popUpTo(Routes.LIBRARY) { inclusive = false }
+                                    launchSingleTop = true
+                                }
                             }
-                        }
-                    },
-                    icon = { Icon(Icons.Default.Favorite, "Favorites") },
-                    label = { Text("Favorites", style = MaterialTheme.typography.labelSmall) },
-                    colors = navItemColors()
-                )
-                NavigationBarItem(
-                    selected = currentRoute == Routes.SETTINGS,
-                    onClick = {
-                        if (currentRoute != Routes.SETTINGS) {
-                            navController.navigate(Routes.SETTINGS) {
-                                popUpTo(Routes.LIBRARY) { inclusive = false }
-                                launchSingleTop = true
+                        },
+                        icon = {
+                            Icon(
+                                imageVector = if (currentRoute == Routes.FAVORITES) Icons.Default.Favorite else Icons.Outlined.Favorite,
+                                contentDescription = "Favorites"
+                            )
+                        },
+                        label = { Text("Favorites", style = MaterialTheme.typography.labelSmall) },
+                        colors = navItemColors()
+                    )
+                    NavigationBarItem(
+                        selected = currentRoute == Routes.SETTINGS,
+                        onClick = {
+                            if (currentRoute != Routes.SETTINGS) {
+                                navController.navigate(Routes.SETTINGS) {
+                                    popUpTo(Routes.LIBRARY) { inclusive = false }
+                                    launchSingleTop = true
+                                }
                             }
-                        }
-                    },
-                    icon = { Icon(Icons.Default.Settings, "Settings") },
-                    label = { Text("Settings", style = MaterialTheme.typography.labelSmall) },
-                    colors = navItemColors()
-                )
+                        },
+                        icon = {
+                            Icon(
+                                imageVector = if (currentRoute == Routes.SETTINGS) Icons.Default.Settings else Icons.Outlined.Settings,
+                                contentDescription = "Settings"
+                            )
+                        },
+                        label = { Text("Settings", style = MaterialTheme.typography.labelSmall) },
+                        colors = navItemColors()
+                    )
+                }
             }
         }
     ) { innerPadding ->
@@ -133,7 +162,7 @@ fun HaptiqScaffold(
 private fun navItemColors() = NavigationBarItemDefaults.colors(
     unselectedIconColor = ColorOnSurface60,
     unselectedTextColor = ColorOnSurface60,
-    selectedIconColor = ColorHapticAccent,
-    selectedTextColor = ColorHapticAccent,
-    indicatorColor = ColorHapticAccent.copy(alpha = 0.12f)
+    selectedIconColor = ColorOnPrimary, // Black icon when active
+    selectedTextColor = ColorHapticAccent, // Neon-lime text when active
+    indicatorColor = ColorHapticAccent // Neon-lime active circular background
 )

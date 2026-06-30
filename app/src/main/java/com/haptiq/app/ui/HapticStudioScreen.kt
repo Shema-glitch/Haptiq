@@ -352,7 +352,9 @@ private fun TuningDashboardCard(
     )
 
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(1.dp, ColorOutline, RoundedCornerShape(12.dp)),
         colors = CardDefaults.cardColors(containerColor = ColorSurface),
         shape = RoundedCornerShape(12.dp)
     ) {
@@ -491,8 +493,8 @@ private fun EngineToggleChip(
     modifier: Modifier = Modifier,
     onToggle: (Boolean) -> Unit
 ) {
-    val bgColor = if (enabled) ColorHapticAccent.copy(alpha = 0.12f) else ColorSurfaceVariant
-    val contentColor = if (enabled) ColorHapticAccent else ColorOnSurface60
+    val bgColor = if (enabled) ColorHapticAccent else ColorSurface
+    val contentColor = if (enabled) ColorOnPrimary else ColorOnSurface60
 
     Row(
         modifier = modifier
@@ -512,7 +514,7 @@ private fun EngineToggleChip(
             modifier = Modifier.height(24.dp),
             colors = SwitchDefaults.colors(
                 checkedThumbColor = ColorSurface,
-                checkedTrackColor = ColorHapticAccent,
+                checkedTrackColor = ColorOnPrimary,
                 uncheckedThumbColor = ColorOnSurface60,
                 uncheckedTrackColor = ColorSurfaceVariant
             )

@@ -19,6 +19,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
 import com.haptiq.app.data.Song
 import com.haptiq.app.ui.theme.*
 
@@ -112,7 +115,19 @@ private fun AlbumGridCard(
             )
         }
         Spacer(Modifier.height(Spacing.xs))
-        Text(artist, style = MaterialTheme.typography.labelLarge, color = ColorOnSurface, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.Bold)
+        Text(
+            text = buildAnnotatedString {
+                withStyle(style = SpanStyle(color = ColorHapticAccent, fontWeight = FontWeight.Bold)) {
+                    append("| ")
+                }
+                append(artist)
+            },
+            style = MaterialTheme.typography.labelLarge,
+            color = ColorOnSurface,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            fontWeight = FontWeight.Bold
+        )
         Text("$songCount tracks", style = MaterialTheme.typography.bodySmall, color = ColorOnSurface60)
     }
 }
