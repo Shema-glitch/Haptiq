@@ -9,6 +9,7 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.padding
 import androidx.navigation.compose.currentBackStackEntryAsState
 import com.haptiq.app.ui.*
 
@@ -52,7 +53,10 @@ fun HaptiqNavHost(
     // Every simple route needs the same five pieces of transport state, so this wrapper is
     // the single place that derives them from haptiqState instead of five call sites.
     @Composable
-    fun HaptiqScaffoldRoute(content: @Composable (PaddingValues) -> Unit) {
+    fun HaptiqScaffoldRoute(
+        subtitle: String? = null,
+        content: @Composable (PaddingValues) -> Unit
+    ) {
         HaptiqScaffold(
             navController = navController,
             currentRoute = currentRoute,
@@ -64,6 +68,19 @@ fun HaptiqNavHost(
             onNextClicked = { haptiqViewModel.handleAction(HaptiqUiAction.PlayNext) },
             onPrevClicked = { haptiqViewModel.handleAction(HaptiqUiAction.PlayPrevious) },
             onMiniPlayerExpanded = { navController.navigate(Routes.PLAYER) },
+            topBar = {
+                // The scaffold owns the app bar: screens with a plain header pass
+                // a subtitle; Library passes null because its header carries live
+                // actions (search/scan) that belong to its own state.
+                if (subtitle != null) {
+                    HaptiqScreenHeader(
+                        subtitle = subtitle,
+                        modifier = androidx.compose.ui.Modifier.padding(
+                            horizontal = com.haptiq.app.ui.theme.Layout.screenHorizontalPadding
+                        )
+                    )
+                }
+            },
             content = content
         )
     }
@@ -215,7 +232,7 @@ fun HaptiqNavHost(
         }
 
         composable(Routes.ALBUMS) {
-            HaptiqScaffoldRoute { innerPadding ->
+            HaptiqScaffoldRoute(subtitle = "Albums") { innerPadding ->
                 AlbumsScreen(
                     state = haptiqState,
                     onSongSelected = { list, index ->
@@ -227,7 +244,7 @@ fun HaptiqNavHost(
         }
 
         composable(Routes.FAVORITES) {
-            HaptiqScaffoldRoute { innerPadding ->
+            HaptiqScaffoldRoute(subtitle = "Favorites") { innerPadding ->
                 FavoritesScreen(
                     state = haptiqState,
                     onSongSelected = { list, index ->
@@ -242,7 +259,7 @@ fun HaptiqNavHost(
         }
 
         composable(Routes.SETTINGS) {
-            HaptiqScaffoldRoute { innerPadding ->
+            HaptiqScaffoldRoute(subtitle = "Settings") { innerPadding ->
                 SettingsScreen(
                     state = haptiqState,
                     innerPadding = innerPadding,

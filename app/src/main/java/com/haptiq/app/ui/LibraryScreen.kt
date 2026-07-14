@@ -51,6 +51,10 @@ fun LibraryScreen(
     // Show skeleton while scanning and no songs loaded yet
     val showSkeleton = state.isScanning && state.songs.isEmpty()
 
+    // Search starts collapsed to a header icon; expanding is an explicit act.
+    // Stays open while a query is active so results never render "headless".
+    var searchExpanded by remember { mutableStateOf(false) }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -62,6 +66,24 @@ fun LibraryScreen(
             subtitle = "Library",
             modifier = Modifier.padding(horizontal = Layout.screenHorizontalPadding),
             trailing = {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+                // Search toggle — collapsing search to an icon keeps the default
+                // screen calm; the field slides open only when asked for.
+                IconButton(
+                    onClick = {
+                        if (searchExpanded) onSearchQueryChanged("")
+                        searchExpanded = !searchExpanded
+                    },
+                    modifier = Modifier.background(
+                        if (searchExpanded) ColorSurfaceVariant else ColorSurface, CircleShape
+                    )
+                ) {
+                    Icon(
+                        if (searchExpanded) Icons.Default.Close else Icons.Default.Search,
+                        contentDescription = if (searchExpanded) "Close search" else "Search library",
+                        tint = ColorOnSurface
+                    )
+                }
                 // Refresh/Scan button
                 IconButton(
                     onClick = onScanDevice,
@@ -81,6 +103,7 @@ fun LibraryScreen(
                             tint = ColorOnSurface
                         )
                     }
+                }
                 }
             }
         )
@@ -113,7 +136,14 @@ fun LibraryScreen(
                 .fillMaxSize()
                 .padding(horizontal = Layout.screenHorizontalPadding)
         ) {
-            // ─── Inline Search Bar ───────────────────────────────
+            // ─── Sliding Search Bar ──────────────────────────────
+            androidx.compose.animation.AnimatedVisibility(
+                visible = searchExpanded || state.searchQuery.isNotEmpty(),
+                enter = androidx.compose.animation.expandVertically(animationSpec = HaptiqMotion.standardSpring()) +
+                    androidx.compose.animation.fadeIn(),
+                exit = androidx.compose.animation.shrinkVertically() +
+                    androidx.compose.animation.fadeOut()
+            ) {
             OutlinedTextField(
                 value = state.searchQuery,
                 onValueChange = onSearchQueryChanged,
@@ -142,6 +172,7 @@ fun LibraryScreen(
                 ),
                 singleLine = true
             )
+            }
 
             Spacer(Modifier.height(Layout.sectionGap))
 

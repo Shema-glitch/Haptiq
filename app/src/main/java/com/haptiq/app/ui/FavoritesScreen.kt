@@ -32,8 +32,6 @@ fun FavoritesScreen(
             .systemBarsPadding()
             .padding(horizontal = Layout.screenHorizontalPadding)
     ) {
-        HaptiqScreenHeader(subtitle = "Favorites")
-
         if (favoriteSongs.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 EmptyState(

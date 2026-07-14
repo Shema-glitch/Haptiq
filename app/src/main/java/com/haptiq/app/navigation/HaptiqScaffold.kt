@@ -48,6 +48,7 @@ fun HaptiqScaffold(
     onNextClicked: () -> Unit,
     onPrevClicked: () -> Unit,
     onMiniPlayerExpanded: () -> Unit,
+    topBar: @Composable () -> Unit = {},
     content: @Composable (PaddingValues) -> Unit
 ) {
     Scaffold(
@@ -67,11 +68,14 @@ fun HaptiqScaffold(
             )
         }
     ) { innerPadding ->
+        // The app's three-part anatomy, owned in ONE place: top bar / main / bottom
+        // chrome (mini player + nav). Screens supply only their main content.
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
+            topBar()
             Box(modifier = Modifier.weight(1f)) {
                 content(innerPadding)
             }
@@ -117,9 +121,12 @@ private fun HaptiqBottomNav(
             .padding(horizontal = Spacing.md, vertical = Spacing.sm)
     ) {
         Surface(
+            // Clay-style chunky border: the nav reads as a soft physical slab,
+            // matching the app's tactile premise (border, not glow).
             modifier = Modifier
                 .fillMaxWidth()
-                .height(ComponentSize.navBarHeight),
+                .height(ComponentSize.navBarHeight)
+                .border(2.dp, ColorOutlineVariant, ExpressiveShapes.navPill),
             color = ColorSurfaceContainerHigh,
             shape = ExpressiveShapes.navPill,
             shadowElevation = Elevation.high,

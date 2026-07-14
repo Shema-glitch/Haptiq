@@ -40,8 +40,6 @@ fun AlbumsScreen(
             .systemBarsPadding()
             .padding(horizontal = Layout.screenHorizontalPadding)
     ) {
-        HaptiqScreenHeader(subtitle = "Albums")
-
         if (albums.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 EmptyState(

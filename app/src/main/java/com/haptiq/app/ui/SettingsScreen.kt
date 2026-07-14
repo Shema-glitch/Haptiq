@@ -42,8 +42,6 @@ fun SettingsScreen(
             .padding(horizontal = Spacing.md)
             .testTag("settings_screen")
     ) {
-        HaptiqScreenHeader(subtitle = "Settings")
-
         // Preferences section
         Column(
             verticalArrangement = Arrangement.spacedBy(Spacing.xs)
