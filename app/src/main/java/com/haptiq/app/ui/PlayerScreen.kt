@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -48,6 +49,7 @@ fun PlayerScreen(
     onNextClicked: () -> Unit,
     onPrevClicked: () -> Unit,
     onSeek: (Float) -> Unit,
+    onSeekPreview: (Float) -> Unit = {},
     onToggleHaptics: (Boolean) -> Unit,
     onHapticStudioClicked: () -> Unit,
     onSongSelected: (List<Song>, Int) -> Unit,
@@ -238,11 +240,20 @@ fun PlayerScreen(
 
             Spacer(Modifier.weight(if (isShortScreen) 0.05f else 0.2f))
 
-            // ─── Linear Seek Slider ─────────────────────────────
+            // ─── Waveform Seek Slider ───────────────────────────
+            // The track is the song's precomputed bass envelope; dragging the thumb
+            // pulses the motor with the intensity under it (haptic seek-preview) —
+            // you feel where the drop is before you jump to it.
             Column(modifier = Modifier.fillMaxWidth()) {
+                val displayedProgress = if (isDraggingSlider) sliderValue else state.playbackProgress
+                val seekEnergy = state.seekEnergy
                 Slider(
-                    value = if (isDraggingSlider) sliderValue else state.playbackProgress,
-                    onValueChange = { isDraggingSlider = true; sliderValue = it },
+                    value = displayedProgress,
+                    onValueChange = {
+                        isDraggingSlider = true
+                        sliderValue = it
+                        onSeekPreview(it)
+                    },
                     onValueChangeFinished = { isDraggingSlider = false; onSeek(sliderValue) },
                     colors = SliderDefaults.colors(
                         thumbColor = Color.White,
@@ -259,6 +270,44 @@ fun PlayerScreen(
                                 .shadow(Elevation.medium, CircleShape)
                                 .border(2.dp, ColorPrimary, CircleShape)
                         )
+                    },
+                    track = { sliderState ->
+                        if (seekEnergy != null && seekEnergy.isNotEmpty()) {
+                            // Amber only while the envelope is live haptic data;
+                            // with haptics off it reverts to the neutral brand clay.
+                            val playedColor = if (state.hapticActive) ColorHapticAccent else ColorPrimary
+                            val restColor = ColorOutlineVariant
+                            Canvas(Modifier.fillMaxWidth().height(28.dp)) {
+                                val barW = 3.dp.toPx()
+                                val gap = 2.dp.toPx()
+                                val bars = (size.width / (barW + gap)).toInt().coerceAtLeast(1)
+                                val minH = 3.dp.toPx()
+                                for (i in 0 until bars) {
+                                    val from = i * seekEnergy.size / bars
+                                    val to = (((i + 1) * seekEnergy.size / bars).coerceAtLeast(from + 1))
+                                        .coerceAtMost(seekEnergy.size)
+                                    var e = 0f
+                                    for (j in from until to) e += seekEnergy[j]
+                                    e /= (to - from)
+                                    val h = minH + e * (size.height - minH)
+                                    val played = (i + 0.5f) / bars <= displayedProgress
+                                    drawRoundRect(
+                                        color = if (played) playedColor else restColor,
+                                        topLeft = Offset(i * (barW + gap), (size.height - h) / 2f),
+                                        size = Size(barW, h),
+                                        cornerRadius = CornerRadius(barW / 2f)
+                                    )
+                                }
+                            }
+                        } else {
+                            SliderDefaults.Track(
+                                sliderState = sliderState,
+                                colors = SliderDefaults.colors(
+                                    activeTrackColor = ColorPrimary,
+                                    inactiveTrackColor = ColorOutlineVariant
+                                )
+                            )
+                        }
                     }
                 )
                 Row(

@@ -29,6 +29,13 @@ interface HaptiqDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertCalibration(calibration: CalibrationProfile)
 
+    // ── Track energy maps (haptic seek-preview) ─────────────
+    @Query("SELECT * FROM track_energy_maps WHERE songId = :songId")
+    suspend fun getEnergyMap(songId: String): TrackEnergyMap?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertEnergyMap(map: TrackEnergyMap)
+
     // ── Playlists ────────────────────────────────────────────
     @Query(
         """SELECT p.id, p.name, p.createdAt, COUNT(ps.songId) AS songCount

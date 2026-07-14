@@ -121,6 +121,29 @@ class PlaylistRepository @Inject constructor(
         haptiqDao.removePlaylistSong(playlistId, songId)
 }
 
+@Singleton
+class EnergyMapRepository @Inject constructor(
+    private val haptiqDao: HaptiqDao,
+    private val analyzer: com.haptiq.app.audio.TrackEnergyAnalyzer
+) {
+    /**
+     * Normalized 0–1 bass envelope for a song. Served from Room when the track has
+     * been analyzed before; otherwise decoded + analyzed now and cached. Null when
+     * the file can't be decoded — callers treat that as "no seek-preview".
+     */
+    suspend fun energyFor(song: Song): FloatArray? {
+        val frames = haptiqDao.getEnergyMap(song.id)?.frames ?: run {
+            val result = analyzer.analyze(song.audioUrl) ?: return null
+            haptiqDao.insertEnergyMap(
+                TrackEnergyMap(song.id, result.durationMs, result.frames, System.currentTimeMillis())
+            )
+            result.frames
+        }
+        if (frames.isEmpty()) return null
+        return FloatArray(frames.size) { (frames[it].toInt() and 0xFF) / 255f }
+    }
+}
+
 class CalibrationRepository @Inject constructor(private val haptiqDao: HaptiqDao) {
     fun getCalibration(deviceModel: String): Flow<CalibrationProfile> {
         return haptiqDao.getCalibration(deviceModel).map { saved ->

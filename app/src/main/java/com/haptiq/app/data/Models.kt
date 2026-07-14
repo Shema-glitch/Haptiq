@@ -49,6 +49,24 @@ data class PlaylistWithCount(
     val songCount: Int
 )
 
+/**
+ * Precomputed bass-energy envelope for one track (the revived AOT haptic-map concept):
+ * one unsigned byte (0–255) per TrackEnergyAnalyzer.FRAME_MS of audio. Consumed by the
+ * seek-preview scrubber, which needs energy at arbitrary positions ahead of playback.
+ */
+@Entity(tableName = "track_energy_maps")
+data class TrackEnergyMap(
+    @PrimaryKey val songId: String,
+    val durationMs: Long,
+    val frames: ByteArray,
+    val analyzedAt: Long
+) {
+    override fun equals(other: Any?): Boolean =
+        other is TrackEnergyMap && other.songId == songId && other.analyzedAt == analyzedAt
+
+    override fun hashCode(): Int = songId.hashCode() * 31 + analyzedAt.hashCode()
+}
+
 @Entity(tableName = "calibration_profile")
 data class CalibrationProfile(
     @PrimaryKey val deviceModel: String,

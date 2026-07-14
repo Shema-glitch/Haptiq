@@ -39,6 +39,9 @@ data class HaptiqUiState(
     val sleepTimerMinutes: Int = 0,
     val calibrationMultiplier: Float = 1.0f,
     val visualizerBands: FloatArray = FloatArray(10) { 0.2f },
+    // Precomputed 0–1 bass envelope of the current track (null while analyzing or
+    // undecodable) — drives the waveform seek bar and its haptic scrub preview
+    val seekEnergy: FloatArray? = null,
     // Calibration Wizard states
     val calibrationStep: Int = 1, // 1: Play test pulse, 2: Select strength, 3: Success
     val calibrationStrength: String = "Medium", // "Weak", "Medium", "Strong"
@@ -66,6 +69,8 @@ sealed interface HaptiqUiAction {
     data class SelectSong(val songs: List<Song>, val index: Int) : HaptiqUiAction
     object TogglePlayPause : HaptiqUiAction
     data class Seek(val progress: Float) : HaptiqUiAction
+    /** Fired continuously while scrubbing — pulses the bass intensity at that position. */
+    data class SeekPreview(val progress: Float) : HaptiqUiAction
     object PlayNext : HaptiqUiAction
     object PlayPrevious : HaptiqUiAction
     object ToggleShuffle : HaptiqUiAction
@@ -116,6 +121,7 @@ class HaptiqViewModel @Inject constructor(
     private val presetRepository: PresetRepository,
     private val calibrationRepository: CalibrationRepository,
     private val playlistRepository: PlaylistRepository,
+    private val energyMapRepository: EnergyMapRepository,
     private val playerManager: PlayerManager
 ) : ViewModel() {
 
@@ -170,12 +176,17 @@ class HaptiqViewModel @Inject constructor(
         }
         playerManager.visualizerBands.collectIntoState { state, bands -> state.copy(visualizerBands = bands) }
 
-        // Has a side effect (recording history) beyond the state copy, so it stays its own launch.
+        // Has side effects (recording history, kicking off track analysis) beyond the
+        // state copy, so it stays its own launch.
         viewModelScope.launch {
             playerManager.currentSong.collect { song ->
-                _uiState.update { it.copy(currentSong = song) }
+                val songChanged = song?.id != _uiState.value.currentSong?.id
+                _uiState.update {
+                    it.copy(currentSong = song, seekEnergy = if (songChanged) null else it.seekEnergy)
+                }
                 if (song != null) {
                     recentSongRepository.addRecentSong(song.id)
+                    if (songChanged) loadSeekEnergy(song)
                 }
             }
         }
@@ -255,6 +266,9 @@ class HaptiqViewModel @Inject constructor(
             }
             is HaptiqUiAction.Seek -> {
                 playerManager.seekTo(action.progress)
+            }
+            is HaptiqUiAction.SeekPreview -> {
+                previewSeekPulse(action.progress)
             }
             is HaptiqUiAction.PlayNext -> {
                 playerManager.playNext()
@@ -407,6 +421,49 @@ class HaptiqViewModel @Inject constructor(
                 playerManager.updateTuning(_hapticTuning.value)
             }
         }
+    }
+
+    /** Kept per-song so a slow analysis of the previous track can't clobber the new one. */
+    private var seekEnergyJob: kotlinx.coroutines.Job? = null
+
+    private fun loadSeekEnergy(song: Song) {
+        seekEnergyJob?.cancel()
+        seekEnergyJob = viewModelScope.launch {
+            val energy = energyMapRepository.energyFor(song)
+            if (_uiState.value.currentSong?.id == song.id) {
+                _uiState.update { it.copy(seekEnergy = energy) }
+            }
+        }
+    }
+
+    // ── Haptic seek-preview: feel the bass at the scrub position ──────────────
+    private var lastPreviewBucket = -1
+    private var lastPreviewPulseAt = 0L
+
+    private fun previewSeekPulse(progress: Float) {
+        val state = _uiState.value
+        val energy = state.seekEnergy ?: return
+        if (energy.isEmpty() || !state.hapticActive) return
+        val v = vibrator ?: return
+
+        val bucket = (progress * (energy.size - 1)).toInt().coerceIn(0, energy.size - 1)
+        val now = System.currentTimeMillis()
+        // One pulse per envelope bucket, rate-limited so fast flings don't saturate the motor
+        if (bucket == lastPreviewBucket || now - lastPreviewPulseAt < 70L) return
+        lastPreviewBucket = bucket
+        lastPreviewPulseAt = now
+
+        val e = energy[bucket]
+        if (e < 0.18f) return // silence stays silent — that contrast is the feature
+        val amplitude = (40 + e * e * 215).toInt().coerceIn(1, 255)
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                v.vibrate(VibrationEffect.createOneShot(24L, amplitude))
+            } else {
+                @Suppress("DEPRECATION")
+                v.vibrate(24L)
+            }
+        } catch (_: Exception) {}
     }
 
     private fun playCalibrationPulse() {

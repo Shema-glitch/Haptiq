@@ -212,6 +212,9 @@ fun HaptiqNavHost(
                 onSeek = { progress ->
                     haptiqViewModel.handleAction(HaptiqUiAction.Seek(progress))
                 },
+                onSeekPreview = { progress ->
+                    haptiqViewModel.handleAction(HaptiqUiAction.SeekPreview(progress))
+                },
                 onToggleHaptics = { active ->
                     haptiqViewModel.handleAction(HaptiqUiAction.ToggleHaptics(active))
                 },
