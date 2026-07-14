@@ -81,53 +81,96 @@ fun HapticStudioScreen(
                 .padding(horizontal = Spacing.md, vertical = Spacing.xs),
             verticalArrangement = Arrangement.spacedBy(Spacing.xl)
         ) {
-            // Section 1: Engine Status Switch Card
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = ColorSurface),
-                shape = RoundedCornerShape(Radius.md)
+            // ─── Hero: live visualizer with the engine switch on it ───
+            // The one amber moment of the screen. Seeing the music move and
+            // flipping the engine happen in the same place — status IS the
+            // visualization, so no separate "Engine Status" card needed.
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(200.dp)
+                    .clip(RoundedCornerShape(Radius.lg))
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(ColorSurfaceVariant.copy(alpha = 0.55f), ColorSurface)
+                        )
+                    )
+                    .semantics(mergeDescendants = true) {
+                        contentDescription = if (state.hapticActive && state.isPlaying) {
+                            "Haptic engine live. Real-time frequency bands are animating."
+                        } else if (state.hapticActive) {
+                            "Haptic engine on, waiting for playback."
+                        } else {
+                            "Haptic engine off."
+                        }
+                    }
             ) {
+                // Ambient glow behind the bars — only when alive
+                if (state.hapticActive) {
+                    Box(
+                        modifier = Modifier
+                            .size(160.dp)
+                            .align(Alignment.Center)
+                            .blur(48.dp)
+                            .background(ColorHapticAccent.copy(alpha = 0.12f), CircleShape)
+                    )
+                }
+                // Frequency bars
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(Spacing.md),
+                        .fillMaxHeight(0.55f)
+                        .align(Alignment.BottomCenter)
+                        .padding(horizontal = Spacing.lg, vertical = Spacing.md),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.Bottom
+                ) {
+                    state.visualizerBands.forEach { energy ->
+                        val barScale = if (state.hapticActive && state.isPlaying) energy.coerceAtLeast(0.06f) else 0.1f
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight(barScale)
+                                .background(
+                                    Brush.verticalGradient(
+                                        listOf(
+                                            if (state.hapticActive) ColorHapticAccent else ColorOnSurface60,
+                                            (if (state.hapticActive) ColorHapticAccent else ColorOnSurface60).copy(alpha = 0.3f)
+                                        )
+                                    ),
+                                    RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp)
+                                )
+                        )
+                    }
+                }
+                // Status + engine switch overlay
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .align(Alignment.TopCenter)
+                        .padding(horizontal = Spacing.md, vertical = Spacing.xs),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(Spacing.md)
-                    ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.xs)) {
                         Box(
-                            modifier = Modifier
-                                .size(48.dp)
-                                .background(ColorSurfaceVariant, CircleShape),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Vibration,
-                                contentDescription = null,
-                                tint = if (state.hapticActive) ColorHapticAccent else ColorOnSurface60,
-                                modifier = Modifier.size(24.dp)
-                            )
-                        }
-
-                        Column {
-                            Text(
-                                text = "Engine Status",
-                                style = MaterialTheme.typography.titleMedium,
-                                color = ColorOnSurface,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text(
-                                text = if (state.hapticActive) "Haptic feedback active" else "Haptic feedback suspended",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = ColorOnSurface60
-                            )
-                        }
+                            Modifier
+                                .size(8.dp)
+                                .background(
+                                    if (state.hapticActive) ColorHapticAccent else ColorOnSurface60,
+                                    CircleShape
+                                )
+                        )
+                        Text(
+                            text = when {
+                                state.hapticActive && state.isPlaying -> "Engine live"
+                                state.hapticActive -> "Engine armed — play a song"
+                                else -> "Engine off"
+                            },
+                            style = MaterialTheme.typography.labelMedium,
+                            color = if (state.hapticActive) ColorOnSurface else ColorOnSurface60
+                        )
                     }
-
-                    // Custom gold Switch
                     Switch(
                         checked = state.hapticActive,
                         onCheckedChange = onToggleHaptics,
@@ -173,15 +216,6 @@ fun HapticStudioScreen(
                                     text = preset.label,
                                     style = MaterialTheme.typography.labelLarge
                                 )
-                            },
-                            leadingIcon = {
-                                if (isSelected) {
-                                    Icon(
-                                        imageVector = Icons.Default.Check,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(ComponentSize.iconSmall)
-                                    )
-                                }
                             },
                             colors = FilterChipDefaults.filterChipColors(
                                 selectedContainerColor = ColorHapticAccent.copy(alpha = 0.12f),
@@ -258,68 +292,6 @@ fun HapticStudioScreen(
                             modifier = Modifier.size(ComponentSize.touchTarget)
                         ) {
                             Icon(imageVector = Icons.Default.Add, contentDescription = "Increase intensity", tint = ColorOnSurface60)
-                        }
-                    }
-                }
-            }
-
-            // Section 4: Real-time Feedback Visualization Canvas
-            Column(
-                verticalArrangement = Arrangement.spacedBy(Spacing.xs)
-            ) {
-                Text(
-                    text = "REAL-TIME FEEDBACK",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = ColorOnSurface60,
-                    letterSpacing = 1.5.sp,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(horizontal = Spacing.xxs)
-                )
-
-                // A1/A2: Semantic description for TalkBack accessibility
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(160.dp)
-                        .clip(RoundedCornerShape(Radius.md))
-                        .background(ColorSurfaceVariant.copy(alpha = 0.5f))
-                        .border(1.dp, ColorOutlineVariant.copy(alpha = 0.3f), RoundedCornerShape(Radius.md))
-                        .semantics(mergeDescendants = true) {
-                            contentDescription = if (state.hapticActive && state.isPlaying) {
-                                "Haptic frequency visualization active. ${state.visualizerBands.size} frequency bands showing real-time haptic feedback."
-                            } else {
-                                "Haptic frequency visualization. ${state.intensity}% intensity. Currently idle."
-                            }
-                        }
-                        .padding(Spacing.xl),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(140.dp)
-                            .blur(40.dp)
-                            .background(ColorHapticAccent.copy(alpha = 0.1f), CircleShape)
-                    )
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .fillMaxHeight(0.6f),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        verticalAlignment = Alignment.Bottom
-                    ) {
-                        state.visualizerBands.forEachIndexed { index, energy ->
-                            val barScale = if (state.hapticActive && state.isPlaying) energy else 0.15f
-                            Box(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .fillMaxHeight(barScale)
-                                    .background(
-                                        Brush.verticalGradient(
-                                            colors = listOf(ColorHapticAccent, ColorHapticAccent.copy(alpha = 0.4f))
-                                        ),
-                                        RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp)
-                                    )
-                            )
                         }
                     }
                 }
