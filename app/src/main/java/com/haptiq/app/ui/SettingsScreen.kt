@@ -125,8 +125,9 @@ fun SettingsScreen(
                     icon = Icons.Default.Info,
                     iconColor = ColorOnSurface60,
                     title = "About",
-                    subtitle = "Haptiq v${com.haptiq.app.BuildConfig.VERSION_NAME} — " +
-                        "\"${com.haptiq.app.BuildConfig.BUILD_CODENAME}\" @ ${com.haptiq.app.BuildConfig.GIT_SHA}"
+                    subtitle = "Haptiq ${com.haptiq.app.BuildConfig.RELEASE_CODENAME} " +
+                        "v${com.haptiq.app.BuildConfig.VERSION_NAME} — " +
+                        "${com.haptiq.app.BuildConfig.BUILD_CODENAME} @ ${com.haptiq.app.BuildConfig.GIT_SHA}"
                 )
 
                 HorizontalDivider(color = ColorOutlineVariant.copy(alpha = 0.2f), thickness = 1.dp)

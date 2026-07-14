@@ -29,6 +29,16 @@ interface HaptiqDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertCalibration(calibration: CalibrationProfile)
 
+    // ── Favorites ────────────────────────────────────────────
+    @Query("SELECT songId FROM favorites ORDER BY addedAt DESC")
+    fun getAllFavoriteIds(): Flow<List<String>>
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertFavorite(favorite: FavoriteSong)
+
+    @Query("DELETE FROM favorites WHERE songId = :songId")
+    suspend fun deleteFavorite(songId: String)
+
     // ── Track energy maps (haptic seek-preview) ─────────────
     @Query("SELECT * FROM track_energy_maps WHERE songId = :songId")
     suspend fun getEnergyMap(songId: String): TrackEnergyMap?

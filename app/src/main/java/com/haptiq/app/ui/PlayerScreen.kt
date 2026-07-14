@@ -53,6 +53,7 @@ fun PlayerScreen(
     onToggleHaptics: (Boolean) -> Unit,
     onHapticStudioClicked: () -> Unit,
     onSongSelected: (List<Song>, Int) -> Unit,
+    onQueueAction: (HaptiqUiAction) -> Unit = {},
     onRefreshDndStatus: () -> Unit = {},
     onToggleShuffle: () -> Unit = {},
     onToggleRepeat: () -> Unit = {},
@@ -379,12 +380,22 @@ fun PlayerScreen(
                     )
                 }
 
-                // Repeat
+                // Repeat — cycles off → all → one
                 IconButton(onClick = onToggleRepeat) {
                     Icon(
-                        imageVector = Icons.Default.Repeat,
-                        contentDescription = "Repeat",
-                        tint = if (state.isRepeat) ColorHapticAccent else ColorOnSurface60,
+                        imageVector = if (state.repeatMode == com.haptiq.app.data.RepeatMode.ONE) {
+                            Icons.Default.RepeatOne
+                        } else {
+                            Icons.Default.Repeat
+                        },
+                        contentDescription = when (state.repeatMode) {
+                            com.haptiq.app.data.RepeatMode.OFF -> "Repeat off"
+                            com.haptiq.app.data.RepeatMode.ALL -> "Repeat all"
+                            com.haptiq.app.data.RepeatMode.ONE -> "Repeat one"
+                        },
+                        tint = if (state.repeatMode != com.haptiq.app.data.RepeatMode.OFF) {
+                            ColorHapticAccent
+                        } else ColorOnSurface60,
                         modifier = Modifier.size(24.dp)
                     )
                 }
@@ -443,16 +454,24 @@ fun PlayerScreen(
             Spacer(Modifier.height(if (isShortScreen) Spacing.md else Spacing.xl))
         }
 
-        // Queue Bottom Sheet
+        // Queue Bottom Sheet — shows the live play order, editable
         if (showQueue) {
+            val queue = state.queue.ifEmpty { state.songs }
             QueueBottomSheet(
-                songs = state.songs,
+                songs = queue,
                 currentSong = state.currentSong,
                 isPlaying = state.isPlaying,
                 onSongSelected = { index ->
-                    onSongSelected(state.songs, index)
+                    if (state.queue.isNotEmpty()) {
+                        onQueueAction(HaptiqUiAction.PlayQueueIndex(index))
+                    } else {
+                        onSongSelected(state.songs, index)
+                    }
                     showQueue = false
                 },
+                onPlayNext = { index -> onQueueAction(HaptiqUiAction.PlaySongNext(index)) },
+                onMove = { from, to -> onQueueAction(HaptiqUiAction.MoveInQueue(from, to)) },
+                onRemove = { index -> onQueueAction(HaptiqUiAction.RemoveFromQueue(index)) },
                 onDismiss = { showQueue = false }
             )
         }

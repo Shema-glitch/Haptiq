@@ -26,7 +26,10 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
-class HaptiqPlayerManager @Inject constructor(@ApplicationContext private val context: Context) : PlayerManager {
+class HaptiqPlayerManager @Inject constructor(
+    @ApplicationContext private val context: Context,
+    private val playbackStateStore: PlaybackStateStore
+) : PlayerManager {
 
     private val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
     private var exoPlayer: ExoPlayer? = null
@@ -77,14 +80,25 @@ class HaptiqPlayerManager @Inject constructor(@ApplicationContext private val co
     private var progressJob: Job? = null
     private var sleepJob: Job? = null
 
-    // Queue management
+    // Queue management — songsQueue is the live play order; originalQueue remembers
+    // the unshuffled order so turning shuffle off restores it exactly.
     private var songsQueue = mutableListOf<Song>()
+    private var originalQueue = listOf<Song>()
     private var currentSongIndex = 0
-    private var isShuffle = false
+
+    private val _queue = MutableStateFlow<List<Song>>(emptyList())
+    override val queue: StateFlow<List<Song>> = _queue.asStateFlow()
+
+    private val _isShuffleEnabled = MutableStateFlow(false)
+    override val isShuffleEnabled: StateFlow<Boolean> = _isShuffleEnabled.asStateFlow()
+
+    private val _repeatMode = MutableStateFlow(RepeatMode.OFF)
+    override val repeatMode: StateFlow<RepeatMode> = _repeatMode.asStateFlow()
+
+    private var lastPositionSaveAt = 0L
 
     // Live DSP tuning state — written from UI thread, read from Visualizer callback thread
     @Volatile private var tuningState = HapticTuningState()
-    private var isRepeat = false
 
     init {
         initVibrator()
@@ -183,11 +197,57 @@ class HaptiqPlayerManager @Inject constructor(@ApplicationContext private val co
     }
 
     override fun setSongs(songs: List<Song>, startIndex: Int) {
-        songsQueue = songs.toMutableList()
-        currentSongIndex = startIndex
+        originalQueue = songs.toList()
+        if (_isShuffleEnabled.value && songs.isNotEmpty()) {
+            // Selected song leads, the rest follow shuffled — no repeats
+            val start = songs[startIndex.coerceIn(songs.indices)]
+            songsQueue = (listOf(start) + (songs - start).shuffled()).toMutableList()
+            currentSongIndex = 0
+        } else {
+            songsQueue = songs.toMutableList()
+            currentSongIndex = startIndex
+        }
+        publishQueue()
         if (songsQueue.isNotEmpty()) {
             loadSong(songsQueue[currentSongIndex])
         }
+    }
+
+    private fun publishQueue() {
+        _queue.value = songsQueue.toList()
+    }
+
+    private fun saveSession() {
+        if (songsQueue.isEmpty()) return
+        playbackStateStore.save(
+            PlaybackSnapshot(
+                queueIds = songsQueue.map { it.id },
+                currentIndex = currentSongIndex,
+                positionMs = exoPlayer?.currentPosition ?: 0L,
+                shuffle = _isShuffleEnabled.value,
+                repeatMode = _repeatMode.value
+            )
+        )
+    }
+
+    override fun restoreSession(library: List<Song>) {
+        if (_currentSong.value != null) return // an active session wins over a stored one
+        val snapshot = playbackStateStore.load() ?: return
+        val byId = library.associateBy { it.id }
+        val songs = snapshot.queueIds.mapNotNull { byId[it] }
+        if (songs.isEmpty()) return
+        // Files may have been deleted since — re-locate the saved track by position, then id
+        val savedId = snapshot.queueIds.getOrNull(snapshot.currentIndex)
+        val index = songs.indexOfFirst { it.id == savedId }.takeIf { it >= 0 } ?: 0
+        originalQueue = songs
+        songsQueue = songs.toMutableList()
+        currentSongIndex = index
+        _isShuffleEnabled.value = snapshot.shuffle
+        _repeatMode.value = snapshot.repeatMode
+        exoPlayer?.repeatMode =
+            if (snapshot.repeatMode == RepeatMode.ONE) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
+        publishQueue()
+        loadSong(songsQueue[index], autoPlay = false, startPositionMs = snapshot.positionMs)
     }
 
     override fun setHapticActive(active: Boolean) {
@@ -231,10 +291,9 @@ class HaptiqPlayerManager @Inject constructor(@ApplicationContext private val co
         bassVisualizer.tuning = state
     }
 
-    private fun loadSong(song: Song) {
+    private fun loadSong(song: Song, autoPlay: Boolean = true, startPositionMs: Long = 0L) {
         try {
-            Log.d("HaptiqPlayer", "Loading song: ${song.title}")
-            Log.d("HaptiqPlayer", "Audio URL: ${song.audioUrl}")
+            Log.d("HaptiqPlayer", "Loading song: ${song.title} (autoPlay=$autoPlay)")
 
             val player = exoPlayer ?: run {
                 initExoPlayer()
@@ -247,9 +306,12 @@ class HaptiqPlayerManager @Inject constructor(@ApplicationContext private val co
             stopProgressUpdate()
 
             _currentSong.value = song
-            _playbackProgress.value = 0f
-            _currentTimeText.value = "0:00"
-            _remainingTimeText.value = "-${formatTime(song.durationSeconds)}"
+            val startSecs = (startPositionMs / 1000).toInt()
+            _playbackProgress.value = if (song.durationSeconds > 0) {
+                (startSecs.toFloat() / song.durationSeconds).coerceIn(0f, 1f)
+            } else 0f
+            _currentTimeText.value = formatTime(startSecs)
+            _remainingTimeText.value = "-${formatTime((song.durationSeconds - startSecs).coerceAtLeast(0))}"
 
             val mediaMetadata = androidx.media3.common.MediaMetadata.Builder()
                 .setTitle(song.title)
@@ -261,11 +323,12 @@ class HaptiqPlayerManager @Inject constructor(@ApplicationContext private val co
                 .setUri(song.audioUrl)
                 .setMediaMetadata(mediaMetadata)
                 .build()
-            
-            player.setMediaItem(mediaItem)
+
+            player.setMediaItem(mediaItem, startPositionMs)
             player.prepare()
-            player.playWhenReady = true
-            startPlaybackService()
+            player.playWhenReady = autoPlay
+            if (autoPlay) startPlaybackService()
+            saveSession()
         } catch (e: Exception) {
             Log.e("HaptiqPlayer", "Error loading song: ${e.message}", e)
         }
@@ -298,43 +361,106 @@ class HaptiqPlayerManager @Inject constructor(@ApplicationContext private val co
         exoPlayer?.playWhenReady = false
         _isPlaying.value = false
         stopProgressUpdate()
+        // Pause is the natural "user is leaving" moment — pin the resume position
+        exoPlayer?.let { playbackStateStore.savePosition(it.currentPosition) }
     }
 
     override fun playNext() {
         if (songsQueue.isEmpty()) return
-        if (isShuffle) {
-            currentSongIndex = (0 until songsQueue.size).random()
-        } else {
-            currentSongIndex = (currentSongIndex + 1) % songsQueue.size
-        }
+        // Manual skips always wrap — the queue is already in shuffled order when shuffle is on
+        currentSongIndex = (currentSongIndex + 1) % songsQueue.size
         loadSong(songsQueue[currentSongIndex])
     }
 
     override fun playPrevious() {
         if (songsQueue.isEmpty()) return
-        if (isShuffle) {
-            currentSongIndex = (0 until songsQueue.size).random()
-        } else {
-            currentSongIndex = if (currentSongIndex - 1 < 0) songsQueue.size - 1 else currentSongIndex - 1
-        }
+        currentSongIndex = if (currentSongIndex - 1 < 0) songsQueue.size - 1 else currentSongIndex - 1
         loadSong(songsQueue[currentSongIndex])
     }
 
+    override fun playAt(index: Int) {
+        if (index !in songsQueue.indices) return
+        currentSongIndex = index
+        loadSong(songsQueue[index])
+    }
+
     override fun toggleShuffle() {
-        isShuffle = !isShuffle
+        val enable = !_isShuffleEnabled.value
+        _isShuffleEnabled.value = enable
+        val current = songsQueue.getOrNull(currentSongIndex)
+        if (enable) {
+            if (current != null) {
+                songsQueue = (listOf(current) + (songsQueue - current).shuffled()).toMutableList()
+                currentSongIndex = 0
+            } else {
+                songsQueue.shuffle()
+            }
+        } else {
+            // Restore the original order minus anything removed since
+            val stillPresent = songsQueue.map { it.id }.toSet()
+            songsQueue = originalQueue.filter { it.id in stillPresent }.toMutableList()
+            currentSongIndex = songsQueue.indexOfFirst { it.id == current?.id }.coerceAtLeast(0)
+        }
+        publishQueue()
+        saveSession()
     }
 
     override fun toggleRepeat() {
-        isRepeat = !isRepeat
-        exoPlayer?.repeatMode = if (isRepeat) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
+        _repeatMode.value = when (_repeatMode.value) {
+            RepeatMode.OFF -> RepeatMode.ALL
+            RepeatMode.ALL -> RepeatMode.ONE
+            RepeatMode.ONE -> RepeatMode.OFF
+        }
+        exoPlayer?.repeatMode =
+            if (_repeatMode.value == RepeatMode.ONE) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
+        saveSession()
+    }
+
+    // ── Queue editing ─────────────────────────────────────────
+    override fun moveInQueue(from: Int, to: Int) {
+        if (from !in songsQueue.indices || to !in songsQueue.indices || from == to) return
+        val song = songsQueue.removeAt(from)
+        songsQueue.add(to, song)
+        currentSongIndex = when (currentSongIndex) {
+            from -> to
+            in (minOf(from, to))..(maxOf(from, to)) ->
+                if (from < to) currentSongIndex - 1 else currentSongIndex + 1
+            else -> currentSongIndex
+        }
+        publishQueue()
+        saveSession()
+    }
+
+    override fun removeFromQueue(index: Int) {
+        if (index !in songsQueue.indices || index == currentSongIndex) return
+        songsQueue.removeAt(index)
+        if (index < currentSongIndex) currentSongIndex--
+        publishQueue()
+        saveSession()
+    }
+
+    override fun playSongNext(index: Int) {
+        moveInQueue(index, (currentSongIndex + 1).coerceAtMost(songsQueue.size - 1))
     }
 
     private fun onSongCompleted() {
-        if (isRepeat) {
-            exoPlayer?.seekTo(0)
-            exoPlayer?.playWhenReady = true
-        } else {
-            playNext()
+        when (_repeatMode.value) {
+            RepeatMode.ONE -> {
+                // ExoPlayer's REPEAT_MODE_ONE normally handles this; kept as a fallback
+                exoPlayer?.seekTo(0)
+                exoPlayer?.playWhenReady = true
+            }
+            RepeatMode.ALL -> playNext()
+            RepeatMode.OFF -> {
+                if (currentSongIndex < songsQueue.size - 1) {
+                    playNext()
+                } else {
+                    // End of queue: stay on the last track, paused at the start
+                    pauseMedia()
+                    exoPlayer?.seekTo(0)
+                    updateProgressFlows()
+                }
+            }
         }
     }
 
@@ -358,6 +484,13 @@ class HaptiqPlayerManager @Inject constructor(@ApplicationContext private val co
         if (player.duration > 0) {
             val progress = player.currentPosition.toFloat() / player.duration.toFloat()
             _playbackProgress.value = progress
+
+            // Checkpoint the resume position every ~5s so a swipe-kill loses at most that
+            val now = System.currentTimeMillis()
+            if (_isPlaying.value && now - lastPositionSaveAt > 5_000L) {
+                lastPositionSaveAt = now
+                playbackStateStore.savePosition(player.currentPosition)
+            }
 
             val currentSecs = (player.currentPosition / 1000).toInt()
             _currentTimeText.value = formatTime(currentSecs)

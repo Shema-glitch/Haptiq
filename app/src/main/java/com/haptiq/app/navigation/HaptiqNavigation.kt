@@ -224,6 +224,9 @@ fun HaptiqNavHost(
                 onSongSelected = { list, index ->
                     haptiqViewModel.handleAction(HaptiqUiAction.SelectSong(list, index))
                 },
+                onQueueAction = { action ->
+                    haptiqViewModel.handleAction(action)
+                },
                 onRefreshDndStatus = {
                     haptiqViewModel.handleAction(HaptiqUiAction.RefreshDndStatus)
                 },

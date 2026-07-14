@@ -54,7 +54,9 @@ data class HaptiqUiState(
     val isDndActive: Boolean = false,
     // Transport state
     val isShuffle: Boolean = false,
-    val isRepeat: Boolean = false,
+    val repeatMode: RepeatMode = RepeatMode.OFF,
+    // Live play order (reflects shuffle + queue edits)
+    val queue: List<Song> = emptyList(),
     // Favorites
     val favoriteIds: Set<String> = emptySet(),
     // Playlists
@@ -75,6 +77,11 @@ sealed interface HaptiqUiAction {
     object PlayPrevious : HaptiqUiAction
     object ToggleShuffle : HaptiqUiAction
     object ToggleRepeat : HaptiqUiAction
+    // Queue editing
+    data class PlayQueueIndex(val index: Int) : HaptiqUiAction
+    data class MoveInQueue(val from: Int, val to: Int) : HaptiqUiAction
+    data class RemoveFromQueue(val index: Int) : HaptiqUiAction
+    data class PlaySongNext(val index: Int) : HaptiqUiAction
     data class ToggleHaptics(val active: Boolean) : HaptiqUiAction
     data class ChangePreset(val presetId: String) : HaptiqUiAction
     data class ChangeIntensity(val intensity: Int) : HaptiqUiAction
@@ -121,6 +128,7 @@ class HaptiqViewModel @Inject constructor(
     private val presetRepository: PresetRepository,
     private val calibrationRepository: CalibrationRepository,
     private val playlistRepository: PlaylistRepository,
+    private val favoritesRepository: FavoritesRepository,
     private val energyMapRepository: EnergyMapRepository,
     private val playerManager: PlayerManager
 ) : ViewModel() {
@@ -164,7 +172,11 @@ class HaptiqViewModel @Inject constructor(
         playerManager.intensity.collectIntoState { state, intensity -> state.copy(intensity = intensity) }
         playerManager.batterySaverEnabled.collectIntoState { state, enabled -> state.copy(batterySaverEnabled = enabled) }
         playerManager.sleepTimerMinutes.collectIntoState { state, mins -> state.copy(sleepTimerMinutes = mins) }
+        playerManager.queue.collectIntoState { state, q -> state.copy(queue = q) }
+        playerManager.isShuffleEnabled.collectIntoState { state, on -> state.copy(isShuffle = on) }
+        playerManager.repeatMode.collectIntoState { state, mode -> state.copy(repeatMode = mode) }
         playlistRepository.allPlaylists.collectIntoState { state, lists -> state.copy(playlists = lists) }
+        favoritesRepository.allFavoriteIds.collectIntoState { state, ids -> state.copy(favoriteIds = ids) }
 
         // Songs of whichever playlist is open — swaps subscriptions when it changes.
         viewModelScope.launch {
@@ -223,10 +235,12 @@ class HaptiqViewModel @Inject constructor(
     private suspend fun performScan(initialStatus: String) {
         _uiState.update { it.copy(isScanning = true, scanError = null, scanProgress = 0, scanStatus = initialStatus) }
         try {
-            songRepository.scanDevice { count, status ->
+            val songs = songRepository.scanDevice { count, status ->
                 _uiState.update { it.copy(scanProgress = count, scanStatus = status) }
             }
             _uiState.update { it.copy(isScanning = false, scanStatus = "Done") }
+            // Library is known — bring back where the user left off (paused, no autoplay)
+            playerManager.restoreSession(songs)
         } catch (e: Exception) {
             _uiState.update {
                 it.copy(isScanning = false, scanError = e.message ?: "Scan failed. Please try again.")
@@ -278,22 +292,27 @@ class HaptiqViewModel @Inject constructor(
             }
             is HaptiqUiAction.ToggleShuffle -> {
                 playerManager.toggleShuffle()
-                _uiState.update { it.copy(isShuffle = !it.isShuffle) }
             }
             is HaptiqUiAction.ToggleRepeat -> {
                 playerManager.toggleRepeat()
-                _uiState.update { it.copy(isRepeat = !it.isRepeat) }
+            }
+            is HaptiqUiAction.PlayQueueIndex -> {
+                playerManager.playAt(action.index)
+            }
+            is HaptiqUiAction.MoveInQueue -> {
+                playerManager.moveInQueue(action.from, action.to)
+            }
+            is HaptiqUiAction.RemoveFromQueue -> {
+                playerManager.removeFromQueue(action.index)
+            }
+            is HaptiqUiAction.PlaySongNext -> {
+                playerManager.playSongNext(action.index)
             }
             is HaptiqUiAction.ToggleFavorite -> {
-                val songId = action.songId
-                _uiState.update { state ->
-                    val newFavorites = if (songId in state.favoriteIds) {
-                        state.favoriteIds - songId
-                    } else {
-                        state.favoriteIds + songId
-                    }
-                    state.copy(favoriteIds = newFavorites)
-                }
+                // Room is the source of truth; the collector above folds the new
+                // set back into state, so no optimistic local mutation needed.
+                val isFavorite = action.songId in _uiState.value.favoriteIds
+                viewModelScope.launch { favoritesRepository.toggle(action.songId, isFavorite) }
             }
             is HaptiqUiAction.ToggleHaptics -> {
                 playerManager.setHapticActive(action.active)

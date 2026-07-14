@@ -25,6 +25,9 @@ android {
     targetSdk = 36
     versionCode = 1
     versionName = "1.0"
+    // Public release codename, Android-dessert style: alphabetical, haptic-themed.
+    // 1.0 "Aftershock" → next majors continue B, C, D… (Bassline? Crossfade?)
+    buildConfigField("String", "RELEASE_CODENAME", "\"Aftershock\"")
     buildConfigField("String", "BUILD_CODENAME", "\"$gitBranch\"")
     buildConfigField("String", "GIT_SHA", "\"$gitSha\"")
 

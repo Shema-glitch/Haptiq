@@ -121,6 +121,18 @@ class PlaylistRepository @Inject constructor(
         haptiqDao.removePlaylistSong(playlistId, songId)
 }
 
+class FavoritesRepository @Inject constructor(private val haptiqDao: HaptiqDao) {
+    val allFavoriteIds: Flow<Set<String>> = haptiqDao.getAllFavoriteIds().map { it.toSet() }
+
+    suspend fun toggle(songId: String, isCurrentlyFavorite: Boolean) {
+        if (isCurrentlyFavorite) {
+            haptiqDao.deleteFavorite(songId)
+        } else {
+            haptiqDao.insertFavorite(FavoriteSong(songId, System.currentTimeMillis()))
+        }
+    }
+}
+
 @Singleton
 class EnergyMapRepository @Inject constructor(
     private val haptiqDao: HaptiqDao,

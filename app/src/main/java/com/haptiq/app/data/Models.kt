@@ -49,6 +49,12 @@ data class PlaylistWithCount(
     val songCount: Int
 )
 
+@Entity(tableName = "favorites")
+data class FavoriteSong(
+    @PrimaryKey val songId: String,
+    val addedAt: Long
+)
+
 /**
  * Precomputed bass-energy envelope for one track (the revived AOT haptic-map concept):
  * one unsigned byte (0–255) per TrackEnergyAnalyzer.FRAME_MS of audio. Consumed by the
