@@ -6,6 +6,15 @@ plugins {
   alias(libs.plugins.roborazzi)
 }
 
+// Internal build fingerprint — branch codename + short SHA baked into every build,
+// so "which commit do we revert to?" is answered by the About row, not archaeology.
+fun git(vararg args: String): String = providers.exec {
+  commandLine("git", *args)
+}.standardOutput.asText.get().trim()
+
+val gitBranch = runCatching { git("rev-parse", "--abbrev-ref", "HEAD") }.getOrDefault("unknown")
+val gitSha = runCatching { git("rev-parse", "--short", "HEAD") }.getOrDefault("nogit")
+
 android {
   namespace = "com.haptiq.app"
   compileSdk = 36
@@ -16,6 +25,8 @@ android {
     targetSdk = 36
     versionCode = 1
     versionName = "1.0"
+    buildConfigField("String", "BUILD_CODENAME", "\"$gitBranch\"")
+    buildConfigField("String", "GIT_SHA", "\"$gitSha\"")
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
@@ -44,6 +55,7 @@ android {
       signingConfig = signingConfigs.getByName("release")
     }
     debug {
+      versionNameSuffix = "-$gitBranch+$gitSha"
     }
   }
   compileOptions {
