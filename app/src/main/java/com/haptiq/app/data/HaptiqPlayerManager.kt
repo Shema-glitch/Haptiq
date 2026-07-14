@@ -443,6 +443,22 @@ class HaptiqPlayerManager @Inject constructor(
         moveInQueue(index, (currentSongIndex + 1).coerceAtMost(songsQueue.size - 1))
     }
 
+    override fun enqueueNext(song: Song) {
+        if (songsQueue.isEmpty()) {
+            // Nothing playing yet — the swiped song simply becomes the session
+            setSongs(listOf(song), 0)
+            return
+        }
+        val existing = songsQueue.indexOfFirst { it.id == song.id }
+        if (existing >= 0) {
+            if (existing != currentSongIndex) playSongNext(existing)
+        } else {
+            songsQueue.add((currentSongIndex + 1).coerceAtMost(songsQueue.size), song)
+            publishQueue()
+            saveSession()
+        }
+    }
+
     private fun onSongCompleted() {
         when (_repeatMode.value) {
             RepeatMode.ONE -> {

@@ -2,6 +2,8 @@ package com.haptiq.app.ui
 
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -280,19 +282,24 @@ fun LibraryScreen(
                     }
                 }
 
-                // Track list
+                // Track list — swipe a row right to queue it as "play next"
                 if (filteredSongs.isNotEmpty()) {
-                    itemsIndexed(filteredSongs) { index, song ->
+                    itemsIndexed(filteredSongs, key = { _, song -> song.id }) { index, song ->
                         val isCurrent = state.currentSong?.id == song.id
-                        TrackRow(
+                        SwipeToQueueRow(
                             song = song,
-                            isCurrentPlaying = isCurrent,
-                            isPlaying = state.isPlaying && isCurrent,
-                            isFavorite = song.id in state.favoriteIds,
-                            onClick = { onSongSelected(filteredSongs, index) },
-                            onToggleFavorite = { onToggleFavorite(song.id) },
-                            onAddToPlaylist = { songForPlaylist = song }
-                        )
+                            onEnqueueNext = { onAction(HaptiqUiAction.EnqueueNext(song)) }
+                        ) {
+                            TrackRow(
+                                song = song,
+                                isCurrentPlaying = isCurrent,
+                                isPlaying = state.isPlaying && isCurrent,
+                                isFavorite = song.id in state.favoriteIds,
+                                onClick = { onSongSelected(filteredSongs, index) },
+                                onToggleFavorite = { onToggleFavorite(song.id) },
+                                onAddToPlaylist = { songForPlaylist = song }
+                            )
+                        }
                     }
                 } else if (state.songs.isEmpty() && !state.isScanning) {
                     // Empty library — no device songs found
@@ -536,6 +543,58 @@ fun TrackRow(
     }
 }
 
+// ─── Swipe-to-Queue wrapper ─────────────────────────────────
+/**
+ * Swipe a row from the left edge to enqueue it right after the current song.
+ * The row never dismisses — it springs back, leaving the queue changed.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SwipeToQueueRow(
+    song: Song,
+    onEnqueueNext: () -> Unit,
+    content: @Composable () -> Unit
+) {
+    val haptics = androidx.compose.ui.platform.LocalHapticFeedback.current
+    val dismissState = rememberSwipeToDismissBoxState(
+        confirmValueChange = { value ->
+            if (value == SwipeToDismissBoxValue.StartToEnd) {
+                haptics.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+                onEnqueueNext()
+            }
+            false // snap back; the action is queueing, not removing the row
+        }
+    )
+    SwipeToDismissBox(
+        state = dismissState,
+        enableDismissFromStartToEnd = true,
+        enableDismissFromEndToStart = false,
+        backgroundContent = {
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clip(RoundedCornerShape(Radius.md))
+                    .background(ColorHapticAccent.copy(alpha = 0.15f))
+                    .padding(horizontal = Spacing.md),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    Icons.Default.QueuePlayNext,
+                    contentDescription = "Play next",
+                    tint = ColorHapticAccent
+                )
+                Spacer(Modifier.width(Spacing.sm))
+                Text(
+                    "Play next",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = ColorHapticAccent
+                )
+            }
+        },
+        content = { content() }
+    )
+}
+
 // ─── Equalizer Bar ──────────────────────────────────────────
 @Composable
 fun BouncingEqualizerBar(transition: InfiniteTransition, delayMillis: Int, targetHeight: Int) {
@@ -576,6 +635,22 @@ fun MiniPlayer(
             .clip(RoundedCornerShape(Radius.lg))
             .border(width = 1.dp, color = ColorOutlineVariant.copy(alpha = 0.1f), shape = RoundedCornerShape(Radius.lg))
             .clickable(onClick = onExpand)
+            // Swipe up on the strip = open the full player, mirroring the
+            // Player's own drag-down-to-dismiss
+            .pointerInput(Unit) {
+                var accumulated = 0f
+                detectVerticalDragGestures(
+                    onDragStart = { accumulated = 0f },
+                    onVerticalDrag = { change, dragAmount ->
+                        accumulated += dragAmount
+                        if (accumulated < -40f) {
+                            accumulated = 0f
+                            onExpand()
+                        }
+                        change.consume()
+                    }
+                )
+            }
             .testTag("mini_player"),
         color = ColorSurface,
         tonalElevation = 0.dp

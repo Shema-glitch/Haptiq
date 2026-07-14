@@ -38,16 +38,16 @@ class MediaStoreScanner @Inject constructor(
      * @param onProgress Callback with (scannedSoFar, statusMessage)
      * @return List of Song objects with real metadata
      */
-    fun scanForAudio(onProgress: ((Int, String) -> Unit)? = null): List<Song> {
+    fun scanForAudio(minDurationSec: Int = 0, onProgress: ((Int, String) -> Unit)? = null): List<Song> {
         onProgress?.invoke(0, "Scanning MediaStore…")
 
         // Primary: MediaStore query
-        var songs = queryMediaStore(requireIsMusic = true)
+        var songs = queryMediaStore(requireIsMusic = true, minDurationSec = minDurationSec)
 
         if (songs.isEmpty()) {
             Log.d(TAG, "IS_MUSIC=1 returned 0 results. Trying without IS_MUSIC filter…")
             onProgress?.invoke(0, "Trying broader scan…")
-            songs = queryMediaStore(requireIsMusic = false)
+            songs = queryMediaStore(requireIsMusic = false, minDurationSec = minDurationSec)
         }
 
         if (songs.isEmpty()) {
@@ -64,7 +64,7 @@ class MediaStoreScanner @Inject constructor(
     /**
      * Query MediaStore for audio files.
      */
-    private fun queryMediaStore(requireIsMusic: Boolean): List<Song> {
+    private fun queryMediaStore(requireIsMusic: Boolean, minDurationSec: Int = 0): List<Song> {
         val songs = mutableListOf<Song>()
 
         val collection = MediaStore.Audio.Media.getContentUri(MediaStore.VOLUME_EXTERNAL)
@@ -102,8 +102,8 @@ class MediaStoreScanner @Inject constructor(
                     val filePath = cursor.getString(dataColumn) ?: ""
                     val durationSeconds = (durationMs / 1000).toInt()
 
-                    // Skip very short clips (< 5 seconds) and ringtones
-                    if (durationSeconds < 5) continue
+                    // Skip clips below the user's minimum (voice notes) — always at least 5s
+                    if (durationSeconds < maxOf(5, minDurationSec)) continue
                     if (filePath.contains("/Ringtones/", ignoreCase = true)) continue
                     if (filePath.contains("/Notifications/", ignoreCase = true)) continue
                     if (filePath.contains("/Alarms/", ignoreCase = true)) continue

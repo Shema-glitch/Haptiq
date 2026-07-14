@@ -89,10 +89,11 @@ fun HapticStudioScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(200.dp)
-                    .clip(RoundedCornerShape(Radius.lg))
+                    // No clipped card here: the visualizer floats on the screen itself,
+                    // with a radial wash that fades to transparent so there's no box edge.
                     .background(
-                        Brush.verticalGradient(
-                            listOf(ColorSurfaceVariant.copy(alpha = 0.55f), ColorSurface)
+                        Brush.radialGradient(
+                            listOf(ColorSurfaceVariant.copy(alpha = 0.45f), Color.Transparent)
                         )
                     )
                     .semantics(mergeDescendants = true) {

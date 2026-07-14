@@ -34,6 +34,7 @@ fun SettingsScreen(
     onAction: (HaptiqUiAction) -> Unit,
     onCalibrationClicked: () -> Unit
 ) {
+    var showLicenses by remember { mutableStateOf(false) }
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -102,6 +103,102 @@ fun SettingsScreen(
 
         Spacer(modifier = Modifier.height(Spacing.xl))
 
+        // Playback section
+        Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+            Text(
+                text = "PLAYBACK",
+                style = MaterialTheme.typography.labelSmall,
+                color = ColorOnSurface60,
+                letterSpacing = 1.5.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(horizontal = 4.dp)
+            )
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(Radius.md))
+                    .background(ColorSurface)
+            ) {
+                SettingsRowWithSwitch(
+                    icon = Icons.Default.TouchApp,
+                    iconColor = ColorHapticAccent,
+                    title = "Haptic Seek Preview",
+                    subtitle = "Feel the bass under your finger while scrubbing",
+                    checked = state.seekPreviewEnabled,
+                    onCheckedChange = { onAction(HaptiqUiAction.SetSeekPreviewEnabled(it)) }
+                )
+
+                HorizontalDivider(color = ColorOutlineVariant.copy(alpha = 0.2f), thickness = 1.dp)
+
+                SettingsRow(
+                    icon = Icons.Default.Equalizer,
+                    iconColor = ColorOnSurface60,
+                    title = "Equalizer",
+                    subtitle = "Open the system equalizer",
+                    onClick = { onAction(HaptiqUiAction.OpenEqualizer) }
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(Spacing.xl))
+
+        // Library section
+        Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+            Text(
+                text = "LIBRARY",
+                style = MaterialTheme.typography.labelSmall,
+                color = ColorOnSurface60,
+                letterSpacing = 1.5.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(horizontal = 4.dp)
+            )
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(Radius.md))
+                    .background(ColorSurface)
+            ) {
+                // Cycles Off → 15s → 30s → 60s, like the sleep timer
+                SettingsRow(
+                    icon = Icons.Default.Timer,
+                    iconColor = ColorOnSurface60,
+                    title = "Skip Short Audio",
+                    subtitle = if (state.minDurationSec > 5) {
+                        "Hiding tracks under ${state.minDurationSec}s (voice notes, clips)"
+                    } else "Off — all audio shows in the library",
+                    onClick = {
+                        val next = when (state.minDurationSec) {
+                            0, 5 -> 15; 15 -> 30; 30 -> 60; else -> 0
+                        }
+                        onAction(HaptiqUiAction.SetMinDuration(next))
+                    }
+                )
+
+                HorizontalDivider(color = ColorOutlineVariant.copy(alpha = 0.2f), thickness = 1.dp)
+
+                SettingsRow(
+                    icon = Icons.Default.Refresh,
+                    iconColor = ColorOnSurface60,
+                    title = "Rescan Library",
+                    subtitle = if (state.isScanning) state.scanStatus
+                    else "${state.songs.size} songs indexed",
+                    onClick = { if (!state.isScanning) onAction(HaptiqUiAction.RescanLibrary) }
+                )
+
+                HorizontalDivider(color = ColorOutlineVariant.copy(alpha = 0.2f), thickness = 1.dp)
+
+                SettingsRow(
+                    icon = Icons.Default.History,
+                    iconColor = ColorOnSurface60,
+                    title = "Clear Recently Played",
+                    subtitle = "Empties the history row on the Library tab",
+                    onClick = { onAction(HaptiqUiAction.ClearRecents) }
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(Spacing.xl))
+
         // Information section
         Column(
             verticalArrangement = Arrangement.spacedBy(Spacing.xs)
@@ -136,14 +233,45 @@ fun SettingsScreen(
                     icon = Icons.Default.Description,
                     iconColor = ColorOnSurface60,
                     title = "Open Source Licenses",
-                    subtitle = "View third-party attributions"
-                    // NOTE: no onClick wired yet — SettingsRow renders without a
-                    // chevron/ripple when onClick is null. Wire this to a real
-                    // licenses screen (e.g. androidx OssLicensesMenuActivity or a
-                    // custom screen) rather than leaving it silently unclickable.
+                    subtitle = "View third-party attributions",
+                    onClick = { showLicenses = true }
                 )
             }
         }
+
+        Spacer(modifier = Modifier.height(Spacing.xxl))
+    }
+
+    if (showLicenses) {
+        AlertDialog(
+            onDismissRequest = { showLicenses = false },
+            containerColor = ColorSurface,
+            title = { Text("Open Source Licenses", color = ColorOnSurface) },
+            text = {
+                Column(Modifier.verticalScroll(rememberScrollState())) {
+                    listOf(
+                        "Jetpack Compose — Apache 2.0",
+                        "AndroidX Media3 (ExoPlayer) — Apache 2.0",
+                        "AndroidX Room — Apache 2.0",
+                        "Dagger Hilt — Apache 2.0",
+                        "Coil — Apache 2.0",
+                        "Kotlin Coroutines — Apache 2.0"
+                    ).forEach { line ->
+                        Text(
+                            line,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = ColorOnSurfaceVariant,
+                            modifier = Modifier.padding(vertical = 4.dp)
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showLicenses = false }) {
+                    Text("Close", color = ColorPrimary)
+                }
+            }
+        )
     }
 }
 

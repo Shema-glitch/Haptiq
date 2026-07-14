@@ -12,7 +12,8 @@ import javax.inject.Singleton
 
 @Singleton
 class SongRepository @Inject constructor(
-    private val mediaStoreScanner: MediaStoreScanner
+    private val mediaStoreScanner: MediaStoreScanner,
+    private val userSettings: UserSettingsStore
 ) {
     // Hot, always-current — unlike a one-shot cold Flow, every collector sees every
     // future scanDevice() result too, not just whatever was true at first collection.
@@ -38,7 +39,7 @@ class SongRepository @Inject constructor(
      * Returns the scanned songs, or throws on failure.
      */
     suspend fun scanDevice(onProgress: ((Int, String) -> Unit)? = null): List<Song> = withContext(Dispatchers.IO) {
-        val songs = mediaStoreScanner.scanForAudio(onProgress)
+        val songs = mediaStoreScanner.scanForAudio(userSettings.minDurationSec, onProgress)
         _songs.value = songs
         hasLoaded = true
         songs

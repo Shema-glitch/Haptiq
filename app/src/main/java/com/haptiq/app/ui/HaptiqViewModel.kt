@@ -12,6 +12,7 @@ import com.haptiq.app.audio.HapticTuningState
 import com.haptiq.app.data.*
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -62,7 +63,10 @@ data class HaptiqUiState(
     // Playlists
     val playlists: List<PlaylistWithCount> = emptyList(),
     val activePlaylistId: Long? = null,
-    val activePlaylistSongs: List<Song> = emptyList()
+    val activePlaylistSongs: List<Song> = emptyList(),
+    // Settings
+    val minDurationSec: Int = 30,
+    val seekPreviewEnabled: Boolean = true
 )
 
 sealed interface HaptiqUiAction {
@@ -82,11 +86,18 @@ sealed interface HaptiqUiAction {
     data class MoveInQueue(val from: Int, val to: Int) : HaptiqUiAction
     data class RemoveFromQueue(val index: Int) : HaptiqUiAction
     data class PlaySongNext(val index: Int) : HaptiqUiAction
+    /** Library swipe: put this song right after the current one. */
+    data class EnqueueNext(val song: Song) : HaptiqUiAction
     data class ToggleHaptics(val active: Boolean) : HaptiqUiAction
     data class ChangePreset(val presetId: String) : HaptiqUiAction
     data class ChangeIntensity(val intensity: Int) : HaptiqUiAction
     data class SetBatterySaver(val enabled: Boolean) : HaptiqUiAction
     data class SetSleepTimer(val minutes: Int) : HaptiqUiAction
+    // Settings
+    data class SetMinDuration(val seconds: Int) : HaptiqUiAction
+    data class SetSeekPreviewEnabled(val enabled: Boolean) : HaptiqUiAction
+    object ClearRecents : HaptiqUiAction
+    object OpenEqualizer : HaptiqUiAction
     // Calibration
     object RunTestPulse : HaptiqUiAction
     data class SelectCalibrationStrength(val strength: String) : HaptiqUiAction
@@ -130,6 +141,7 @@ class HaptiqViewModel @Inject constructor(
     private val playlistRepository: PlaylistRepository,
     private val favoritesRepository: FavoritesRepository,
     private val energyMapRepository: EnergyMapRepository,
+    private val userSettings: UserSettingsStore,
     private val playerManager: PlayerManager
 ) : ViewModel() {
 
@@ -221,6 +233,14 @@ class HaptiqViewModel @Inject constructor(
             state.copy(calibrationMultiplier = profile.multiplier)
         }
 
+        // Hydrate persisted settings into state
+        _uiState.update {
+            it.copy(
+                minDurationSec = userSettings.minDurationSec,
+                seekPreviewEnabled = userSettings.seekPreviewEnabled
+            )
+        }
+
         // Check DND status on launch
         refreshDndStatus()
 
@@ -235,10 +255,21 @@ class HaptiqViewModel @Inject constructor(
     private suspend fun performScan(initialStatus: String) {
         _uiState.update { it.copy(isScanning = true, scanError = null, scanProgress = 0, scanStatus = initialStatus) }
         try {
+            val startedAt = System.currentTimeMillis()
             val songs = songRepository.scanDevice { count, status ->
                 _uiState.update { it.copy(scanProgress = count, scanStatus = status) }
             }
-            _uiState.update { it.copy(isScanning = false, scanStatus = "Done") }
+            // Land on a result the user can actually read — a scan that flashes by
+            // in 200ms reads as broken, and "Done" says nothing.
+            val result = if (songs.isEmpty()) {
+                "No songs found — check your Music or Downloads folder"
+            } else {
+                "Found ${songs.size} ${if (songs.size == 1) "song" else "songs"}"
+            }
+            _uiState.update { it.copy(scanStatus = result, scanProgress = songs.size) }
+            val elapsed = System.currentTimeMillis() - startedAt
+            delay((2_000L - elapsed).coerceAtLeast(900L))
+            _uiState.update { it.copy(isScanning = false) }
             // Library is known — bring back where the user left off (paused, no autoplay)
             playerManager.restoreSession(songs)
         } catch (e: Exception) {
@@ -308,6 +339,9 @@ class HaptiqViewModel @Inject constructor(
             is HaptiqUiAction.PlaySongNext -> {
                 playerManager.playSongNext(action.index)
             }
+            is HaptiqUiAction.EnqueueNext -> {
+                playerManager.enqueueNext(action.song)
+            }
             is HaptiqUiAction.ToggleFavorite -> {
                 // Room is the source of truth; the collector above folds the new
                 // set back into state, so no optimistic local mutation needed.
@@ -335,6 +369,41 @@ class HaptiqViewModel @Inject constructor(
             }
             is HaptiqUiAction.SetSleepTimer -> {
                 playerManager.setSleepTimer(action.minutes)
+            }
+            // ── Settings ──────────────────────────────────────────
+            is HaptiqUiAction.SetMinDuration -> {
+                userSettings.minDurationSec = action.seconds
+                _uiState.update { it.copy(minDurationSec = action.seconds) }
+                // The filter only applies at scan time, so rescan right away
+                viewModelScope.launch { performScan(initialStatus = "Applying filter…") }
+            }
+            is HaptiqUiAction.SetSeekPreviewEnabled -> {
+                userSettings.seekPreviewEnabled = action.enabled
+                _uiState.update { it.copy(seekPreviewEnabled = action.enabled) }
+            }
+            is HaptiqUiAction.ClearRecents -> {
+                viewModelScope.launch { recentSongRepository.clearAll() }
+            }
+            is HaptiqUiAction.OpenEqualizer -> {
+                try {
+                    val intent = android.content.Intent(
+                        android.media.audiofx.AudioEffect.ACTION_DISPLAY_AUDIO_EFFECT_CONTROL_PANEL
+                    ).apply {
+                        putExtra(
+                            android.media.audiofx.AudioEffect.EXTRA_AUDIO_SESSION,
+                            playerManager.getPlayer()?.audioSessionId ?: 0
+                        )
+                        putExtra(android.media.audiofx.AudioEffect.EXTRA_PACKAGE_NAME, context.packageName)
+                        putExtra(
+                            android.media.audiofx.AudioEffect.EXTRA_CONTENT_TYPE,
+                            android.media.audiofx.AudioEffect.CONTENT_TYPE_MUSIC
+                        )
+                        addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    context.startActivity(intent)
+                } catch (_: Exception) {
+                    // No system equalizer on this device — nothing to open
+                }
             }
             // ── Playlists ─────────────────────────────────────────
             is HaptiqUiAction.CreatePlaylist -> {
@@ -462,7 +531,7 @@ class HaptiqViewModel @Inject constructor(
     private fun previewSeekPulse(progress: Float) {
         val state = _uiState.value
         val energy = state.seekEnergy ?: return
-        if (energy.isEmpty() || !state.hapticActive) return
+        if (energy.isEmpty() || !state.hapticActive || !state.seekPreviewEnabled) return
         val v = vibrator ?: return
 
         val bucket = (progress * (energy.size - 1)).toInt().coerceIn(0, energy.size - 1)

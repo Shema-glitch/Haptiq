@@ -27,6 +27,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
@@ -39,6 +41,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import com.haptiq.app.data.Song
 import com.haptiq.app.ui.theme.*
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -70,9 +73,41 @@ fun PlayerScreen(
     var isDraggingSlider by remember { mutableStateOf(false) }
     var showQueue by remember { mutableStateOf(false) }
 
+    // Sheet physics: the whole screen tracks a downward drag and either commits
+    // to dismissing (past the threshold) or springs back. Matches the slide-up
+    // entrance — Now Playing behaves like a drawer, not a page.
+    val dragOffset = remember { Animatable(0f) }
+    val dragScope = rememberCoroutineScope()
+    val dismissThresholdPx = with(LocalDensity.current) { 160.dp.toPx() }
+
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
+            .graphicsLayer {
+                translationY = dragOffset.value
+                alpha = 1f - (dragOffset.value / (dismissThresholdPx * 4f)).coerceIn(0f, 0.25f)
+            }
+            .pointerInput(Unit) {
+                detectVerticalDragGestures(
+                    onVerticalDrag = { change, dragAmount ->
+                        val next = (dragOffset.value + dragAmount).coerceAtLeast(0f)
+                        if (next > 0f) change.consume()
+                        dragScope.launch { dragOffset.snapTo(next) }
+                    },
+                    onDragEnd = {
+                        if (dragOffset.value > dismissThresholdPx) {
+                            onBackClicked()
+                        } else {
+                            dragScope.launch {
+                                dragOffset.animateTo(0f, spring(dampingRatio = 0.8f, stiffness = 400f))
+                            }
+                        }
+                    },
+                    onDragCancel = {
+                        dragScope.launch { dragOffset.animateTo(0f) }
+                    }
+                )
+            }
             .background(
                 Brush.radialGradient(
                     colors = listOf(ColorSurface, ColorBackground),

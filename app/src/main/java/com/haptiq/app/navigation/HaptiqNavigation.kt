@@ -15,6 +15,7 @@ import com.haptiq.app.ui.*
 
 object Routes {
     const val SPLASH = "splash"
+    const val ONBOARDING = "onboarding"
     const val PERMISSIONS = "permissions"
     const val LIBRARY = "library"
     const val ALBUMS = "albums"
@@ -98,8 +99,18 @@ fun HaptiqNavHost(
         composable(Routes.SPLASH) {
             SplashScreen(
                 onTimeout = {
-                    navController.navigate(Routes.PERMISSIONS) {
+                    navController.navigate(Routes.ONBOARDING) {
                         popUpTo(Routes.SPLASH) { inclusive = true }
+                    }
+                }
+            )
+        }
+
+        composable(Routes.ONBOARDING) {
+            OnboardingScreen(
+                onDone = {
+                    navController.navigate(Routes.PERMISSIONS) {
+                        popUpTo(Routes.ONBOARDING) { inclusive = true }
                     }
                 }
             )

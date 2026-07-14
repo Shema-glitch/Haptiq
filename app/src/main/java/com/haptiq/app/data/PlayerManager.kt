@@ -43,6 +43,8 @@ interface PlayerManager {
     fun removeFromQueue(index: Int)
     /** Move the song at [index] to right after the current one. */
     fun playSongNext(index: Int)
+    /** Insert a song (e.g. from a library swipe) right after the current one. */
+    fun enqueueNext(song: Song)
     /** Reload the last session's queue/track/position, paused. */
     fun restoreSession(library: List<Song>)
     fun stopPlayback()
