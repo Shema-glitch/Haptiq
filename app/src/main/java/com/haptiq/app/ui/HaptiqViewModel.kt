@@ -5,7 +5,6 @@ import android.content.Context
 import android.os.Build
 import android.os.VibrationEffect
 import android.os.Vibrator
-import android.os.VibratorManager
 import android.provider.Settings
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -82,6 +81,9 @@ sealed interface HaptiqUiAction {
     data class SetNoiseFloorGate(val value: Float) : HaptiqUiAction
     data class SetKickFreqRange(val min: Int, val max: Int) : HaptiqUiAction
     data class SetSubDroneThreshold(val value: Float) : HaptiqUiAction
+    data class SetBassFreqRange(val min: Int, val max: Int) : HaptiqUiAction
+    data class SetBassGain(val value: Float) : HaptiqUiAction
+    object ResetTuning : HaptiqUiAction
 }
 
 @HiltViewModel
@@ -101,30 +103,37 @@ class HaptiqViewModel @Inject constructor(
     private val _hapticTuning = MutableStateFlow(HapticTuningState())
     val hapticTuning: StateFlow<HapticTuningState> = _hapticTuning.asStateFlow()
 
-    private val vibrator: Vibrator? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-        val vibratorManager = context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? VibratorManager
-        vibratorManager?.defaultVibrator
-    } else {
-        @Suppress("DEPRECATION")
-        context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
+    private val vibrator: Vibrator? = com.haptiq.app.audio.DeviceVibrator.get(context)
+
+    /**
+     * Collects this flow in its own coroutine and folds each value into [_uiState].
+     * Kept as one collector per source flow (not merged via combine()) — a previous nested
+     * flatMapLatest/collect here caused a leak, so each flow gets an independent subscription.
+     */
+    private inline fun <T> Flow<T>.collectIntoState(
+        crossinline transform: (HaptiqUiState, T) -> HaptiqUiState
+    ) {
+        viewModelScope.launch {
+            collect { value -> _uiState.update { transform(it, value) } }
+        }
     }
 
     init {
-        // Collect songs
-        viewModelScope.launch {
-            songRepository.getAllSongs().collect { songList ->
-                _uiState.update { it.copy(songs = songList) }
-            }
-        }
+        // Hot StateFlow — collected once here, but scanDevice() (below) can push new
+        // values into it at any time and this same collector keeps receiving them.
+        songRepository.allSongs.collectIntoState { state, songs -> state.copy(songs = songs) }
+        recentSongRepository.allRecentSongs.collectIntoState { state, recents -> state.copy(recentSongs = recents) }
+        playerManager.isPlaying.collectIntoState { state, playing -> state.copy(isPlaying = playing) }
+        playerManager.playbackProgress.collectIntoState { state, progress -> state.copy(playbackProgress = progress) }
+        playerManager.currentTimeText.collectIntoState { state, time -> state.copy(currentTimeText = time) }
+        playerManager.remainingTimeText.collectIntoState { state, time -> state.copy(remainingTimeText = time) }
+        playerManager.hapticActive.collectIntoState { state, active -> state.copy(hapticActive = active) }
+        playerManager.currentPresetId.collectIntoState { state, preset -> state.copy(currentPresetId = preset) }
+        playerManager.intensity.collectIntoState { state, intensity -> state.copy(intensity = intensity) }
+        playerManager.batterySaverEnabled.collectIntoState { state, enabled -> state.copy(batterySaverEnabled = enabled) }
+        playerManager.visualizerBands.collectIntoState { state, bands -> state.copy(visualizerBands = bands) }
 
-        // Collect recent songs
-        viewModelScope.launch {
-            recentSongRepository.allRecentSongs.collect { recents ->
-                _uiState.update { it.copy(recentSongs = recents) }
-            }
-        }
-
-        // Collect current song
+        // Has a side effect (recording history) beyond the state copy, so it stays its own launch.
         viewModelScope.launch {
             playerManager.currentSong.collect { song ->
                 _uiState.update { it.copy(currentSong = song) }
@@ -134,49 +143,9 @@ class HaptiqViewModel @Inject constructor(
             }
         }
 
-        // Collect isPlaying
-        viewModelScope.launch {
-            playerManager.isPlaying.collect { isPlaying ->
-                _uiState.update { it.copy(isPlaying = isPlaying) }
-            }
-        }
-
-        // Collect playbackProgress
-        viewModelScope.launch {
-            playerManager.playbackProgress.collect { progress ->
-                _uiState.update { it.copy(playbackProgress = progress) }
-            }
-        }
-
-        // Collect currentTimeText
-        viewModelScope.launch {
-            playerManager.currentTimeText.collect { time ->
-                _uiState.update { it.copy(currentTimeText = time) }
-            }
-        }
-
-        // Collect remainingTimeText
-        viewModelScope.launch {
-            playerManager.remainingTimeText.collect { time ->
-                _uiState.update { it.copy(remainingTimeText = time) }
-            }
-        }
-
-        // Collect hapticActive
-        viewModelScope.launch {
-            playerManager.hapticActive.collect { active ->
-                _uiState.update { it.copy(hapticActive = active) }
-            }
-        }
-
-        // Collect currentPresetId and fetch saved settings (fixed: no nested collect)
-        viewModelScope.launch {
-            playerManager.currentPresetId.collect { preset ->
-                _uiState.update { it.copy(currentPresetId = preset) }
-            }
-        }
-
-        // Separate collection for preset intensity (fixes nested collect leak)
+        // Has a side effect (pushing intensity back into the player) beyond the state copy,
+        // and re-derives from currentPresetId via flatMapLatest — kept as its own launch
+        // (fixes a prior nested-collect leak; do not fold into currentPresetId's collector above).
         viewModelScope.launch {
             playerManager.currentPresetId.flatMapLatest { preset ->
                 presetRepository.getPresetById(preset)
@@ -186,37 +155,35 @@ class HaptiqViewModel @Inject constructor(
             }
         }
 
-        // Collect intensity
-        viewModelScope.launch {
-            playerManager.intensity.collect { intensity ->
-                _uiState.update { it.copy(intensity = intensity) }
-            }
-        }
-
-        // Collect batterySaverEnabled
-        viewModelScope.launch {
-            playerManager.batterySaverEnabled.collect { enabled ->
-                _uiState.update { it.copy(batterySaverEnabled = enabled) }
-            }
-        }
-
-        // Collect visualizerBands
-        viewModelScope.launch {
-            playerManager.visualizerBands.collect { bands ->
-                _uiState.update { it.copy(visualizerBands = bands) }
-            }
-        }
-
-        // Fetch device calibration profile
-        viewModelScope.launch {
-            val deviceModel = Build.MODEL ?: "UnknownDevice"
-            calibrationRepository.getCalibration(deviceModel).collect { profile ->
-                _uiState.update { it.copy(calibrationMultiplier = profile.multiplier) }
-            }
+        // Depends on a value (deviceModel) computed once at startup, not itself a flow input.
+        val deviceModel = Build.MODEL ?: "UnknownDevice"
+        calibrationRepository.getCalibration(deviceModel).collectIntoState { state, profile ->
+            state.copy(calibrationMultiplier = profile.multiplier)
         }
 
         // Check DND status on launch
         refreshDndStatus()
+
+        // Load the library once per process — scanDevice() populates the hot
+        // songRepository.allSongs StateFlow collected above, so this doesn't need
+        // its own separate state wiring.
+        if (!songRepository.isLoaded()) {
+            viewModelScope.launch { performScan(initialStatus = "Starting scan…") }
+        }
+    }
+
+    private suspend fun performScan(initialStatus: String) {
+        _uiState.update { it.copy(isScanning = true, scanError = null, scanProgress = 0, scanStatus = initialStatus) }
+        try {
+            songRepository.scanDevice { count, status ->
+                _uiState.update { it.copy(scanProgress = count, scanStatus = status) }
+            }
+            _uiState.update { it.copy(isScanning = false, scanStatus = "Done") }
+        } catch (e: Exception) {
+            _uiState.update {
+                it.copy(isScanning = false, scanError = e.message ?: "Scan failed. Please try again.")
+            }
+        }
     }
 
     /**
@@ -320,35 +287,11 @@ class HaptiqViewModel @Inject constructor(
             }
             // D1: Scan device for audio files
             is HaptiqUiAction.ScanDevice -> {
-                viewModelScope.launch {
-                    _uiState.update { it.copy(isScanning = true, scanError = null, scanProgress = 0, scanStatus = "Starting scan…") }
-                    try {
-                        songRepository.scanDevice { count, status ->
-                            _uiState.update { it.copy(scanProgress = count, scanStatus = status) }
-                        }
-                        _uiState.update { it.copy(isScanning = false, scanStatus = "Done") }
-                    } catch (e: Exception) {
-                        _uiState.update {
-                            it.copy(isScanning = false, scanError = e.message ?: "Scan failed. Please try again.")
-                        }
-                    }
-                }
+                viewModelScope.launch { performScan(initialStatus = "Starting scan…") }
             }
             // Rescan after runtime permission is granted
             is HaptiqUiAction.RescanLibrary -> {
-                viewModelScope.launch {
-                    _uiState.update { it.copy(isScanning = true, scanError = null, scanProgress = 0, scanStatus = "Scanning…") }
-                    try {
-                        songRepository.scanDevice { count, status ->
-                            _uiState.update { it.copy(scanProgress = count, scanStatus = status) }
-                        }
-                        _uiState.update { it.copy(isScanning = false, scanStatus = "Done") }
-                    } catch (e: Exception) {
-                        _uiState.update {
-                            it.copy(isScanning = false, scanError = e.message ?: "Scan failed. Please try again.")
-                        }
-                    }
-                }
+                viewModelScope.launch { performScan(initialStatus = "Scanning…") }
             }
             // Refresh DND status (user may have toggled it)
             is HaptiqUiAction.RefreshDndStatus -> {
@@ -379,21 +322,45 @@ class HaptiqViewModel @Inject constructor(
                 _hapticTuning.update { it.copy(subDroneThreshold = action.value) }
                 playerManager.updateTuning(_hapticTuning.value)
             }
+            is HaptiqUiAction.SetBassFreqRange -> {
+                _hapticTuning.update { it.copy(bassFreqMinBin = action.min, bassFreqMaxBin = action.max) }
+                playerManager.updateTuning(_hapticTuning.value)
+            }
+            is HaptiqUiAction.SetBassGain -> {
+                _hapticTuning.update { it.copy(bassGain = action.value) }
+                playerManager.updateTuning(_hapticTuning.value)
+            }
+            is HaptiqUiAction.ResetTuning -> {
+                _hapticTuning.update { HapticTuningState() }
+                playerManager.updateTuning(_hapticTuning.value)
+            }
         }
     }
 
     private fun playCalibrationPulse() {
+        val v = vibrator ?: return
+        if (!v.hasVibrator()) return
         try {
-            val duration = 80L
-            val amplitude = 200
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                vibrator?.vibrate(VibrationEffect.createOneShot(duration, amplitude))
+                // Waveform: wait 0ms, then 80ms buzz at amplitude 255 — more reliable on MTK/Tecno
+                val timings    = longArrayOf(0L, 80L, 60L, 60L)
+                val amplitudes = intArrayOf(0, 255, 0, 180)
+                v.vibrate(VibrationEffect.createWaveform(timings, amplitudes, -1))
             } else {
+                // Pre-Oreo: simple timed vibration
                 @Suppress("DEPRECATION")
-                vibrator?.vibrate(duration)
+                v.vibrate(longArrayOf(0L, 80L, 60L, 60L), -1)
             }
         } catch (e: Exception) {
-            // Safe fallback
+            // Last-resort: basic one-shot
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    v.vibrate(VibrationEffect.createOneShot(200L, VibrationEffect.DEFAULT_AMPLITUDE))
+                } else {
+                    @Suppress("DEPRECATION")
+                    v.vibrate(200L)
+                }
+            } catch (_: Exception) { /* give up gracefully */ }
         }
     }
 

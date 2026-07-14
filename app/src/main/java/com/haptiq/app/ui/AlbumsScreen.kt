@@ -16,12 +16,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.haptiq.app.data.Song
 import com.haptiq.app.ui.theme.*
 
@@ -43,29 +40,15 @@ fun AlbumsScreen(
             .systemBarsPadding()
             .padding(horizontal = Layout.screenHorizontalPadding)
     ) {
-        // Consistent HAPTIQ app bar with screen name
-        CenterAlignedTopAppBar(
-            title = {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("HAPTIQ", style = MaterialTheme.typography.titleLarge, color = ColorPrimary, fontWeight = FontWeight.Bold, letterSpacing = 4.sp)
-                    Text("Albums", style = MaterialTheme.typography.labelSmall, color = ColorOnSurface60)
-                }
-            },
-            colors = TopAppBarDefaults.centerAlignedTopAppBarColors(containerColor = ColorBackground)
-        )
+        HaptiqScreenHeader(subtitle = "Albums")
 
         if (albums.isEmpty()) {
-            // Empty state
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(Icons.Default.Album, null, Modifier.size(ComponentSize.iconHero), tint = ColorOnSurface60)
-                    Spacer(Modifier.height(Spacing.lg))
-                    Text("No albums yet", style = MaterialTheme.typography.titleMedium, color = ColorOnSurface)
-                    Text("Scan your device to find music", style = MaterialTheme.typography.bodyMedium, color = ColorOnSurface60)
-                }
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                EmptyState(
+                    icon = Icons.Default.Album,
+                    title = "No albums yet",
+                    subtitle = "Scan your device to find music"
+                )
             }
         } else {
             LazyVerticalGrid(
@@ -75,10 +58,12 @@ fun AlbumsScreen(
                 verticalArrangement = Arrangement.spacedBy(Spacing.md)
             ) {
                 items(albums) { (artist, songs) ->
+                    val isPlaying = state.isPlaying && state.currentSong?.artist == artist
                     AlbumGridCard(
                         artist = artist,
                         songCount = songs.size,
                         artworkUrl = songs.first().artworkUrl,
+                        isPlaying = isPlaying,
                         onClick = { onSongSelected(songs, 0) }
                     )
                 }
@@ -92,6 +77,7 @@ private fun AlbumGridCard(
     artist: String,
     songCount: Int,
     artworkUrl: String,
+    isPlaying: Boolean,
     onClick: () -> Unit
 ) {
     Column(
@@ -115,7 +101,22 @@ private fun AlbumGridCard(
             )
         }
         Spacer(Modifier.height(Spacing.xs))
-        Text(artist, style = MaterialTheme.typography.labelLarge, color = ColorOnSurface, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.Bold)
-        Text("$songCount tracks", style = MaterialTheme.typography.bodySmall, color = ColorOnSurface60)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            NowPlayingIndicator(active = isPlaying, height = 14.dp)
+            Spacer(Modifier.width(Spacing.xxs))
+            Text(
+                text = artist,
+                style = MaterialTheme.typography.labelLarge,
+                color = ColorOnSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                fontWeight = FontWeight.Bold
+            )
+        }
+        Text(
+            countLabel(songCount, "track"),
+            style = MaterialTheme.typography.bodySmall,
+            color = ColorOnSurface60
+        )
     }
 }

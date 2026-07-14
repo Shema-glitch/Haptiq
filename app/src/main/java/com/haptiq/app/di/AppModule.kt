@@ -28,7 +28,5 @@ object AppModule {
 
     @Provides
     @Singleton
-    fun providePlayerManager(@ApplicationContext context: Context): PlayerManager {
-        return HaptiqPlayerManager.getInstance(context)
-    }
+    fun providePlayerManager(playerManager: HaptiqPlayerManager): PlayerManager = playerManager
 }

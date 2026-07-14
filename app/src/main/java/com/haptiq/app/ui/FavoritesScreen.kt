@@ -32,33 +32,15 @@ fun FavoritesScreen(
             .systemBarsPadding()
             .padding(horizontal = Layout.screenHorizontalPadding)
     ) {
-        // Consistent HAPTIQ app bar with screen name
-        CenterAlignedTopAppBar(
-            title = {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("HAPTIQ", style = MaterialTheme.typography.titleLarge, color = ColorPrimary, fontWeight = FontWeight.Bold, letterSpacing = 4.sp)
-                    Text("Favorites", style = MaterialTheme.typography.labelSmall, color = ColorOnSurface60)
-                }
-            },
-            colors = TopAppBarDefaults.centerAlignedTopAppBarColors(containerColor = ColorBackground)
-        )
+        HaptiqScreenHeader(subtitle = "Favorites")
 
         if (favoriteSongs.isEmpty()) {
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(Icons.Default.FavoriteBorder, null, Modifier.size(ComponentSize.iconHero), tint = ColorOnSurface60)
-                    Spacer(Modifier.height(Spacing.lg))
-                    Text("No favorites yet", style = MaterialTheme.typography.titleMedium, color = ColorOnSurface)
-                    Spacer(Modifier.height(Spacing.xs))
-                    Text(
-                        "Tap the heart icon on any track to add it here",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = ColorOnSurface60
-                    )
-                }
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                EmptyState(
+                    icon = Icons.Default.FavoriteBorder,
+                    title = "No favorites yet",
+                    subtitle = "Tap the heart icon on any track to add it here"
+                )
             }
         } else {
             LazyColumn(

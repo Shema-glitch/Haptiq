@@ -28,17 +28,4 @@ interface HaptiqDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertCalibration(calibration: CalibrationProfile)
-
-    // Haptic Track Map (AOT Engine)
-    @Query("SELECT * FROM haptic_track_map WHERE songId = :songId")
-    suspend fun getHapticTrackMap(songId: String): HapticTrackMap?
-
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertHapticTrackMap(trackMap: HapticTrackMap)
-
-    @Query("SELECT * FROM haptic_track_map WHERE isProcessed = 0")
-    suspend fun getUnprocessedTracks(): List<HapticTrackMap>
-
-    @Query("DELETE FROM haptic_track_map WHERE songId = :songId")
-    suspend fun deleteHapticTrackMap(songId: String)
 }

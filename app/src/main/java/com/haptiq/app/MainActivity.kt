@@ -60,7 +60,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             HaptiqTheme {
                 val navController = rememberNavController()
-                val permissionViewModel = remember { PermissionViewModel() }
+                val permissionViewModel: PermissionViewModel = hiltViewModel()
                 val haptiqViewModel: HaptiqViewModel = hiltViewModel()
 
                 // Determine start destination:

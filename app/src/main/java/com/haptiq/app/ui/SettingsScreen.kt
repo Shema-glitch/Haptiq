@@ -39,27 +39,14 @@ fun SettingsScreen(
             .fillMaxSize()
             .padding(innerPadding)
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 16.dp)
+            .padding(horizontal = Spacing.md)
             .testTag("settings_screen")
     ) {
-        // Top Bar (screen-specific — title only, no back button; bottom nav handles navigation)
-        CenterAlignedTopAppBar(
-            title = {
-                Text(
-                    text = "Settings",
-                    style = MaterialTheme.typography.titleLarge,
-                    color = ColorPrimary,
-                    fontWeight = FontWeight.Bold
-                )
-            },
-            colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                containerColor = ColorBackground
-            )
-        )
+        HaptiqScreenHeader(subtitle = "Settings")
 
         // Preferences section
         Column(
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+            verticalArrangement = Arrangement.spacedBy(Spacing.xs)
         ) {
             Text(
                 text = "PREFERENCES",
@@ -73,7 +60,7 @@ fun SettingsScreen(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(12.dp))
+                    .clip(RoundedCornerShape(Radius.md))
                     .background(ColorSurface)
             ) {
                 // Battery Saver mapping
@@ -99,11 +86,11 @@ fun SettingsScreen(
             }
         }
 
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(Spacing.xl))
 
         // Information section
         Column(
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+            verticalArrangement = Arrangement.spacedBy(Spacing.xs)
         ) {
             Text(
                 text = "INFORMATION",
@@ -117,7 +104,7 @@ fun SettingsScreen(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(12.dp))
+                    .clip(RoundedCornerShape(Radius.md))
                     .background(ColorSurface)
             ) {
                 SettingsRow(
@@ -125,6 +112,19 @@ fun SettingsScreen(
                     iconColor = ColorOnSurface60,
                     title = "About",
                     subtitle = "Haptiq v1.0.0 (MVP)"
+                )
+
+                HorizontalDivider(color = ColorOutlineVariant.copy(alpha = 0.2f), thickness = 1.dp)
+
+                SettingsRow(
+                    icon = Icons.Default.Description,
+                    iconColor = ColorOnSurface60,
+                    title = "Open Source Licenses",
+                    subtitle = "View third-party attributions"
+                    // NOTE: no onClick wired yet — SettingsRow renders without a
+                    // chevron/ripple when onClick is null. Wire this to a real
+                    // licenses screen (e.g. androidx OssLicensesMenuActivity or a
+                    // custom screen) rather than leaving it silently unclickable.
                 )
             }
         }
@@ -143,17 +143,17 @@ fun SettingsRow(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(enabled = onClick != null) { onClick?.invoke() }
-            .padding(16.dp),
+            .padding(Spacing.md),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Icon(
             imageVector = icon,
             contentDescription = null,
             tint = iconColor,
-            modifier = Modifier.size(24.dp)
+            modifier = Modifier.size(ComponentSize.iconMedium)
         )
 
-        Spacer(modifier = Modifier.width(16.dp))
+        Spacer(modifier = Modifier.width(Spacing.md))
 
         Column(
             modifier = Modifier.weight(1f)
@@ -174,12 +174,14 @@ fun SettingsRow(
             }
         }
 
-        Icon(
-            imageVector = Icons.Default.ChevronRight,
-            contentDescription = null,
-            tint = ColorOnSurface60,
-            modifier = Modifier.size(20.dp)
-        )
+        if (onClick != null) {
+            Icon(
+                imageVector = Icons.Default.ChevronRight,
+                contentDescription = null,
+                tint = ColorOnSurface60,
+                modifier = Modifier.size(ComponentSize.iconSmall)
+            )
+        }
     }
 }
 
@@ -196,17 +198,17 @@ fun SettingsRowWithSwitch(
         modifier = Modifier
             .fillMaxWidth()
             .clickable { onCheckedChange(!checked) }
-            .padding(16.dp),
+            .padding(Spacing.md),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Icon(
             imageVector = icon,
             contentDescription = null,
             tint = iconColor,
-            modifier = Modifier.size(24.dp)
+            modifier = Modifier.size(ComponentSize.iconMedium)
         )
 
-        Spacer(modifier = Modifier.width(16.dp))
+        Spacer(modifier = Modifier.width(Spacing.md))
 
         Column(
             modifier = Modifier.weight(1f)

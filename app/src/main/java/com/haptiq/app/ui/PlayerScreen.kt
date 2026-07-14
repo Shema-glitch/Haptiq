@@ -32,10 +32,10 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.platform.LocalHapticFeedback
 import com.haptiq.app.data.Song
 import com.haptiq.app.ui.theme.*
 
@@ -58,6 +58,8 @@ fun PlayerScreen(
 ) {
     val currentSong = state.currentSong ?: return
     val isFav = currentSong.id in state.favoriteIds
+    val context = LocalContext.current
+    val haptics = LocalHapticFeedback.current
 
     LaunchedEffect(Unit) { onRefreshDndStatus() }
 
@@ -65,7 +67,7 @@ fun PlayerScreen(
     var isDraggingSlider by remember { mutableStateOf(false) }
     var showQueue by remember { mutableStateOf(false) }
 
-    Box(
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
             .background(
@@ -77,11 +79,14 @@ fun PlayerScreen(
             .systemBarsPadding()
             .testTag("player_screen")
     ) {
+        val screenHeight = maxHeight
+        val isShortScreen = screenHeight < 680.dp
+
         // Ambient glow behind artwork
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(350.dp)
+                .height(if (isShortScreen) 220.dp else 350.dp)
                 .blur(100.dp)
                 .background(
                     Brush.verticalGradient(
@@ -109,7 +114,7 @@ fun PlayerScreen(
                 IconButton(
                     onClick = onBackClicked,
                     modifier = Modifier
-                        .size(44.dp)
+                        .size(ComponentSize.touchTarget)
                         .shadow(Elevation.low, CircleShape)
                         .background(ColorSurface, CircleShape)
                         .border(1.dp, ColorOutline, CircleShape)
@@ -125,17 +130,10 @@ fun PlayerScreen(
                     letterSpacing = 2.sp
                 )
 
-                // Settings/Studio button in a circular capsule
-                IconButton(
-                    onClick = onHapticStudioClicked,
-                    modifier = Modifier
-                        .size(44.dp)
-                        .shadow(Elevation.low, CircleShape)
-                        .background(ColorSurface, CircleShape)
-                        .border(1.dp, ColorOutline, CircleShape)
-                ) {
-                    Icon(Icons.Default.Settings, "Tuning Studio", tint = ColorOnSurface, modifier = Modifier.size(20.dp))
-                }
+                // Invisible twin of the back button so "NOW PLAYING" stays centered.
+                // Haptic Studio is reached through the haptic pill below — a gear up
+                // here read as generic app settings, not the tuning dashboard.
+                Spacer(Modifier.size(ComponentSize.touchTarget))
             }
 
             // DND Warning
@@ -144,13 +142,16 @@ fun PlayerScreen(
                 Spacer(Modifier.height(Spacing.sm))
             }
 
-            Spacer(Modifier.weight(0.15f))
+            Spacer(Modifier.weight(if (isShortScreen) 0.05f else 0.15f))
 
             // ─── Artwork ────────────────────────────────────────
+            val artworkModifier = if (isShortScreen) {
+                Modifier.size(180.dp)
+            } else {
+                Modifier.fillMaxWidth().aspectRatio(1f)
+            }
             Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(1f)
+                modifier = artworkModifier
                     .shadow(Elevation.hero, RoundedCornerShape(24.dp))
                     .clip(RoundedCornerShape(24.dp))
             ) {
@@ -158,12 +159,12 @@ fun PlayerScreen(
                     model = currentSong.artworkUrl,
                     contentDescription = "Album Artwork",
                     modifier = Modifier.fillMaxSize(),
-                    iconSize = 64.dp,
+                    iconSize = if (isShortScreen) 48.dp else 64.dp,
                     cornerRadius = 24.dp
                 )
             }
 
-            Spacer(Modifier.weight(0.15f))
+            Spacer(Modifier.weight(if (isShortScreen) 0.05f else 0.15f))
 
             // ─── Centered Track Info ────────────────────────────
             Column(
@@ -172,17 +173,16 @@ fun PlayerScreen(
             ) {
                 Text(
                     text = currentSong.title,
-                    fontSize = 24.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = ColorHapticAccent, // Orange title
+                    style = if (isShortScreen) MaterialTheme.typography.headlineSmall else MaterialTheme.typography.headlineMedium,
+                    color = ColorOnSurface,
                     maxLines = 1,
                     modifier = Modifier.basicMarquee()
                 )
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    text = "by ${currentSong.artist}",
-                    fontSize = 14.sp,
-                    color = ColorOnSurface60,
+                    text = currentSong.artist,
+                    style = MaterialTheme.typography.titleSmall,
+                    color = ColorOnSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -197,7 +197,10 @@ fun PlayerScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 // Heart Favorite
-                IconButton(onClick = { onToggleFavorite(currentSong.id) }) {
+                IconButton(onClick = {
+                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    onToggleFavorite(currentSong.id)
+                }) {
                     Icon(
                         imageVector = if (isFav) Icons.Default.Favorite else Icons.Outlined.FavoriteBorder,
                         contentDescription = "Favorite",
@@ -206,18 +209,14 @@ fun PlayerScreen(
                     )
                 }
                 Spacer(Modifier.width(16.dp))
-                // Save/Download icon
-                IconButton(onClick = { /* Save/Download */ }) {
-                    Icon(
-                        imageVector = Icons.Default.ArrowDownward,
-                        contentDescription = "Download",
-                        tint = ColorOnSurface60,
-                        modifier = Modifier.size(22.dp)
-                    )
-                }
-                Spacer(Modifier.width(16.dp))
-                // Share icon
-                IconButton(onClick = { /* Share */ }) {
+                // Share icon — hands off to the system share sheet, same as any other player
+                IconButton(onClick = {
+                    val shareIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                        type = "text/plain"
+                        putExtra(android.content.Intent.EXTRA_TEXT, "${currentSong.title} — ${currentSong.artist}")
+                    }
+                    context.startActivity(android.content.Intent.createChooser(shareIntent, "Share track"))
+                }) {
                     Icon(
                         imageVector = Icons.Default.Share,
                         contentDescription = "Share",
@@ -225,14 +224,21 @@ fun PlayerScreen(
                         modifier = Modifier.size(22.dp)
                     )
                 }
+                Spacer(Modifier.width(16.dp))
+                // Queue
+                IconButton(onClick = { showQueue = true }) {
+                    Icon(
+                        imageVector = Icons.Default.QueueMusic,
+                        contentDescription = "Queue",
+                        tint = ColorOnSurface60,
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
             }
 
-            Spacer(Modifier.weight(0.2f))
+            Spacer(Modifier.weight(if (isShortScreen) 0.05f else 0.2f))
 
             // ─── Linear Seek Slider ─────────────────────────────
-            var sliderValue by remember(state.playbackProgress) { mutableStateOf(state.playbackProgress) }
-            var isDraggingSlider by remember { mutableStateOf(false) }
-
             Column(modifier = Modifier.fillMaxWidth()) {
                 Slider(
                     value = if (isDraggingSlider) sliderValue else state.playbackProgress,
@@ -240,18 +246,18 @@ fun PlayerScreen(
                     onValueChangeFinished = { isDraggingSlider = false; onSeek(sliderValue) },
                     colors = SliderDefaults.colors(
                         thumbColor = Color.White,
-                        activeTrackColor = ColorHapticAccent,
+                        activeTrackColor = ColorPrimary,
                         inactiveTrackColor = ColorOutlineVariant
                     ),
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().height(48.dp),
                     thumb = {
                         SliderDefaults.Thumb(
                             interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
                             colors = SliderDefaults.colors(thumbColor = Color.White),
                             modifier = Modifier
-                                .size(16.dp)
-                                .shadow(Elevation.low, CircleShape)
-                                .border(1.dp, ColorOutline, CircleShape)
+                                .size(20.dp)
+                                .shadow(Elevation.medium, CircleShape)
+                                .border(2.dp, ColorPrimary, CircleShape)
                         )
                     }
                 )
@@ -266,7 +272,7 @@ fun PlayerScreen(
                 }
             }
 
-            Spacer(Modifier.weight(0.3f))
+            Spacer(Modifier.weight(if (isShortScreen) 0.1f else 0.3f))
 
             // ─── Transport Controls ─────────────────────────────
             Row(
@@ -274,13 +280,13 @@ fun PlayerScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Queue Button
-                IconButton(onClick = { showQueue = true }) {
+                // Shuffle
+                IconButton(onClick = onToggleShuffle) {
                     Icon(
-                        imageVector = Icons.Default.QueueMusic,
-                        contentDescription = "Queue",
-                        tint = ColorOnSurface60,
-                        modifier = Modifier.size(24.dp)
+                        imageVector = Icons.Default.Shuffle,
+                        contentDescription = "Shuffle",
+                        tint = if (state.isShuffle) ColorHapticAccent else ColorOnSurface60,
+                        modifier = Modifier.size(22.dp)
                     )
                 }
 
@@ -294,20 +300,23 @@ fun PlayerScreen(
                     )
                 }
 
-                // Play/Pause circular FAB with soft orange shadow
+                // Play/Pause circular FAB with premium shadow
                 Box(
                     modifier = Modifier
-                        .size(64.dp)
-                        .shadow(Elevation.medium, CircleShape, ambientColor = ColorHapticAccent, spotColor = ColorHapticAccent)
-                        .background(ColorHapticAccent, CircleShape)
-                        .clickable(onClick = onTogglePlayPause),
+                        .size(if (isShortScreen) 60.dp else 68.dp)
+                        .shadow(Elevation.high, CircleShape, ambientColor = ColorPrimary, spotColor = ColorPrimary)
+                        .background(ColorPrimary, CircleShape)
+                        .clickable(onClick = {
+                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                            onTogglePlayPause()
+                        }),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = if (state.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                         contentDescription = "Play or Pause",
-                        tint = Color.White,
-                        modifier = Modifier.size(32.dp)
+                        tint = ColorOnPrimary,
+                        modifier = Modifier.size(if (isShortScreen) 30.dp else 34.dp)
                     )
                 }
 
@@ -332,14 +341,17 @@ fun PlayerScreen(
                 }
             }
 
-            Spacer(Modifier.weight(0.3f))
+            Spacer(Modifier.weight(if (isShortScreen) 0.1f else 0.3f))
 
-            // ─── Haptic Toggle Row ──────────────────────────────
+            // ─── Haptic Engine Row ──────────────────────────────
+            // Two controls, two clear jobs: tapping the row opens the Haptic Studio
+            // (label + chevron = navigation); the switch — and only the switch —
+            // toggles haptics on/off.
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(CircleShape)
-                    .clickable { onToggleHaptics(!state.hapticActive) },
+                    .clickable(onClick = onHapticStudioClicked),
                 color = if (state.hapticActive) ColorHapticAccent.copy(alpha = 0.12f) else ColorOutline.copy(alpha = 0.3f),
                 shape = CircleShape
             ) {
@@ -350,16 +362,22 @@ fun PlayerScreen(
                 ) {
                     Icon(
                         Icons.Default.Vibration,
-                        "Haptic",
+                        null,
                         tint = if (state.hapticActive) ColorHapticAccent else ColorOnSurface60,
                         modifier = Modifier.size(ComponentSize.iconMedium)
                     )
                     Text(
-                        "Haptic Feedback",
+                        "Haptic Studio",
                         style = MaterialTheme.typography.labelLarge,
-                        color = if (state.hapticActive) ColorHapticAccent else ColorOnSurface60,
-                        modifier = Modifier.weight(1f)
+                        color = if (state.hapticActive) ColorHapticAccent else ColorOnSurface60
                     )
+                    Icon(
+                        Icons.Default.ChevronRight,
+                        "Open Haptic Studio",
+                        tint = if (state.hapticActive) ColorHapticAccent else ColorOnSurface60,
+                        modifier = Modifier.size(ComponentSize.iconSmall)
+                    )
+                    Spacer(Modifier.weight(1f))
                     Switch(
                         checked = state.hapticActive,
                         onCheckedChange = onToggleHaptics,
@@ -370,13 +388,10 @@ fun PlayerScreen(
                             uncheckedTrackColor = ColorBackground
                         )
                     )
-                    IconButton(onClick = onHapticStudioClicked, modifier = Modifier.size(ComponentSize.touchTarget)) {
-                        Icon(Icons.Default.ChevronRight, "Open Haptic Studio", tint = ColorOnSurface60)
-                    }
                 }
             }
 
-            Spacer(Modifier.height(Spacing.xl))
+            Spacer(Modifier.height(if (isShortScreen) Spacing.md else Spacing.xl))
         }
 
         // Queue Bottom Sheet

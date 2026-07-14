@@ -1,9 +1,11 @@
 package com.haptiq.app.ui
 
 import androidx.lifecycle.ViewModel
+import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import javax.inject.Inject
 
 data class PermissionUiState(
     val hasMediaPermission: Boolean = false,
@@ -21,7 +23,8 @@ sealed interface PermissionUiAction {
     object PermanentDenyPermission : PermissionUiAction
 }
 
-class PermissionViewModel : ViewModel() {
+@HiltViewModel
+class PermissionViewModel @Inject constructor() : ViewModel() {
     private val _uiState = MutableStateFlow(PermissionUiState())
     val uiState: StateFlow<PermissionUiState> = _uiState.asStateFlow()
 

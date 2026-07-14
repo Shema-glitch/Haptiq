@@ -26,9 +26,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.withStyle
 import com.haptiq.app.data.Song
 import com.haptiq.app.ui.theme.*
 
@@ -57,32 +54,19 @@ fun LibraryScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .systemBarsPadding()
+            .background(ColorBackground)
             .testTag("library_screen")
     ) {
-        // ─── HAPTIQ Top App Bar ─────────────────────────────────
-        CenterAlignedTopAppBar(
-            title = {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        text = "HAPTIQ",
-                        style = MaterialTheme.typography.titleLarge,
-                        color = ColorPrimary,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 4.sp
-                    )
-                    Text(
-                        text = "Library",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = ColorOnSurface60
-                    )
-                }
-            },
-            actions = {
+        // ─── Header (shared treatment across all tabs) ──────────
+        HaptiqScreenHeader(
+            subtitle = "Library",
+            modifier = Modifier.padding(horizontal = Layout.screenHorizontalPadding),
+            trailing = {
                 // Refresh/Scan button
                 IconButton(
                     onClick = onScanDevice,
-                    enabled = !state.isScanning
+                    enabled = !state.isScanning,
+                    modifier = Modifier.background(ColorSurface, CircleShape)
                 ) {
                     if (state.isScanning) {
                         CircularProgressIndicator(
@@ -94,14 +78,11 @@ fun LibraryScreen(
                         Icon(
                             Icons.Default.Refresh,
                             contentDescription = "Scan for new music",
-                            tint = ColorOnSurfaceVariant
+                            tint = ColorOnSurface
                         )
                     }
                 }
-            },
-            colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                containerColor = ColorBackground
-            )
+            }
         )
 
         // Scan progress bar
@@ -149,7 +130,7 @@ fun LibraryScreen(
                     .fillMaxWidth()
                     .height(ComponentSize.searchBarHeight)
                     .testTag("search_bar"),
-                shape = RoundedCornerShape(Radius.pill),
+                shape = ExpressiveShapes.navPill,
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedContainerColor = ColorSurfaceVariant,
                     unfocusedContainerColor = ColorSurfaceVariant.copy(alpha = 0.5f),
@@ -219,7 +200,7 @@ fun LibraryScreen(
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
-                                "${filteredSongs.size} songs",
+                                countLabel(filteredSongs.size, "song"),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = ColorOnSurface60
                             )
@@ -253,16 +234,11 @@ fun LibraryScreen(
                 } else if (state.searchQuery.isNotEmpty() && filteredSongs.isEmpty()) {
                     // No search results
                     item {
-                        Box(
-                            modifier = Modifier.fillMaxWidth().padding(Spacing.xxl),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Icon(Icons.Default.SearchOff, null, Modifier.size(ComponentSize.iconXXL), tint = ColorOnSurface60)
-                                Spacer(Modifier.height(Spacing.md))
-                                Text("No results", style = MaterialTheme.typography.titleMedium, color = ColorOnSurface)
-                            }
-                        }
+                        EmptyState(
+                            icon = Icons.Default.SearchOff,
+                            title = "No results",
+                            subtitle = "Nothing matches \"${state.searchQuery}\""
+                        )
                     }
                 }
 
@@ -416,30 +392,25 @@ fun TrackRow(
     onToggleFavorite: () -> Unit
 ) {
     val infiniteTransition = rememberInfiniteTransition(label = "bouncing_bars")
-    var showDropdown by remember { mutableStateOf(false) }
 
+    // Flat list rows: only the playing track gets a container. A card+shadow on
+    // every row made the list read as a stack of competing surfaces instead of
+    // a scannable list, and left the real signal (what's playing) with nothing
+    // visually distinct to say it with.
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(ComponentSize.buttonHeight)
-            .clip(RoundedCornerShape(Radius.sm))
-            .background(if (isCurrentPlaying) ColorHapticAccent.copy(alpha = 0.12f) else ColorSurface.copy(alpha = 0.4f))
+            .clip(RoundedCornerShape(Radius.md))
+            .background(if (isCurrentPlaying) ColorSurfaceVariant else Color.Transparent)
             .clickable(onClick = onClick)
-            .semantics(mergeDescendants = true) {
-                contentDescription = when {
-                    isCurrentPlaying && isPlaying -> "Now playing: ${song.title} by ${song.artist}"
-                    isCurrentPlaying -> "Current track: ${song.title}, paused"
-                    else -> "${song.title} by ${song.artist}"
-                }
-            }
-            .padding(horizontal = Spacing.xs),
+            .padding(Spacing.sm),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(Modifier.size(ComponentSize.artworkSmall).clip(RoundedCornerShape(Radius.sm)), contentAlignment = Alignment.Center) {
-            ArtworkImage(song.artworkUrl, null, Modifier.fillMaxSize(), iconSize = ComponentSize.iconSmall, cornerRadius = Radius.sm)
+        Box(Modifier.size(56.dp).clip(RoundedCornerShape(Radius.md)), contentAlignment = Alignment.Center) {
+            ArtworkImage(song.artworkUrl, null, Modifier.fillMaxSize(), iconSize = ComponentSize.iconMedium, cornerRadius = Radius.md)
             if (isCurrentPlaying && isPlaying) {
                 Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.5f)), contentAlignment = Alignment.Center) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.Bottom, modifier = Modifier.height(ComponentSize.iconMedium)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(3.dp), verticalAlignment = Alignment.Bottom, modifier = Modifier.height(20.dp)) {
                         BouncingEqualizerBar(infiniteTransition, 0, 16)
                         BouncingEqualizerBar(infiniteTransition, 200, 12)
                         BouncingEqualizerBar(infiniteTransition, 400, 14)
@@ -449,7 +420,17 @@ fun TrackRow(
         }
         Spacer(Modifier.width(Spacing.md))
         Column(Modifier.weight(1f)) {
-            Text(song.title, style = MaterialTheme.typography.labelLarge, color = ColorOnSurface, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.Bold)
+            // The playing row already announces itself via the container highlight and
+            // the equalizer overlay on its artwork — a third and fourth signal (clay
+            // title + indicator bar that read as a stray "|") were pure noise.
+            Text(
+                text = song.title,
+                style = MaterialTheme.typography.titleMedium,
+                color = ColorOnSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Spacer(Modifier.height(2.dp))
             Text(song.artist, style = MaterialTheme.typography.bodyMedium, color = ColorOnSurface60, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         IconButton(onClick = onToggleFavorite, modifier = Modifier.size(ComponentSize.touchTarget)) {
@@ -459,16 +440,6 @@ fun TrackRow(
                 tint = if (isFavorite) ColorPrimary else ColorOnSurface60,
                 modifier = Modifier.size(ComponentSize.iconMedium)
             )
-        }
-        Box {
-            IconButton(onClick = { showDropdown = true }, modifier = Modifier.size(ComponentSize.touchTarget)) {
-                Icon(Icons.Default.MoreVert, "Options", tint = ColorOnSurface60)
-            }
-            DropdownMenu(expanded = showDropdown, onDismissRequest = { showDropdown = false }, containerColor = ColorSurface) {
-                DropdownMenuItem(text = { Text("Play next") }, onClick = { showDropdown = false })
-                DropdownMenuItem(text = { Text("Add to queue") }, onClick = { showDropdown = false })
-                DropdownMenuItem(text = { Text("Go to artist") }, onClick = { showDropdown = false })
-            }
         }
     }
 }
@@ -508,49 +479,114 @@ fun MiniPlayer(
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .shadow(elevation = 8.dp, shape = RoundedCornerShape(topStart = Radius.md, topEnd = Radius.md))
-            .padding(bottom = 6.dp)
+            .padding(start = Spacing.md, end = Spacing.md, bottom = 4.dp)
+            .shadow(elevation = 4.dp, shape = RoundedCornerShape(Radius.lg))
+            .clip(RoundedCornerShape(Radius.lg))
+            .border(width = 1.dp, color = ColorOutlineVariant.copy(alpha = 0.1f), shape = RoundedCornerShape(Radius.lg))
             .clickable(onClick = onExpand)
             .testTag("mini_player"),
         color = ColorSurface,
-        tonalElevation = Elevation.low
+        tonalElevation = 0.dp
     ) {
         Column {
             Row(
-                modifier = Modifier.fillMaxWidth().height(ComponentSize.miniPlayerHeight).padding(horizontal = Spacing.md),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(ComponentSize.miniPlayerHeight)
+                    .padding(horizontal = Spacing.md),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                ArtworkImage(currentSong.artworkUrl, null, Modifier.size(ComponentSize.artworkMedium), iconSize = ComponentSize.iconMedium, cornerRadius = Radius.sm)
+                ArtworkImage(
+                    currentSong.artworkUrl,
+                    null,
+                    Modifier.size(ComponentSize.artworkMedium),
+                    iconSize = ComponentSize.iconMedium,
+                    cornerRadius = Radius.sm
+                )
                 Spacer(Modifier.width(Spacing.md))
                 Column(Modifier.weight(1f)) {
-                    Text(currentSong.title, style = MaterialTheme.typography.labelLarge, color = ColorOnSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(
+                        currentSong.title,
+                        style = MaterialTheme.typography.labelLarge,
+                        color = ColorOnSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         if (hapticActive) {
-                            Box(Modifier.size(6.dp).clip(CircleShape).background(ColorHapticAccent.copy(alpha = dotAlpha)))
+                            Box(
+                                Modifier
+                                    .size(6.dp)
+                                    .clip(CircleShape)
+                                    .background(ColorHapticAccent.copy(alpha = dotAlpha))
+                            )
                             Spacer(Modifier.width(Spacing.xxs))
-                            Text("Haptic Active", style = MaterialTheme.typography.labelSmall, color = ColorHapticAccent, maxLines = 1)
+                            Text(
+                                "Haptic Active",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = ColorHapticAccent,
+                                maxLines = 1
+                            )
                         } else {
-                            Text(currentSong.artist, style = MaterialTheme.typography.labelSmall, color = ColorOnSurface60, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(
+                                currentSong.artist,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = ColorOnSurface60,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
                         }
                     }
                 }
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.xxs)) {
-                    IconButton(onClick = onPrev, modifier = Modifier.size(ComponentSize.touchTarget)) {
-                        Icon(Icons.Default.SkipPrevious, "Previous", tint = ColorOnSurface, modifier = Modifier.size(ComponentSize.iconLarge))
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.xxs)
+                ) {
+                    IconButton(
+                        onClick = onPrev,
+                        modifier = Modifier.size(ComponentSize.touchTarget)
+                    ) {
+                        Icon(
+                            Icons.Default.SkipPrevious,
+                            "Previous",
+                            tint = ColorOnSurface,
+                            modifier = Modifier.size(ComponentSize.iconLarge)
+                        )
                     }
-                    IconButton(onClick = onTogglePlayPause, modifier = Modifier.size(ComponentSize.touchTarget).background(ColorSurfaceVariant, CircleShape)) {
-                        Icon(if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, if (isPlaying) "Pause" else "Play", tint = ColorOnSurface, modifier = Modifier.size(ComponentSize.iconMedium))
+                    IconButton(
+                        onClick = onTogglePlayPause,
+                        modifier = Modifier
+                            .size(ComponentSize.touchTarget)
+                            .clip(CircleShape)
+                            .background(ColorSurfaceVariant.copy(alpha = 0.5f))
+                    ) {
+                        Icon(
+                            if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                            if (isPlaying) "Pause" else "Play",
+                            tint = ColorOnSurface,
+                            modifier = Modifier.size(ComponentSize.iconMedium)
+                        )
                     }
-                    IconButton(onClick = onNext, modifier = Modifier.size(ComponentSize.touchTarget)) {
-                        Icon(Icons.Default.SkipNext, "Next", tint = ColorOnSurface, modifier = Modifier.size(ComponentSize.iconLarge))
+                    IconButton(
+                        onClick = onNext,
+                        modifier = Modifier.size(ComponentSize.touchTarget)
+                    ) {
+                        Icon(
+                            Icons.Default.SkipNext,
+                            "Next",
+                            tint = ColorOnSurface,
+                            modifier = Modifier.size(ComponentSize.iconLarge)
+                        )
                     }
                 }
             }
             LinearProgressIndicator(
                 progress = { progress },
-                modifier = Modifier.fillMaxWidth().height(2.dp),
-                color = ColorHapticAccent,
-                trackColor = ColorSurfaceVariant,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(2.dp),
+                color = ColorHapticAccent.copy(alpha = 0.8f),
+                trackColor = ColorSurfaceVariant.copy(alpha = 0.3f),
             )
         }
     }

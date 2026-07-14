@@ -6,7 +6,6 @@ import android.util.Log
 import com.haptiq.app.audio.HapticTuningState
 
 class BassVisualizer(
-    private val fftProcessor: FftProcessor,
     private val onBassEnergy: (BassEnergy) -> Unit
 ) {
     companion object {
@@ -20,6 +19,12 @@ class BassVisualizer(
 
     private var prevRawKick = 0f
     private var attachTime = 0L
+
+    // Rolling 1s window stats, logged for on-device threshold calibration
+    private var statWindowStart = 0L
+    private var statMaxKick = 0f
+    private var statMaxSub = 0f
+    private var statMaxDelta = 0f
 
     /** Live DSP tuning — written from UI thread, read on Visualizer callback thread. */
     @Volatile var tuning = HapticTuningState()
@@ -106,6 +111,12 @@ class BassVisualizer(
             return if (count > 0) normalize(sum / count) else 0f
         }
 
+        // ── LIVE BASS DRONE ENERGY ──────────────────────────────────────────────────
+        // Calculate sub-bass energy based on live tuning freq bins
+        val bassMinBin = t.bassFreqMinBin.coerceIn(1, halfN - 1)
+        val bassMaxBin = t.bassFreqMaxBin.coerceIn(bassMinBin, halfN - 1)
+        val tunedSubBass = averageBins(bassMinBin, bassMaxBin)
+
         // Bar 0 (Sub): Bin 1 (~43 Hz)
         spectrum[0] = normalize(magnitudeBuffer[1])
         // Bar 1 (Kick): Bins 2-3 (~86 - 129 Hz)
@@ -130,11 +141,23 @@ class BassVisualizer(
         // Determine dominant pitch: Sub (Bar 0) vs Kick (Bar 1) energy
         val dominantPitch = if (spectrum[0] > spectrum[1]) DominantPitch.SUB else DominantPitch.KICK
 
+        // 1s-window peak stats — cheap (3 compares/frame + 1 log line/sec) and the only
+        // way to calibrate gate thresholds against a real device's FFT magnitude range.
+        val now = System.currentTimeMillis()
+        statMaxKick = maxOf(statMaxKick, rawKick)
+        statMaxSub = maxOf(statMaxSub, tunedSubBass)
+        statMaxDelta = maxOf(statMaxDelta, kickDelta)
+        if (now - statWindowStart >= 1000L) {
+            Log.d(TAG, "1s peaks: rawKick=$statMaxKick sub=$statMaxSub delta=$statMaxDelta gates(k=${t.noiseFloorGate} s=${t.subDroneThreshold} d=${t.kickThreshold})")
+            statWindowStart = now
+            statMaxKick = 0f; statMaxSub = 0f; statMaxDelta = 0f
+        }
+
         // Pass the live tuning thresholds through BassEnergy so HapticMapper
         // can apply the correct gate values without needing its own copy of the state.
         onBassEnergy(
             BassEnergy(
-                subBass = if (t.isBassEnabled) spectrum[0] else 0f,
+                subBass = if (t.isBassEnabled) tunedSubBass else 0f,
                 bass = rawKick,
                 combined = kickDelta,
                 rawKick = rawKick,
@@ -142,7 +165,8 @@ class BassVisualizer(
                 dominantPitch = dominantPitch,
                 kickThreshold = t.kickThreshold,
                 noiseFloorGate = t.noiseFloorGate,
-                subDroneThreshold = t.subDroneThreshold
+                subDroneThreshold = t.subDroneThreshold,
+                bassGain = t.bassGain
             )
         )
     }

@@ -57,12 +57,7 @@ fun HapticStudioScreen(
         containerColor = ColorBackground,
         topBar = {
             CenterAlignedTopAppBar(
-                title = {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("HAPTIQ", style = MaterialTheme.typography.titleLarge, color = ColorPrimary, fontWeight = FontWeight.Bold, letterSpacing = 4.sp)
-                        Text("Haptic Studio", style = MaterialTheme.typography.labelSmall, color = ColorOnSurface60)
-                    }
-                },
+                title = { HaptiqWordmark(subtitle = "Haptic Studio", centered = true) },
                 navigationIcon = {
                     IconButton(onClick = onBackClicked) {
                         Icon(
@@ -83,25 +78,25 @@ fun HapticStudioScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(24.dp)
+                .padding(horizontal = Spacing.md, vertical = Spacing.xs),
+            verticalArrangement = Arrangement.spacedBy(Spacing.xl)
         ) {
             // Section 1: Engine Status Switch Card
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = ColorSurface),
-                shape = RoundedCornerShape(12.dp)
+                shape = RoundedCornerShape(Radius.md)
             ) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(16.dp),
+                        .padding(Spacing.md),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(16.dp)
+                        horizontalArrangement = Arrangement.spacedBy(Spacing.md)
                     ) {
                         Box(
                             modifier = Modifier
@@ -153,7 +148,7 @@ fun HapticStudioScreen(
 
             // Section 2: Haptic Presets row of chips
             Column(
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                verticalArrangement = Arrangement.spacedBy(Spacing.xs)
             ) {
                 Text(
                     text = "HAPTIC PRESETS",
@@ -161,11 +156,11 @@ fun HapticStudioScreen(
                     color = ColorOnSurface60,
                     letterSpacing = 1.5.sp,
                     fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(horizontal = 4.dp)
+                    modifier = Modifier.padding(horizontal = Spacing.xxs)
                 )
 
                 LazyRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.xs),
                     contentPadding = PaddingValues(horizontal = 4.dp)
                 ) {
                     items(presets) { preset ->
@@ -184,7 +179,7 @@ fun HapticStudioScreen(
                                     Icon(
                                         imageVector = Icons.Default.Check,
                                         contentDescription = null,
-                                        modifier = Modifier.size(16.dp)
+                                        modifier = Modifier.size(ComponentSize.iconSmall)
                                     )
                                 }
                             },
@@ -204,13 +199,13 @@ fun HapticStudioScreen(
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = ColorSurface),
-                shape = RoundedCornerShape(12.dp)
+                shape = RoundedCornerShape(Radius.md)
             ) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                        .padding(Spacing.md),
+                    verticalArrangement = Arrangement.spacedBy(Spacing.md)
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -234,13 +229,13 @@ fun HapticStudioScreen(
                     // Horizontal layout with range slider, decrement and increment buttons
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         // Fix T2: increased from 36dp to 48dp for accessibility compliance
                         IconButton(
                             onClick = { onIntensityChanged((state.intensity - 5).coerceIn(0, 100)) },
-                            modifier = Modifier.size(48.dp)
+                            modifier = Modifier.size(ComponentSize.touchTarget)
                         ) {
                             Icon(imageVector = Icons.Default.Remove, contentDescription = "Decrease intensity", tint = ColorOnSurface60)
                         }
@@ -260,7 +255,7 @@ fun HapticStudioScreen(
                         // Fix T3: increased from 36dp to 48dp for accessibility compliance
                         IconButton(
                             onClick = { onIntensityChanged((state.intensity + 5).coerceIn(0, 100)) },
-                            modifier = Modifier.size(48.dp)
+                            modifier = Modifier.size(ComponentSize.touchTarget)
                         ) {
                             Icon(imageVector = Icons.Default.Add, contentDescription = "Increase intensity", tint = ColorOnSurface60)
                         }
@@ -270,7 +265,7 @@ fun HapticStudioScreen(
 
             // Section 4: Real-time Feedback Visualization Canvas
             Column(
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                verticalArrangement = Arrangement.spacedBy(Spacing.xs)
             ) {
                 Text(
                     text = "REAL-TIME FEEDBACK",
@@ -278,7 +273,7 @@ fun HapticStudioScreen(
                     color = ColorOnSurface60,
                     letterSpacing = 1.5.sp,
                     fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(horizontal = 4.dp)
+                    modifier = Modifier.padding(horizontal = Spacing.xxs)
                 )
 
                 // A1/A2: Semantic description for TalkBack accessibility
@@ -286,9 +281,9 @@ fun HapticStudioScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(160.dp)
-                        .clip(RoundedCornerShape(12.dp))
+                        .clip(RoundedCornerShape(Radius.md))
                         .background(ColorSurfaceVariant.copy(alpha = 0.5f))
-                        .border(1.dp, ColorOutlineVariant.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
+                        .border(1.dp, ColorOutlineVariant.copy(alpha = 0.3f), RoundedCornerShape(Radius.md))
                         .semantics(mergeDescendants = true) {
                             contentDescription = if (state.hapticActive && state.isPlaying) {
                                 "Haptic frequency visualization active. ${state.visualizerBands.size} frequency bands showing real-time haptic feedback."
@@ -296,7 +291,7 @@ fun HapticStudioScreen(
                                 "Haptic frequency visualization. ${state.intensity}% intensity. Currently idle."
                             }
                         }
-                        .padding(24.dp),
+                        .padding(Spacing.xl),
                     contentAlignment = Alignment.Center
                 ) {
                     Box(
@@ -333,7 +328,7 @@ fun HapticStudioScreen(
             // Section 5: Haptic Tuning Dashboard
             TuningDashboardCard(tuning = tuning, onAction = onTuningAction)
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(Spacing.md))
         }
     }
 }
@@ -347,35 +342,35 @@ private fun TuningDashboardCard(
     var expanded by remember { mutableStateOf(false) }
     val chevronRotation by animateFloatAsState(
         targetValue = if (expanded) 180f else 0f,
-        animationSpec = tween(250),
+        animationSpec = HaptiqMotion.fastSpring(),
         label = "chevron_rotation"
     )
 
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .border(1.dp, ColorOutline, RoundedCornerShape(12.dp)),
+            .border(1.dp, ColorOutline, RoundedCornerShape(Radius.md)),
         colors = CardDefaults.cardColors(containerColor = ColorSurface),
-        shape = RoundedCornerShape(12.dp)
+        shape = RoundedCornerShape(Radius.md)
     ) {
         // Header row — always visible, tapping it toggles the panel
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .clickable { expanded = !expanded }
-                .padding(horizontal = 16.dp, vertical = 14.dp),
+                .padding(horizontal = Spacing.md, vertical = 14.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                horizontalArrangement = Arrangement.spacedBy(Spacing.xs)
             ) {
                 Icon(
                     imageVector = Icons.Default.Tune,
                     contentDescription = null,
                     tint = ColorHapticAccent,
-                    modifier = Modifier.size(20.dp)
+                    modifier = Modifier.size(ComponentSize.iconSmall)
                 )
                 Text(
                     text = "TUNING DASHBOARD",
@@ -385,14 +380,30 @@ private fun TuningDashboardCard(
                     letterSpacing = 1.5.sp
                 )
             }
-            Icon(
-                imageVector = Icons.Default.KeyboardArrowDown,
-                contentDescription = if (expanded) "Collapse" else "Expand",
-                tint = ColorOnSurface60,
-                modifier = Modifier
-                    .size(20.dp)
-                    .rotate(chevronRotation)
-            )
+
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (expanded) {
+                    TextButton(
+                        onClick = { onAction(HaptiqUiAction.ResetTuning) },
+                        contentPadding = PaddingValues(horizontal = Spacing.sm),
+                        modifier = Modifier.height(32.dp)
+                    ) {
+                        Text(
+                            "RESET",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = ColorHapticAccent
+                        )
+                    }
+                }
+                Icon(
+                    imageVector = Icons.Default.KeyboardArrowDown,
+                    contentDescription = if (expanded) "Collapse" else "Expand",
+                    tint = ColorOnSurface60,
+                    modifier = Modifier
+                        .size(ComponentSize.iconSmall)
+                        .rotate(chevronRotation)
+                )
+            }
         }
 
         if (expanded) {
@@ -401,8 +412,8 @@ private fun TuningDashboardCard(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(20.dp)
+                    .padding(Spacing.md),
+                verticalArrangement = Arrangement.spacedBy(Spacing.lg)
             ) {
 
                 // ── ENGINE MUTES ─────────────────────────────────────────────────────
@@ -414,7 +425,7 @@ private fun TuningDashboardCard(
                 )
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.sm)
                 ) {
                     EngineToggleChip(
                         label = "KICK",
@@ -432,12 +443,27 @@ private fun TuningDashboardCard(
                     )
                 }
 
-                // ── KICK FREQUENCY BINS ──────────────────────────────────────────────
+                // ── KICK TUNING ──────────────────────────────────────────────
+                Text(
+                    text = "KICK TRANSIENTS",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = ColorOnSurface60,
+                    letterSpacing = 1.5.sp
+                )
+                TuningSliderRow(
+                    label = "KICK THRESHOLD",
+                    value = tuning.kickThreshold,
+                    range = 0.01f..0.50f,
+                    displayValue = String.format("%.2f", tuning.kickThreshold),
+                    description = "Sensitivity of kick detection. Lower values trigger more easily on subtle beats.",
+                    onValueChange = { onAction(HaptiqUiAction.SetKickThreshold(it)) }
+                )
                 TuningSliderRow(
                     label = "KICK FREQ MIN BIN",
                     value = tuning.kickFreqMinBin.toFloat(),
                     range = 1f..15f,
-                    displayValue = "Bin ${tuning.kickFreqMinBin}  (~${tuning.kickFreqMinBin * 43} Hz)",
+                    displayValue = "Bin ${tuning.kickFreqMinBin} (~${tuning.kickFreqMinBin * 43}Hz)",
+                    description = "Lowest frequency to watch for kick impact.",
                     onValueChange = {
                         onAction(HaptiqUiAction.SetKickFreqRange(
                             it.toInt().coerceIn(1, tuning.kickFreqMaxBin),
@@ -449,7 +475,8 @@ private fun TuningDashboardCard(
                     label = "KICK FREQ MAX BIN",
                     value = tuning.kickFreqMaxBin.toFloat(),
                     range = 1f..15f,
-                    displayValue = "Bin ${tuning.kickFreqMaxBin}  (~${tuning.kickFreqMaxBin * 43} Hz)",
+                    displayValue = "Bin ${tuning.kickFreqMaxBin} (~${tuning.kickFreqMaxBin * 43}Hz)",
+                    description = "Highest frequency included in kick transient analysis.",
                     onValueChange = {
                         onAction(HaptiqUiAction.SetKickFreqRange(
                             tuning.kickFreqMinBin,
@@ -458,27 +485,70 @@ private fun TuningDashboardCard(
                     }
                 )
 
-                // ── THRESHOLD SLIDERS ────────────────────────────────────────────────
-                TuningSliderRow(
-                    label = "KICK THRESHOLD",
-                    value = tuning.kickThreshold,
-                    range = 0.01f..0.50f,
-                    displayValue = String.format("%.2f", tuning.kickThreshold),
-                    onValueChange = { onAction(HaptiqUiAction.SetKickThreshold(it)) }
-                )
-                TuningSliderRow(
-                    label = "NOISE FLOOR GATE",
-                    value = tuning.noiseFloorGate,
-                    range = 0.30f..0.95f,
-                    displayValue = String.format("%.2f", tuning.noiseFloorGate),
-                    onValueChange = { onAction(HaptiqUiAction.SetNoiseFloorGate(it)) }
+                // ── BASS TUNING ────────────────────────────────────────────────
+                Text(
+                    text = "BASS DRONE",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = ColorOnSurface60,
+                    letterSpacing = 1.5.sp
                 )
                 TuningSliderRow(
                     label = "SUB DRONE THRESHOLD",
                     value = tuning.subDroneThreshold,
                     range = 0.50f..0.99f,
                     displayValue = String.format("%.2f", tuning.subDroneThreshold),
+                    description = "Energy level required to sustain the deep bass vibration.",
                     onValueChange = { onAction(HaptiqUiAction.SetSubDroneThreshold(it)) }
+                )
+                TuningSliderRow(
+                    label = "BASS GAIN",
+                    value = tuning.bassGain,
+                    range = 0.5f..2.0f,
+                    displayValue = String.format("%.1fx", tuning.bassGain),
+                    description = "Amplifies or reduces the intensity of the sustained bass drone.",
+                    onValueChange = { onAction(HaptiqUiAction.SetBassGain(it)) }
+                )
+                TuningSliderRow(
+                    label = "BASS FREQ MIN BIN",
+                    value = tuning.bassFreqMinBin.toFloat(),
+                    range = 1f..20f,
+                    displayValue = "Bin ${tuning.bassFreqMinBin} (~${tuning.bassFreqMinBin * 43}Hz)",
+                    description = "Start frequency for the deep bass drone engine.",
+                    onValueChange = {
+                        onAction(HaptiqUiAction.SetBassFreqRange(
+                            it.toInt().coerceIn(1, tuning.bassFreqMaxBin),
+                            tuning.bassFreqMaxBin
+                        ))
+                    }
+                )
+                TuningSliderRow(
+                    label = "BASS FREQ MAX BIN",
+                    value = tuning.bassFreqMaxBin.toFloat(),
+                    range = 1f..20f,
+                    displayValue = "Bin ${tuning.bassFreqMaxBin} (~${tuning.bassFreqMaxBin * 43}Hz)",
+                    description = "End frequency for the deep bass drone engine.",
+                    onValueChange = {
+                        onAction(HaptiqUiAction.SetBassFreqRange(
+                            tuning.bassFreqMinBin,
+                            it.toInt().coerceAtLeast(tuning.bassFreqMinBin)
+                        ))
+                    }
+                )
+
+                // ── GLOBAL ────────────────────────────────────────────────
+                Text(
+                    text = "GLOBAL GATE",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = ColorOnSurface60,
+                    letterSpacing = 1.5.sp
+                )
+                TuningSliderRow(
+                    label = "NOISE FLOOR GATE",
+                    value = tuning.noiseFloorGate,
+                    range = 0.30f..0.95f,
+                    displayValue = String.format("%.2f", tuning.noiseFloorGate),
+                    description = "Master energy filter. Prevents noise or quiet parts from triggering any haptics.",
+                    onValueChange = { onAction(HaptiqUiAction.SetNoiseFloorGate(it)) }
                 )
             }
         }
@@ -498,20 +568,20 @@ private fun EngineToggleChip(
 
     Row(
         modifier = modifier
-            .clip(RoundedCornerShape(8.dp))
+            .clip(RoundedCornerShape(Radius.sm))
             .background(bgColor)
             .clickable { onToggle(!enabled) }
-            .padding(horizontal = 12.dp, vertical = 10.dp),
+            .padding(horizontal = Spacing.sm, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
+        horizontalArrangement = Arrangement.spacedBy(Spacing.xs)
     ) {
-        Icon(imageVector = icon, contentDescription = null, tint = contentColor, modifier = Modifier.size(16.dp))
+        Icon(imageVector = icon, contentDescription = null, tint = contentColor, modifier = Modifier.size(ComponentSize.iconSmall))
         Text(text = label, style = MaterialTheme.typography.labelMedium, color = contentColor, fontWeight = FontWeight.Bold)
         Spacer(modifier = Modifier.weight(1f))
         Switch(
             checked = enabled,
             onCheckedChange = onToggle,
-            modifier = Modifier.height(24.dp),
+            modifier = Modifier.height(Spacing.xl),
             colors = SwitchDefaults.colors(
                 checkedThumbColor = ColorSurface,
                 checkedTrackColor = ColorOnPrimary,
@@ -528,17 +598,20 @@ private fun TuningSliderRow(
     value: Float,
     range: ClosedFloatingPointRange<Float>,
     displayValue: String,
+    description: String? = null,
     onValueChange: (Float) -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
                 text = label,
                 style = MaterialTheme.typography.labelSmall,
-                color = ColorOnSurface60,
+                color = ColorOnSurface,
+                fontWeight = FontWeight.Bold,
                 letterSpacing = 1.sp
             )
             Text(
@@ -548,6 +621,17 @@ private fun TuningSliderRow(
                 fontWeight = FontWeight.Bold
             )
         }
+
+        if (description != null) {
+            Text(
+                text = description,
+                style = MaterialTheme.typography.bodySmall,
+                color = ColorOnSurface60,
+                lineHeight = 16.sp,
+                modifier = Modifier.padding(bottom = 4.dp)
+            )
+        }
+
         Slider(
             value = value,
             onValueChange = onValueChange,

@@ -96,12 +96,8 @@ dependencies {
   implementation(libs.hilt.android)
   ksp(libs.hilt.compiler)
   implementation(libs.hilt.navigation.compose)
-  implementation(libs.hilt.work)
   // Hilt 2.60 generated code uses error_prone annotations
   implementation("com.google.errorprone:error_prone_annotations:2.36.0")
-
-  // WorkManager
-  implementation(libs.work.runtime.ktx)
 
   // Media3 ExoPlayer
   implementation(libs.media3.exoplayer)

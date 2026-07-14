@@ -1,6 +1,8 @@
 package com.haptiq.app.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -33,10 +35,11 @@ fun CalibrationScreen(
         modifier = Modifier
             .padding(innerPadding)
             .fillMaxSize()
-            .padding(horizontal = 24.dp)
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = Spacing.xl)
             .testTag("calibration_screen"),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(32.dp)
+        verticalArrangement = Arrangement.spacedBy(Spacing.xxl)
     ) {
         // Top Bar with back navigation
         CenterAlignedTopAppBar(
@@ -66,11 +69,11 @@ fun CalibrationScreen(
         Button(
             onClick = onPlayTestPulse,
             colors = ButtonDefaults.buttonColors(containerColor = ColorSurfaceVariant, contentColor = ColorOnSurface),
-            shape = RoundedCornerShape(12.dp),
-            modifier = Modifier.fillMaxWidth().height(56.dp)
+            shape = RoundedCornerShape(Radius.md),
+            modifier = Modifier.fillMaxWidth().height(ComponentSize.buttonHeight)
         ) {
             Icon(Icons.Default.Vibration, contentDescription = null)
-            Spacer(Modifier.width(8.dp))
+            Spacer(Modifier.width(Spacing.xs))
             Text("Play Test Pulse")
         }
 
@@ -82,8 +85,8 @@ fun CalibrationScreen(
                     style = MaterialTheme.typography.titleMedium,
                     color = ColorOnSurface
                 )
-                Spacer(Modifier.height(16.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Spacer(Modifier.height(Spacing.md))
+                Row(horizontalArrangement = Arrangement.spacedBy(Spacing.xs)) {
                     listOf("Weak", "Medium", "Strong").forEach { strength ->
                         FilterChip(
                             selected = state.calibrationStrength == strength,
@@ -102,7 +105,7 @@ fun CalibrationScreen(
         }
 
         // Step 3: Save Profile
-        Spacer(Modifier.weight(1f))
+        Spacer(Modifier.height(Spacing.xxl))
         Button(
             onClick = {
                 onSaveCalibration()
@@ -110,8 +113,8 @@ fun CalibrationScreen(
             },
             enabled = state.calibrationStep >= 2,
             colors = ButtonDefaults.buttonColors(containerColor = ColorHapticAccent, contentColor = ColorOnBackground),
-            shape = RoundedCornerShape(12.dp),
-            modifier = Modifier.fillMaxWidth().height(56.dp)
+            shape = RoundedCornerShape(Radius.md),
+            modifier = Modifier.fillMaxWidth().height(ComponentSize.buttonHeight)
         ) {
             Text("Save Profile", fontWeight = FontWeight.Bold)
         }

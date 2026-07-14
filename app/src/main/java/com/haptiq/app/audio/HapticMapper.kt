@@ -3,6 +3,7 @@ package com.haptiq.app.audio
 import android.os.Build
 import android.os.VibrationEffect
 import android.os.Vibrator
+import android.util.Log
 
 class HapticMapper {
 
@@ -13,6 +14,7 @@ class HapticMapper {
     private var isDronePlaying = false
 
     companion object {
+        private const val TAG = "HapticMapper"
         const val KICK_COOLDOWN_MS   = 80L
         const val DRONE_LOCKOUT_MS   = 200L
         const val DRONE_COOLDOWN_MS  = 50L
@@ -35,7 +37,8 @@ class HapticMapper {
         // Live-tuned thresholds — come from BassEnergy (sourced from HapticTuningState via UI)
         kickThreshold: Float = 0.15f,
         noiseFloorGate: Float = 0.70f,
-        subDroneThreshold: Float = 0.78f
+        subDroneThreshold: Float = 0.78f,
+        bassGain: Float = 1.0f
     ) {
         val now = System.currentTimeMillis()
         var intensityScalar = (intensity / 100f) * calibrationMultiplier
@@ -51,6 +54,7 @@ class HapticMapper {
             }
 
             val kickScale = (0.70f + kickDelta * 0.30f).coerceIn(0.70f, 1.00f) * intensityScalar
+            Log.d(TAG, "KICK fire: delta=$kickDelta raw=$rawKick scale=$kickScale vib=${vibrator != null}")
             fireKick(vibrator, kickScale)
             lastKickTime = now
             return
@@ -65,8 +69,9 @@ class HapticMapper {
                 val decayed = normalised * normalised
                 val droneAmplitude = (DRONE_MIN_AMP + decayed * (DRONE_MAX_AMP - DRONE_MIN_AMP))
                     .toInt().coerceIn(DRONE_MIN_AMP, DRONE_MAX_AMP)
-                val droneScale = (droneAmplitude / 255f) * intensityScalar
+                val droneScale = (droneAmplitude / 255f) * intensityScalar * bassGain
 
+                Log.d(TAG, "DRONE fire: sub=$subBassEnergy scale=$droneScale vib=${vibrator != null}")
                 fireDrone(vibrator, droneScale)
                 isDronePlaying = true
                 lastDroneTime = now

@@ -28,22 +28,22 @@ fun DndWarningBanner(
     Surface(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp)),
+            .clip(RoundedCornerShape(Radius.md)),
         color = ColorSurfaceVariant,
-        tonalElevation = 2.dp
+        tonalElevation = Elevation.low
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(12.dp),
+                .padding(Spacing.sm),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
+            horizontalArrangement = Arrangement.spacedBy(Spacing.sm)
         ) {
             Icon(
                 imageVector = Icons.Default.NotificationsOff,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.error,
-                modifier = Modifier.size(24.dp)
+                modifier = Modifier.size(ComponentSize.iconMedium)
             )
 
             Column(modifier = Modifier.weight(1f)) {

@@ -1,8 +1,13 @@
 package com.haptiq.app.navigation
 
 import androidx.compose.animation.*
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
-import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -11,8 +16,15 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
 import com.haptiq.app.data.Song
@@ -21,10 +33,8 @@ import com.haptiq.app.ui.theme.*
 
 /**
  * Shared scaffold with:
- * - 4-item bottom navigation: Library | Albums | Favorites | Settings
- * - MiniPlayer sits ABOVE the nav bar (inside content, not bottomBar)
- *
- * The MiniPlayer is NOT in bottomBar to avoid doubling the inset padding.
+ * - Custom bottom nav: dot-indicator active state (no M3 pill/rectangle)
+ * - MiniPlayer sits ABOVE the nav bar inside content column
  */
 @Composable
 fun HaptiqScaffold(
@@ -44,97 +54,17 @@ fun HaptiqScaffold(
         modifier = Modifier.fillMaxSize(),
         containerColor = ColorBackground,
         bottomBar = {
-            Surface(
-                shape = RoundedCornerShape(0.dp),
-                color = ColorSurface,
-                tonalElevation = 0.dp,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(ColorOutline)
-                    .padding(top = 1.dp)
-            ) {
-                NavigationBar(
-                    containerColor = Color.Transparent,
-                    tonalElevation = 0.dp
-                ) {
-                    NavigationBarItem(
-                        selected = currentRoute == Routes.LIBRARY,
-                        onClick = {
-                            if (currentRoute != Routes.LIBRARY) {
-                                navController.navigate(Routes.LIBRARY) {
-                                    popUpTo(Routes.LIBRARY) { inclusive = true }
-                                    launchSingleTop = true
-                                }
-                            }
-                        },
-                        icon = {
-                            Icon(
-                                imageVector = if (currentRoute == Routes.LIBRARY) Icons.Default.LibraryMusic else Icons.Outlined.LibraryMusic,
-                                contentDescription = "Library"
-                            )
-                        },
-                        label = { Text("Library", style = MaterialTheme.typography.labelSmall) },
-                        colors = navItemColors()
-                    )
-                    NavigationBarItem(
-                        selected = currentRoute == Routes.ALBUMS,
-                        onClick = {
-                            if (currentRoute != Routes.ALBUMS) {
-                                navController.navigate(Routes.ALBUMS) {
-                                    popUpTo(Routes.LIBRARY) { inclusive = false }
-                                    launchSingleTop = true
-                                }
-                            }
-                        },
-                        icon = {
-                            Icon(
-                                imageVector = if (currentRoute == Routes.ALBUMS) Icons.Default.Album else Icons.Outlined.Album,
-                                contentDescription = "Albums"
-                            )
-                        },
-                        label = { Text("Albums", style = MaterialTheme.typography.labelSmall) },
-                        colors = navItemColors()
-                    )
-                    NavigationBarItem(
-                        selected = currentRoute == Routes.FAVORITES,
-                        onClick = {
-                            if (currentRoute != Routes.FAVORITES) {
-                                navController.navigate(Routes.FAVORITES) {
-                                    popUpTo(Routes.LIBRARY) { inclusive = false }
-                                    launchSingleTop = true
-                                }
-                            }
-                        },
-                        icon = {
-                            Icon(
-                                imageVector = if (currentRoute == Routes.FAVORITES) Icons.Default.Favorite else Icons.Outlined.Favorite,
-                                contentDescription = "Favorites"
-                            )
-                        },
-                        label = { Text("Favorites", style = MaterialTheme.typography.labelSmall) },
-                        colors = navItemColors()
-                    )
-                    NavigationBarItem(
-                        selected = currentRoute == Routes.SETTINGS,
-                        onClick = {
-                            if (currentRoute != Routes.SETTINGS) {
-                                navController.navigate(Routes.SETTINGS) {
-                                    popUpTo(Routes.LIBRARY) { inclusive = false }
-                                    launchSingleTop = true
-                                }
-                            }
-                        },
-                        icon = {
-                            Icon(
-                                imageVector = if (currentRoute == Routes.SETTINGS) Icons.Default.Settings else Icons.Outlined.Settings,
-                                contentDescription = "Settings"
-                            )
-                        },
-                        label = { Text("Settings", style = MaterialTheme.typography.labelSmall) },
-                        colors = navItemColors()
-                    )
+            HaptiqBottomNav(
+                currentRoute = currentRoute,
+                onNavigate = { route ->
+                    if (currentRoute != route) {
+                        navController.navigate(route) {
+                            popUpTo(Routes.LIBRARY) { inclusive = route == Routes.LIBRARY }
+                            launchSingleTop = true
+                        }
+                    }
                 }
-            }
+            )
         }
     ) { innerPadding ->
         Column(
@@ -142,11 +72,9 @@ fun HaptiqScaffold(
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            // Content fills remaining space
             Box(modifier = Modifier.weight(1f)) {
                 content(innerPadding)
             }
-            // MiniPlayer sits between content and nav bar
             MiniPlayer(
                 currentSong = currentSong,
                 isPlaying = isPlaying,
@@ -161,11 +89,109 @@ fun HaptiqScaffold(
     }
 }
 
-@Composable
-private fun navItemColors() = NavigationBarItemDefaults.colors(
-    unselectedIconColor = ColorOnSurface60,
-    unselectedTextColor = ColorOnSurface60,
-    selectedIconColor = ColorHapticAccent, // Orange active icon
-    selectedTextColor = ColorHapticAccent, // Orange active text
-    indicatorColor = ColorHapticAccent.copy(alpha = 0.12f) // Soft orange active background pill
+// ─── Custom Bottom Nav ──────────────────────────────────────
+private data class NavItem(
+    val route: String,
+    val label: String,
+    val selectedIcon: ImageVector,
+    val unselectedIcon: ImageVector,
 )
+
+private val navItems = listOf(
+    NavItem(Routes.LIBRARY,   "Library",   Icons.Default.LibraryMusic, Icons.Outlined.LibraryMusic),
+    NavItem(Routes.ALBUMS,    "Albums",    Icons.Default.Album,         Icons.Outlined.Album),
+    NavItem(Routes.FAVORITES, "Favorites", Icons.Default.Favorite,      Icons.Outlined.Favorite),
+    NavItem(Routes.SETTINGS,  "Settings",  Icons.Default.Settings,      Icons.Outlined.Settings),
+)
+
+@Composable
+private fun HaptiqBottomNav(
+    currentRoute: String?,
+    onNavigate: (String) -> Unit
+) {
+    val haptics = LocalHapticFeedback.current
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .navigationBarsPadding()
+            .padding(horizontal = Spacing.md, vertical = Spacing.sm)
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(ComponentSize.navBarHeight),
+            color = ColorSurfaceContainerHigh,
+            shape = ExpressiveShapes.navPill,
+            shadowElevation = Elevation.high,
+            tonalElevation = 0.dp,
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = Spacing.xs),
+                horizontalArrangement = Arrangement.SpaceAround,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                navItems.forEach { item ->
+                    val isSelected = currentRoute == item.route
+                    HaptiqNavItem(
+                        item = item,
+                        isSelected = isSelected,
+                        onClick = {
+                            if (!isSelected) haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                            onNavigate(item.route)
+                        }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun HaptiqNavItem(
+    item: NavItem,
+    isSelected: Boolean,
+    onClick: () -> Unit
+) {
+    val iconAlpha by animateFloatAsState(
+        targetValue = if (isSelected) 1f else 0.5f,
+        animationSpec = spring(dampingRatio = 0.7f, stiffness = 400f),
+        label = "icon_alpha"
+    )
+    val dotWidth by animateDpAsState(
+        targetValue = if (isSelected) 20.dp else 0.dp,
+        animationSpec = spring(dampingRatio = 0.6f, stiffness = 500f),
+        label = "dot_width"
+    )
+
+    Column(
+        modifier = Modifier
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onClick
+            )
+            .padding(horizontal = Spacing.sm, vertical = Spacing.xs),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(Spacing.xxs)
+    ) {
+        Icon(
+            imageVector = if (isSelected) item.selectedIcon else item.unselectedIcon,
+            contentDescription = item.label,
+            tint = if (isSelected) ColorPrimary else ColorOnSurface60,
+            modifier = Modifier
+                .size(ComponentSize.iconLarge)
+                .alpha(iconAlpha)
+        )
+
+        // Active dot indicator — animates in/out via width
+        Box(
+            modifier = Modifier
+                .width(dotWidth)
+                .height(3.dp)
+                .clip(CircleShape)
+                .background(ColorPrimary)
+        )
+    }
+}

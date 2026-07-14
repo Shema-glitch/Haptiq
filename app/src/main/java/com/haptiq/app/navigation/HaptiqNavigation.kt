@@ -8,6 +8,7 @@ import androidx.compose.runtime.getValue
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.navigation.compose.currentBackStackEntryAsState
 import com.haptiq.app.ui.*
 
@@ -37,9 +38,35 @@ fun HaptiqNavHost(
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
 
-    // Screen transition animations
-    val enterTransition: EnterTransition = fadeIn(animationSpec = tween(300))
-    val exitTransition: ExitTransition = fadeOut(animationSpec = tween(300))
+    // Screen transition animations.
+    // Tabs cross-fade with a barely-there scale settle — sibling screens swap in
+    // place. Destination screens (Player, Studio) get their own directional
+    // transitions on their composable() entries so motion communicates where the
+    // screen came from, not just that it changed.
+    val enterTransition: EnterTransition =
+        fadeIn(animationSpec = tween(260)) +
+            scaleIn(initialScale = 0.97f, animationSpec = tween(260))
+    val exitTransition: ExitTransition = fadeOut(animationSpec = tween(200))
+
+    // Shared mini-player + bottom-nav wiring for the routes that sit inside HaptiqScaffold.
+    // Every simple route needs the same five pieces of transport state, so this wrapper is
+    // the single place that derives them from haptiqState instead of five call sites.
+    @Composable
+    fun HaptiqScaffoldRoute(content: @Composable (PaddingValues) -> Unit) {
+        HaptiqScaffold(
+            navController = navController,
+            currentRoute = currentRoute,
+            currentSong = haptiqState.currentSong,
+            isPlaying = haptiqState.isPlaying,
+            playbackProgress = haptiqState.playbackProgress,
+            hapticActive = haptiqState.hapticActive,
+            onTogglePlayPause = { haptiqViewModel.handleAction(HaptiqUiAction.TogglePlayPause) },
+            onNextClicked = { haptiqViewModel.handleAction(HaptiqUiAction.PlayNext) },
+            onPrevClicked = { haptiqViewModel.handleAction(HaptiqUiAction.PlayPrevious) },
+            onMiniPlayerExpanded = { navController.navigate(Routes.PLAYER) },
+            content = content
+        )
+    }
 
     NavHost(
         navController = navController,
@@ -75,26 +102,7 @@ fun HaptiqNavHost(
         }
 
         composable(Routes.LIBRARY) {
-            HaptiqScaffold(
-                navController = navController,
-                currentRoute = currentRoute,
-                currentSong = haptiqState.currentSong,
-                isPlaying = haptiqState.isPlaying,
-                playbackProgress = haptiqState.playbackProgress,
-                hapticActive = haptiqState.hapticActive,
-                onTogglePlayPause = {
-                    haptiqViewModel.handleAction(HaptiqUiAction.TogglePlayPause)
-                },
-                onNextClicked = {
-                    haptiqViewModel.handleAction(HaptiqUiAction.PlayNext)
-                },
-                onPrevClicked = {
-                    haptiqViewModel.handleAction(HaptiqUiAction.PlayPrevious)
-                },
-                onMiniPlayerExpanded = {
-                    navController.navigate(Routes.PLAYER)
-                }
-            ) { innerPadding ->
+            HaptiqScaffoldRoute { innerPadding ->
                 LibraryScreen(
                     state = haptiqState,
                     innerPadding = innerPadding,
@@ -118,7 +126,19 @@ fun HaptiqNavHost(
             }
         }
 
-        composable(Routes.PLAYER) {
+        composable(
+            Routes.PLAYER,
+            // Now Playing behaves like a sheet: rises from the bottom edge over the
+            // list it was launched from, and sinks back down on dismiss.
+            enterTransition = {
+                slideInVertically(animationSpec = tween(340)) { it } + fadeIn(tween(340))
+            },
+            exitTransition = { fadeOut(tween(180)) },
+            popEnterTransition = { fadeIn(tween(220)) },
+            popExitTransition = {
+                slideOutVertically(animationSpec = tween(280)) { it } + fadeOut(tween(280))
+            }
+        ) {
             PlayerScreen(
                 state = haptiqState,
                 onBackClicked = {
@@ -160,7 +180,19 @@ fun HaptiqNavHost(
             )
         }
 
-        composable(Routes.HAPTIC_STUDIO) {
+        composable(
+            Routes.HAPTIC_STUDIO,
+            // The Studio is a drill-in detail of the Player — slide in from the
+            // trailing edge, back out the same way.
+            enterTransition = {
+                slideInHorizontally(animationSpec = tween(300)) { it } + fadeIn(tween(300))
+            },
+            exitTransition = { fadeOut(tween(180)) },
+            popEnterTransition = { fadeIn(tween(220)) },
+            popExitTransition = {
+                slideOutHorizontally(animationSpec = tween(260)) { it } + fadeOut(tween(260))
+            }
+        ) {
             HapticStudioScreen(
                 state = haptiqState,
                 tuning = hapticTuning,
@@ -183,18 +215,7 @@ fun HaptiqNavHost(
         }
 
         composable(Routes.ALBUMS) {
-            HaptiqScaffold(
-                navController = navController,
-                currentRoute = currentRoute,
-                currentSong = haptiqState.currentSong,
-                isPlaying = haptiqState.isPlaying,
-                playbackProgress = haptiqState.playbackProgress,
-                hapticActive = haptiqState.hapticActive,
-                onTogglePlayPause = { haptiqViewModel.handleAction(HaptiqUiAction.TogglePlayPause) },
-                onNextClicked = { haptiqViewModel.handleAction(HaptiqUiAction.PlayNext) },
-                onPrevClicked = { haptiqViewModel.handleAction(HaptiqUiAction.PlayPrevious) },
-                onMiniPlayerExpanded = { navController.navigate(Routes.PLAYER) }
-            ) { innerPadding ->
+            HaptiqScaffoldRoute { innerPadding ->
                 AlbumsScreen(
                     state = haptiqState,
                     onSongSelected = { list, index ->
@@ -206,18 +227,7 @@ fun HaptiqNavHost(
         }
 
         composable(Routes.FAVORITES) {
-            HaptiqScaffold(
-                navController = navController,
-                currentRoute = currentRoute,
-                currentSong = haptiqState.currentSong,
-                isPlaying = haptiqState.isPlaying,
-                playbackProgress = haptiqState.playbackProgress,
-                hapticActive = haptiqState.hapticActive,
-                onTogglePlayPause = { haptiqViewModel.handleAction(HaptiqUiAction.TogglePlayPause) },
-                onNextClicked = { haptiqViewModel.handleAction(HaptiqUiAction.PlayNext) },
-                onPrevClicked = { haptiqViewModel.handleAction(HaptiqUiAction.PlayPrevious) },
-                onMiniPlayerExpanded = { navController.navigate(Routes.PLAYER) }
-            ) { innerPadding ->
+            HaptiqScaffoldRoute { innerPadding ->
                 FavoritesScreen(
                     state = haptiqState,
                     onSongSelected = { list, index ->
@@ -232,26 +242,7 @@ fun HaptiqNavHost(
         }
 
         composable(Routes.SETTINGS) {
-            HaptiqScaffold(
-                navController = navController,
-                currentRoute = currentRoute,
-                currentSong = haptiqState.currentSong,
-                isPlaying = haptiqState.isPlaying,
-                playbackProgress = haptiqState.playbackProgress,
-                hapticActive = haptiqState.hapticActive,
-                onTogglePlayPause = {
-                    haptiqViewModel.handleAction(HaptiqUiAction.TogglePlayPause)
-                },
-                onNextClicked = {
-                    haptiqViewModel.handleAction(HaptiqUiAction.PlayNext)
-                },
-                onPrevClicked = {
-                    haptiqViewModel.handleAction(HaptiqUiAction.PlayPrevious)
-                },
-                onMiniPlayerExpanded = {
-                    navController.navigate(Routes.PLAYER)
-                }
-            ) { innerPadding ->
+            HaptiqScaffoldRoute { innerPadding ->
                 SettingsScreen(
                     state = haptiqState,
                     innerPadding = innerPadding,
@@ -269,26 +260,7 @@ fun HaptiqNavHost(
         }
 
         composable(Routes.CALIBRATION) {
-            HaptiqScaffold(
-                navController = navController,
-                currentRoute = currentRoute,
-                currentSong = haptiqState.currentSong,
-                isPlaying = haptiqState.isPlaying,
-                playbackProgress = haptiqState.playbackProgress,
-                hapticActive = haptiqState.hapticActive,
-                onTogglePlayPause = {
-                    haptiqViewModel.handleAction(HaptiqUiAction.TogglePlayPause)
-                },
-                onNextClicked = {
-                    haptiqViewModel.handleAction(HaptiqUiAction.PlayNext)
-                },
-                onPrevClicked = {
-                    haptiqViewModel.handleAction(HaptiqUiAction.PlayPrevious)
-                },
-                onMiniPlayerExpanded = {
-                    navController.navigate(Routes.PLAYER)
-                }
-            ) { innerPadding ->
+            HaptiqScaffoldRoute { innerPadding ->
                 CalibrationScreen(
                     state = haptiqState,
                     innerPadding = innerPadding,

@@ -8,32 +8,33 @@ import android.media.AudioManager
 import android.os.Build
 import android.os.VibrationEffect
 import android.os.Vibrator
-import android.os.VibratorManager
 import android.util.Log
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import com.haptiq.app.audio.BassVisualizer
 import com.haptiq.app.audio.BassEnergy
-import com.haptiq.app.audio.FftProcessor
 import com.haptiq.app.audio.HapticMapper
 import com.haptiq.app.audio.HapticTuningState
 import com.haptiq.app.playback.HaptiqPlaybackService
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import javax.inject.Inject
+import javax.inject.Singleton
 
-class HaptiqPlayerManager private constructor(private val context: Context) : PlayerManager, AudioManager.OnAudioFocusChangeListener {
+@Singleton
+class HaptiqPlayerManager @Inject constructor(@ApplicationContext private val context: Context) : PlayerManager {
 
     private val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
     private var exoPlayer: ExoPlayer? = null
     private var vibrator: Vibrator? = null
 
     // Audio processing — created once, re-attached on audio session changes
-    private val fftProcessor = FftProcessor()
     private val hapticMapper = HapticMapper()
-    private val bassVisualizer = BassVisualizer(fftProcessor) { bassEnergy ->
+    private val bassVisualizer = BassVisualizer { bassEnergy ->
         onBassEnergyDetected(bassEnergy)
     }
 
@@ -87,13 +88,10 @@ class HaptiqPlayerManager private constructor(private val context: Context) : Pl
     }
 
     private fun initVibrator() {
-        vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            val vibratorManager = context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? VibratorManager
-            vibratorManager?.defaultVibrator
-        } else {
-            @Suppress("DEPRECATION")
-            context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
-        }
+        // Validated acquisition with MTK/Tecno dud-vibrator fallback — the previous
+        // unvalidated VibratorManager path made song haptics silently dead on those
+        // devices while the calibration test pulse (which had the fallback) worked.
+        vibrator = com.haptiq.app.audio.DeviceVibrator.get(context)
     }
 
     private fun initExoPlayer() {
@@ -174,7 +172,8 @@ class HaptiqPlayerManager private constructor(private val context: Context) : Pl
                 // Live-tuned thresholds from the Tuning Dashboard
                 kickThreshold = bassEnergy.kickThreshold,
                 noiseFloorGate = bassEnergy.noiseFloorGate,
-                subDroneThreshold = bassEnergy.subDroneThreshold
+                subDroneThreshold = bassEnergy.subDroneThreshold,
+                bassGain = bassEnergy.bassGain
             )
         }
     }
@@ -235,17 +234,21 @@ class HaptiqPlayerManager private constructor(private val context: Context) : Pl
             _currentTimeText.value = "0:00"
             _remainingTimeText.value = "-${formatTime(song.durationSeconds)}"
 
-            val mediaItem = MediaItem.fromUri(song.audioUrl)
+            val mediaMetadata = androidx.media3.common.MediaMetadata.Builder()
+                .setTitle(song.title)
+                .setArtist(song.artist)
+                .setArtworkUri(android.net.Uri.parse(song.artworkUrl))
+                .build()
+
+            val mediaItem = MediaItem.Builder()
+                .setUri(song.audioUrl)
+                .setMediaMetadata(mediaMetadata)
+                .build()
+            
             player.setMediaItem(mediaItem)
             player.prepare()
-            Log.d("HaptiqPlayer", "Player prepared, requesting audio focus")
-
-            val focusGranted = requestAudioFocus()
-            Log.d("HaptiqPlayer", "Audio focus granted: $focusGranted")
-            if (focusGranted) {
-                player.playWhenReady = true
-                startPlaybackService()
-            }
+            player.playWhenReady = true
+            startPlaybackService()
         } catch (e: Exception) {
             Log.e("HaptiqPlayer", "Error loading song: ${e.message}", e)
         }
@@ -261,12 +264,10 @@ class HaptiqPlayerManager private constructor(private val context: Context) : Pl
     }
 
     private fun resumeMedia() {
-        if (requestAudioFocus()) {
-            exoPlayer?.playWhenReady = true
-            _isPlaying.value = true
-            startProgressUpdate()
-            startPlaybackService()
-        }
+        exoPlayer?.playWhenReady = true
+        _isPlaying.value = true
+        startProgressUpdate()
+        startPlaybackService()
     }
 
     override fun seekTo(progress: Float) {
@@ -356,42 +357,7 @@ class HaptiqPlayerManager private constructor(private val context: Context) : Pl
         return String.format("%d:%02d", mins, secs)
     }
 
-    private fun requestAudioFocus(): Boolean {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val request = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
-                .setAudioAttributes(
-                    AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_MEDIA)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
-                        .build()
-                )
-                .setOnAudioFocusChangeListener(this)
-                .build()
-            audioManager.requestAudioFocus(request) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
-        } else {
-            @Suppress("DEPRECATION")
-            audioManager.requestAudioFocus(
-                this,
-                AudioManager.STREAM_MUSIC,
-                AudioManager.AUDIOFOCUS_GAIN
-            ) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
-        }
-    }
 
-    override fun onAudioFocusChange(focusChange: Int) {
-        when (focusChange) {
-            AudioManager.AUDIOFOCUS_LOSS, AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
-                pauseMedia()
-            }
-            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
-                exoPlayer?.volume = 0.2f
-            }
-            AudioManager.AUDIOFOCUS_GAIN -> {
-                exoPlayer?.volume = 1.0f
-                resumeMedia()
-            }
-        }
-    }
 
     override fun stopPlayback() {
         pauseMedia()
@@ -409,7 +375,6 @@ class HaptiqPlayerManager private constructor(private val context: Context) : Pl
         bassVisualizer.release()
         exoPlayer?.release()
         exoPlayer = null
-        INSTANCE = null
     }
 
     override fun getPlayer(): ExoPlayer? = exoPlayer
@@ -417,26 +382,12 @@ class HaptiqPlayerManager private constructor(private val context: Context) : Pl
     private fun startPlaybackService() {
         try {
             val intent = Intent(context, HaptiqPlaybackService::class.java)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                context.startForegroundService(intent)
-            } else {
-                context.startService(intent)
-            }
+            // Just start the service normally. Since the user is interacting with the app in the foreground,
+            // Android allows this. MediaSessionService will automatically call startForeground() once playback begins,
+            // preventing the 5-second startForeground timeout crash caused by slow buffering.
+            context.startService(intent)
         } catch (e: Exception) {
             Log.e("HaptiqPlayer", "Failed to start HaptiqPlaybackService: ${e.message}")
-        }
-    }
-
-    companion object {
-        @Volatile
-        private var INSTANCE: HaptiqPlayerManager? = null
-
-        fun getInstance(context: Context): HaptiqPlayerManager {
-            return INSTANCE ?: synchronized(this) {
-                val instance = HaptiqPlayerManager(context.applicationContext)
-                INSTANCE = instance
-                instance
-            }
         }
     }
 }

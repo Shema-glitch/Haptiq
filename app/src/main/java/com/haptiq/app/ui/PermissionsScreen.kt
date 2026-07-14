@@ -4,6 +4,8 @@ import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -57,7 +59,7 @@ fun PermissionsScreen(
             .background(ColorBackground)
             .statusBarsPadding()
             .navigationBarsPadding()
-            .padding(24.dp)
+            .padding(Spacing.xl)
             .testTag("permissions_screen"),
         contentAlignment = Alignment.Center
     ) {
@@ -75,21 +77,22 @@ fun PermissionsScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .wrapContentHeight()
-                .border(1.dp, ColorOutlineVariant.copy(alpha = 0.4f), RoundedCornerShape(16.dp)),
+                .border(1.dp, ColorOutlineVariant.copy(alpha = 0.4f), RoundedCornerShape(Radius.lg)),
             colors = CardDefaults.cardColors(containerColor = ColorSurfaceVariant),
-            shape = RoundedCornerShape(16.dp)
+            shape = RoundedCornerShape(Radius.lg)
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(24.dp),
+                    .verticalScroll(rememberScrollState())
+                    .padding(Spacing.xl),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 // Header Icon with pulsing boundary
                 Box(
                     modifier = Modifier
-                        .size(64.dp)
-                        .padding(bottom = 8.dp),
+                        .size(ComponentSize.iconHero)
+                        .padding(bottom = Spacing.xs),
                     contentAlignment = Alignment.Center
                 ) {
                     // Pulsing boundary ring
@@ -112,49 +115,49 @@ fun PermissionsScreen(
                             imageVector = Icons.Default.Vibration,
                             contentDescription = "Haptic icon",
                             tint = ColorHapticAccent,
-                            modifier = Modifier.size(32.dp)
+                            modifier = Modifier.size(ComponentSize.iconXL)
                         )
                     }
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(Spacing.md))
 
-                // Title and Subtitle
+                // Onboarding pitch: say what Haptiq IS before asking for anything.
                 Text(
-                    text = "Permissions Required",
+                    text = "Feel your music",
                     style = MaterialTheme.typography.headlineMedium,
                     color = ColorOnBackground,
                     textAlign = TextAlign.Center
                 )
 
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(Spacing.xs))
 
                 Text(
-                    text = "Haptiq requires access to synchronize high-fidelity vibrations with your music library.",
+                    text = "Haptiq was built for one idea: music you can touch. It listens to the bass in your songs in real time and drives your phone's vibration motor in sync — every kick and drop, in your hand. To do that, it needs two things:",
                     style = MaterialTheme.typography.bodyLarge,
                     color = ColorOnSurfaceVariant,
                     textAlign = TextAlign.Center,
                     lineHeight = 22.sp
                 )
 
-                Spacer(modifier = Modifier.height(24.dp))
+                Spacer(modifier = Modifier.height(Spacing.xl))
 
                 // Specific items
                 PermissionItem(
                     icon = Icons.Default.AudioFile,
-                    title = "Music and Audio",
-                    description = "Required to read and process audio tracks for haptic generation."
+                    title = "Your music library",
+                    description = "To find the songs on this device and analyze their bass while they play."
                 )
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(Spacing.md))
 
                 PermissionItem(
                     icon = Icons.Default.TouchApp,
-                    title = "Haptic Feedback",
-                    description = "Required to control the device's vibration motor for playback."
+                    title = "Audio analysis",
+                    description = "Android treats reading the live audio signal as recording — Haptiq only measures bass energy, nothing is saved or sent anywhere."
                 )
 
-                Spacer(modifier = Modifier.height(32.dp))
+                Spacer(modifier = Modifier.height(Spacing.xxl))
 
                 // Action Buttons
                 // System permission action — uses ColorPrimary, not haptic accent
@@ -162,13 +165,13 @@ fun PermissionsScreen(
                     onClick = onAllowClicked,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(56.dp) // Fix T: increased from 48dp for better touch target
+                        .height(ComponentSize.buttonHeight) // meets accessibility touch-target minimum
                         .testTag("allow_button"),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = ColorPrimary,
                         contentColor = ColorOnPrimary
                     ),
-                    shape = RoundedCornerShape(28.dp)
+                    shape = RoundedCornerShape(Radius.pill)
                 ) {
                     Text(
                         text = "Allow",
@@ -183,7 +186,7 @@ fun PermissionsScreen(
                     onClick = onLaterClicked,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(48.dp)
+                        .height(ComponentSize.touchTarget)
                         .testTag("later_button"),
                     colors = ButtonDefaults.textButtonColors(
                         contentColor = ColorOnSurfaceVariant
@@ -209,8 +212,8 @@ fun PermissionItem(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(ColorSurface, RoundedCornerShape(8.dp))
-            .padding(16.dp),
+            .background(ColorSurface, RoundedCornerShape(Radius.sm))
+            .padding(Spacing.md),
         verticalAlignment = Alignment.Top
     ) {
         Icon(
@@ -218,11 +221,11 @@ fun PermissionItem(
             contentDescription = null,
             tint = ColorPrimary,
             modifier = Modifier
-                .size(24.dp)
+                .size(ComponentSize.iconMedium)
                 .padding(top = 2.dp)
         )
 
-        Spacer(modifier = Modifier.width(16.dp))
+        Spacer(modifier = Modifier.width(Spacing.md))
 
         Column {
             Text(
