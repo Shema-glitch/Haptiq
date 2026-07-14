@@ -26,6 +26,16 @@ class BassVisualizer(
     private var statMaxSub = 0f
     private var statMaxDelta = 0f
 
+    // Adaptive gates: rolling peaks with per-frame exponential decay (~10s memory
+    // at ~19Hz capture). Gates track the music's own energy envelope, so a quiet
+    // ballad and a heavy drop both trigger correctly on any device.
+    private var rollingKickPeak = 0f
+    private var rollingSubPeak = 0f
+    private val peakDecay = 0.994f       // per-frame decay of the rolling peak
+    private val kickGateRatio = 0.62f    // fire kicks above 62% of recent peak
+    private val subGateRatio = 0.80f     // sustain drone above 80% of recent peak
+    private val minSignal = 0.12f        // absolute floor: silence never triggers
+
     /** Live DSP tuning — written from UI thread, read on Visualizer callback thread. */
     @Volatile var tuning = HapticTuningState()
 
@@ -153,6 +163,19 @@ class BassVisualizer(
             statMaxKick = 0f; statMaxSub = 0f; statMaxDelta = 0f
         }
 
+        // ── ADAPTIVE GATES ─────────────────────────────────────────────────
+        // Track rolling peaks of the music's own energy; in adaptive mode the
+        // gates are ratios of those peaks (clamped to a silence floor) instead
+        // of the fixed slider values — self-calibrating per device and genre.
+        rollingKickPeak = maxOf(rawKick, rollingKickPeak * peakDecay)
+        rollingSubPeak = maxOf(tunedSubBass, rollingSubPeak * peakDecay)
+        val effNoiseFloor = if (t.isAdaptiveEnabled)
+            (rollingKickPeak * kickGateRatio).coerceAtLeast(minSignal) else t.noiseFloorGate
+        val effSubDrone = if (t.isAdaptiveEnabled)
+            (rollingSubPeak * subGateRatio).coerceAtLeast(minSignal) else t.subDroneThreshold
+        val effKickDelta = if (t.isAdaptiveEnabled)
+            (rollingKickPeak * 0.08f).coerceAtLeast(0.03f) else t.kickThreshold
+
         // Pass the live tuning thresholds through BassEnergy so HapticMapper
         // can apply the correct gate values without needing its own copy of the state.
         onBassEnergy(
@@ -163,9 +186,9 @@ class BassVisualizer(
                 rawKick = rawKick,
                 spectrum = spectrum,
                 dominantPitch = dominantPitch,
-                kickThreshold = t.kickThreshold,
-                noiseFloorGate = t.noiseFloorGate,
-                subDroneThreshold = t.subDroneThreshold,
+                kickThreshold = effKickDelta,
+                noiseFloorGate = effNoiseFloor,
+                subDroneThreshold = effSubDrone,
                 bassGain = t.bassGain
             )
         )

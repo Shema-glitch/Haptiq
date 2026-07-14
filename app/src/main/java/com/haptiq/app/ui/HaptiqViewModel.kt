@@ -96,6 +96,7 @@ sealed interface HaptiqUiAction {
     data class RemoveFromPlaylist(val playlistId: Long, val songId: String) : HaptiqUiAction
     data class OpenPlaylist(val id: Long) : HaptiqUiAction
     // Haptic Tuning Dashboard
+    data class SetAdaptiveEnabled(val enabled: Boolean) : HaptiqUiAction
     data class SetKickEnabled(val enabled: Boolean) : HaptiqUiAction
     data class SetBassEnabled(val enabled: Boolean) : HaptiqUiAction
     data class SetKickThreshold(val value: Float) : HaptiqUiAction
@@ -365,6 +366,10 @@ class HaptiqViewModel @Inject constructor(
                 refreshDndStatus()
             }
             // ── Haptic Tuning Dashboard ───────────────────────────────────────────
+            is HaptiqUiAction.SetAdaptiveEnabled -> {
+                _hapticTuning.update { it.copy(isAdaptiveEnabled = action.enabled) }
+                playerManager.updateTuning(_hapticTuning.value)
+            }
             is HaptiqUiAction.SetKickEnabled -> {
                 _hapticTuning.update { it.copy(isKickEnabled = action.enabled) }
                 playerManager.updateTuning(_hapticTuning.value)

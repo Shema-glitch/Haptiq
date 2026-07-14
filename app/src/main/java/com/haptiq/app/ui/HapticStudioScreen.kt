@@ -388,6 +388,52 @@ private fun TuningDashboardCard(
                 verticalArrangement = Arrangement.spacedBy(Spacing.lg)
             ) {
 
+                // ── ADAPTIVE MODE ────────────────────────────────────────────
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(Radius.sm))
+                        .background(
+                            if (tuning.isAdaptiveEnabled) ColorHapticAccent.copy(alpha = 0.10f)
+                            else ColorSurfaceVariant.copy(alpha = 0.4f)
+                        )
+                        .padding(Spacing.sm),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.sm)
+                ) {
+                    Icon(
+                        Icons.Default.AutoAwesome,
+                        contentDescription = null,
+                        tint = if (tuning.isAdaptiveEnabled) ColorHapticAccent else ColorOnSurface60,
+                        modifier = Modifier.size(ComponentSize.iconSmall)
+                    )
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            "Adaptive Haptics",
+                            style = MaterialTheme.typography.titleSmall,
+                            color = ColorOnSurface
+                        )
+                        Text(
+                            if (tuning.isAdaptiveEnabled)
+                                "Gates self-calibrate to each song's energy — sliders below are bypassed"
+                            else
+                                "Manual mode — the threshold sliders below are in control",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = ColorOnSurface60
+                        )
+                    }
+                    Switch(
+                        checked = tuning.isAdaptiveEnabled,
+                        onCheckedChange = { onAction(HaptiqUiAction.SetAdaptiveEnabled(it)) },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = ColorSurface,
+                            checkedTrackColor = ColorHapticAccent,
+                            uncheckedThumbColor = ColorOnSurface60,
+                            uncheckedTrackColor = ColorSurfaceVariant
+                        )
+                    )
+                }
+
                 // ── ENGINE MUTES ─────────────────────────────────────────────────────
                 Text(
                     text = "ENGINES",

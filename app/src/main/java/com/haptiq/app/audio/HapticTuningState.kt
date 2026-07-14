@@ -6,6 +6,12 @@ package com.haptiq.app.audio
  * Updated via the Haptic Tuning Dashboard without recompilation.
  */
 data class HapticTuningState(
+    /**
+     * Adaptive mode: gate thresholds continuously self-calibrate to the rolling
+     * peak energy of the current music instead of using the fixed values below.
+     * Fixes per-device/per-genre sensitivity mismatches automatically.
+     */
+    val isAdaptiveEnabled: Boolean = true,
     /** Enable/disable the kick transient engine entirely. */
     val isKickEnabled: Boolean = true,
     /** Enable/disable the sub-bass drone engine entirely. */
