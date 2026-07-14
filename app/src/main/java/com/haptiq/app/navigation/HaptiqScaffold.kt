@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
@@ -105,6 +106,7 @@ private val navItems = listOf(
     NavItem(Routes.LIBRARY,   "Library",   Icons.Default.LibraryMusic, Icons.Outlined.LibraryMusic),
     NavItem(Routes.ALBUMS,    "Albums",    Icons.Default.Album,         Icons.Outlined.Album),
     NavItem(Routes.FAVORITES, "Favorites", Icons.Default.Favorite,      Icons.Outlined.Favorite),
+    NavItem(Routes.PLAYLISTS, "Playlists", Icons.AutoMirrored.Filled.PlaylistPlay, Icons.AutoMirrored.Filled.PlaylistPlay),
     NavItem(Routes.SETTINGS,  "Settings",  Icons.Default.Settings,      Icons.Outlined.Settings),
 )
 

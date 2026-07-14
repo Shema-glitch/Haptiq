@@ -9,6 +9,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material3.*
@@ -39,8 +40,11 @@ fun LibraryScreen(
     onScanDevice: () -> Unit,
     onHapticStudioClicked: () -> Unit,
     onToggleFavorite: (String) -> Unit = {},
-    onSortModeChanged: (SortMode) -> Unit = {}
+    onSortModeChanged: (SortMode) -> Unit = {},
+    onAction: (HaptiqUiAction) -> Unit = {}
 ) {
+    // Which song the add-to-playlist dialog is open for (null = closed)
+    var songForPlaylist by remember { mutableStateOf<Song?>(null) }
     val filteredSongs = remember(state.songs, state.searchQuery, state.sortMode) {
         val matched = if (state.searchQuery.isEmpty()) state.songs
         else state.songs.filter {
@@ -286,7 +290,8 @@ fun LibraryScreen(
                             isPlaying = state.isPlaying && isCurrent,
                             isFavorite = song.id in state.favoriteIds,
                             onClick = { onSongSelected(filteredSongs, index) },
-                            onToggleFavorite = { onToggleFavorite(song.id) }
+                            onToggleFavorite = { onToggleFavorite(song.id) },
+                            onAddToPlaylist = { songForPlaylist = song }
                         )
                     }
                 } else if (state.songs.isEmpty() && !state.isScanning) {
@@ -314,6 +319,15 @@ fun LibraryScreen(
             }
         }
         }
+    }
+
+    songForPlaylist?.let { song ->
+        AddToPlaylistDialog(
+            song = song,
+            playlists = state.playlists,
+            onAction = onAction,
+            onDismiss = { songForPlaylist = null }
+        )
     }
 }
 
@@ -456,7 +470,8 @@ fun TrackRow(
     isPlaying: Boolean,
     isFavorite: Boolean,
     onClick: () -> Unit,
-    onToggleFavorite: () -> Unit
+    onToggleFavorite: () -> Unit,
+    onAddToPlaylist: (() -> Unit)? = null
 ) {
     val infiniteTransition = rememberInfiniteTransition(label = "bouncing_bars")
 
@@ -507,6 +522,16 @@ fun TrackRow(
                 tint = if (isFavorite) ColorPrimary else ColorOnSurface60,
                 modifier = Modifier.size(ComponentSize.iconMedium)
             )
+        }
+        if (onAddToPlaylist != null) {
+            IconButton(onClick = onAddToPlaylist, modifier = Modifier.size(ComponentSize.touchTarget)) {
+                Icon(
+                    Icons.AutoMirrored.Filled.PlaylistAdd,
+                    "Add to playlist",
+                    tint = ColorOnSurface60,
+                    modifier = Modifier.size(ComponentSize.iconMedium)
+                )
+            }
         }
     }
 }

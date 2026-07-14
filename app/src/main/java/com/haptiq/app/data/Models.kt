@@ -26,6 +26,29 @@ data class SavedPresets(
     val sensitivity: Int
 )
 
+@Entity(tableName = "playlists")
+data class Playlist(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val name: String,
+    val createdAt: Long
+)
+
+@Entity(tableName = "playlist_songs", primaryKeys = ["playlistId", "songId"])
+data class PlaylistSong(
+    val playlistId: Long,
+    val songId: String,
+    val position: Int,
+    val addedAt: Long
+)
+
+/** Query projection: a playlist plus how many songs it holds. */
+data class PlaylistWithCount(
+    val id: Long,
+    val name: String,
+    val createdAt: Long,
+    val songCount: Int
+)
+
 @Entity(tableName = "calibration_profile")
 data class CalibrationProfile(
     @PrimaryKey val deviceModel: String,

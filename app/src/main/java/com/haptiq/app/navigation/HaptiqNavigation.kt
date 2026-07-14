@@ -19,6 +19,8 @@ object Routes {
     const val LIBRARY = "library"
     const val ALBUMS = "albums"
     const val FAVORITES = "favorites"
+    const val PLAYLISTS = "playlists"
+    const val PLAYLIST_DETAIL = "playlist_detail"
     const val PLAYER = "player"
     const val HAPTIC_STUDIO = "haptic_studio"
     const val SETTINGS = "settings"
@@ -141,9 +143,43 @@ fun HaptiqNavHost(
                     },
                     onSortModeChanged = { mode ->
                         haptiqViewModel.handleAction(HaptiqUiAction.SetSortMode(mode))
+                    },
+                    onAction = { haptiqViewModel.handleAction(it) }
+                )
+            }
+        }
+
+        composable(Routes.PLAYLISTS) {
+            HaptiqScaffoldRoute(subtitle = "Playlists") { _ ->
+                PlaylistsScreen(
+                    state = haptiqState,
+                    onAction = { haptiqViewModel.handleAction(it) },
+                    onPlaylistOpened = { id ->
+                        haptiqViewModel.handleAction(HaptiqUiAction.OpenPlaylist(id))
+                        navController.navigate(Routes.PLAYLIST_DETAIL)
                     }
                 )
             }
+        }
+
+        composable(
+            Routes.PLAYLIST_DETAIL,
+            enterTransition = {
+                slideInHorizontally(animationSpec = tween(300)) { it } + fadeIn(tween(300))
+            },
+            popExitTransition = {
+                slideOutHorizontally(animationSpec = tween(260)) { it } + fadeOut(tween(260))
+            }
+        ) {
+            PlaylistDetailScreen(
+                state = haptiqState,
+                onBack = { navController.popBackStack() },
+                onSongSelected = { list, index ->
+                    haptiqViewModel.handleAction(HaptiqUiAction.SelectSong(list, index))
+                    navController.navigate(Routes.PLAYER)
+                },
+                onAction = { haptiqViewModel.handleAction(it) }
+            )
         }
 
         composable(

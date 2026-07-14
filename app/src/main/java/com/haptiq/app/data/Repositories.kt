@@ -88,6 +88,39 @@ class PresetRepository @Inject constructor(private val haptiqDao: HaptiqDao) {
     }
 }
 
+class PlaylistRepository @Inject constructor(
+    private val haptiqDao: HaptiqDao,
+    private val songRepository: SongRepository
+) {
+    val allPlaylists: Flow<List<PlaylistWithCount>> = haptiqDao.getAllPlaylists()
+
+    /** Songs of a playlist, resolved against the scanned library, in stored order. */
+    fun songsOf(playlistId: Long): Flow<List<Song>> =
+        haptiqDao.getPlaylistSongs(playlistId).map { entries ->
+            entries.mapNotNull { songRepository.getSongById(it.songId) }
+        }
+
+    suspend fun create(name: String): Long =
+        haptiqDao.insertPlaylist(Playlist(name = name.trim(), createdAt = System.currentTimeMillis()))
+
+    suspend fun rename(id: Long, name: String) = haptiqDao.renamePlaylist(id, name.trim())
+
+    suspend fun delete(id: Long) {
+        haptiqDao.clearPlaylistSongs(id)
+        haptiqDao.deletePlaylist(id)
+    }
+
+    suspend fun addSong(playlistId: Long, songId: String) {
+        val position = haptiqDao.playlistSize(playlistId)
+        haptiqDao.insertPlaylistSong(
+            PlaylistSong(playlistId, songId, position, System.currentTimeMillis())
+        )
+    }
+
+    suspend fun removeSong(playlistId: Long, songId: String) =
+        haptiqDao.removePlaylistSong(playlistId, songId)
+}
+
 class CalibrationRepository @Inject constructor(private val haptiqDao: HaptiqDao) {
     fun getCalibration(deviceModel: String): Flow<CalibrationProfile> {
         return haptiqDao.getCalibration(deviceModel).map { saved ->

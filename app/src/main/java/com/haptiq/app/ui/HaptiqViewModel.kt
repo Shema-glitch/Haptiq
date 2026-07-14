@@ -53,7 +53,11 @@ data class HaptiqUiState(
     val isShuffle: Boolean = false,
     val isRepeat: Boolean = false,
     // Favorites
-    val favoriteIds: Set<String> = emptySet()
+    val favoriteIds: Set<String> = emptySet(),
+    // Playlists
+    val playlists: List<PlaylistWithCount> = emptyList(),
+    val activePlaylistId: Long? = null,
+    val activePlaylistSongs: List<Song> = emptyList()
 )
 
 sealed interface HaptiqUiAction {
@@ -84,6 +88,13 @@ sealed interface HaptiqUiAction {
     object RefreshDndStatus : HaptiqUiAction
     // Favorites
     data class ToggleFavorite(val songId: String) : HaptiqUiAction
+    // Playlists
+    data class CreatePlaylist(val name: String, val firstSongId: String? = null) : HaptiqUiAction
+    data class RenamePlaylist(val id: Long, val name: String) : HaptiqUiAction
+    data class DeletePlaylist(val id: Long) : HaptiqUiAction
+    data class AddToPlaylist(val playlistId: Long, val songId: String) : HaptiqUiAction
+    data class RemoveFromPlaylist(val playlistId: Long, val songId: String) : HaptiqUiAction
+    data class OpenPlaylist(val id: Long) : HaptiqUiAction
     // Haptic Tuning Dashboard
     data class SetKickEnabled(val enabled: Boolean) : HaptiqUiAction
     data class SetBassEnabled(val enabled: Boolean) : HaptiqUiAction
@@ -103,8 +114,12 @@ class HaptiqViewModel @Inject constructor(
     private val recentSongRepository: RecentSongRepository,
     private val presetRepository: PresetRepository,
     private val calibrationRepository: CalibrationRepository,
+    private val playlistRepository: PlaylistRepository,
     private val playerManager: PlayerManager
 ) : ViewModel() {
+
+    /** Drives which playlist's songs are collected into activePlaylistSongs. */
+    private val activePlaylistId = MutableStateFlow<Long?>(null)
 
     private val _uiState = MutableStateFlow(HaptiqUiState())
     val uiState: StateFlow<HaptiqUiState> = _uiState.asStateFlow()
@@ -142,6 +157,16 @@ class HaptiqViewModel @Inject constructor(
         playerManager.intensity.collectIntoState { state, intensity -> state.copy(intensity = intensity) }
         playerManager.batterySaverEnabled.collectIntoState { state, enabled -> state.copy(batterySaverEnabled = enabled) }
         playerManager.sleepTimerMinutes.collectIntoState { state, mins -> state.copy(sleepTimerMinutes = mins) }
+        playlistRepository.allPlaylists.collectIntoState { state, lists -> state.copy(playlists = lists) }
+
+        // Songs of whichever playlist is open — swaps subscriptions when it changes.
+        viewModelScope.launch {
+            activePlaylistId.flatMapLatest { id ->
+                if (id == null) flowOf(emptyList()) else playlistRepository.songsOf(id)
+            }.collect { songs ->
+                _uiState.update { it.copy(activePlaylistSongs = songs) }
+            }
+        }
         playerManager.visualizerBands.collectIntoState { state, bands -> state.copy(visualizerBands = bands) }
 
         // Has a side effect (recording history) beyond the state copy, so it stays its own launch.
@@ -276,6 +301,31 @@ class HaptiqViewModel @Inject constructor(
             }
             is HaptiqUiAction.SetSleepTimer -> {
                 playerManager.setSleepTimer(action.minutes)
+            }
+            // ── Playlists ─────────────────────────────────────────
+            is HaptiqUiAction.CreatePlaylist -> {
+                if (action.name.isNotBlank()) viewModelScope.launch {
+                    val id = playlistRepository.create(action.name)
+                    action.firstSongId?.let { playlistRepository.addSong(id, it) }
+                }
+            }
+            is HaptiqUiAction.RenamePlaylist -> {
+                if (action.name.isNotBlank()) viewModelScope.launch {
+                    playlistRepository.rename(action.id, action.name)
+                }
+            }
+            is HaptiqUiAction.DeletePlaylist -> {
+                viewModelScope.launch { playlistRepository.delete(action.id) }
+            }
+            is HaptiqUiAction.AddToPlaylist -> {
+                viewModelScope.launch { playlistRepository.addSong(action.playlistId, action.songId) }
+            }
+            is HaptiqUiAction.RemoveFromPlaylist -> {
+                viewModelScope.launch { playlistRepository.removeSong(action.playlistId, action.songId) }
+            }
+            is HaptiqUiAction.OpenPlaylist -> {
+                activePlaylistId.value = action.id
+                _uiState.update { it.copy(activePlaylistId = action.id) }
             }
             // Calibration wizard steps
             is HaptiqUiAction.RunTestPulse -> {

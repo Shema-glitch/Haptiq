@@ -9,9 +9,11 @@ import androidx.room.RoomDatabase
     entities = [
         RecentSongs::class,
         SavedPresets::class,
-        CalibrationProfile::class
+        CalibrationProfile::class,
+        Playlist::class,
+        PlaylistSong::class
     ],
-    version = 3,
+    version = 4,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {

@@ -28,4 +28,36 @@ interface HaptiqDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertCalibration(calibration: CalibrationProfile)
+
+    // ── Playlists ────────────────────────────────────────────
+    @Query(
+        """SELECT p.id, p.name, p.createdAt, COUNT(ps.songId) AS songCount
+           FROM playlists p LEFT JOIN playlist_songs ps ON ps.playlistId = p.id
+           GROUP BY p.id ORDER BY p.createdAt DESC"""
+    )
+    fun getAllPlaylists(): Flow<List<PlaylistWithCount>>
+
+    @Query("SELECT * FROM playlist_songs WHERE playlistId = :playlistId ORDER BY position ASC")
+    fun getPlaylistSongs(playlistId: Long): Flow<List<PlaylistSong>>
+
+    @Insert
+    suspend fun insertPlaylist(playlist: Playlist): Long
+
+    @Query("UPDATE playlists SET name = :name WHERE id = :id")
+    suspend fun renamePlaylist(id: Long, name: String)
+
+    @Query("DELETE FROM playlists WHERE id = :id")
+    suspend fun deletePlaylist(id: Long)
+
+    @Query("DELETE FROM playlist_songs WHERE playlistId = :playlistId")
+    suspend fun clearPlaylistSongs(playlistId: Long)
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertPlaylistSong(entry: PlaylistSong)
+
+    @Query("DELETE FROM playlist_songs WHERE playlistId = :playlistId AND songId = :songId")
+    suspend fun removePlaylistSong(playlistId: Long, songId: String)
+
+    @Query("SELECT COUNT(*) FROM playlist_songs WHERE playlistId = :playlistId")
+    suspend fun playlistSize(playlistId: Long): Int
 }
