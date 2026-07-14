@@ -95,7 +95,8 @@ private fun AlbumGridCard(
                 contentDescription = "$artist artwork",
                 modifier = Modifier.fillMaxSize(),
                 iconSize = ComponentSize.iconXXL,
-                cornerRadius = Radius.md
+                cornerRadius = Radius.md,
+                fallbackLabel = artist
             )
         }
         Spacer(Modifier.height(Spacing.xs))

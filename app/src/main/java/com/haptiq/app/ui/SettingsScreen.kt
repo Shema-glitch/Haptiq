@@ -73,6 +73,22 @@ fun SettingsScreen(
 
                 HorizontalDivider(color = ColorOutlineVariant.copy(alpha = 0.2f), thickness = 1.dp)
 
+                // Sleep timer — tap cycles Off → 15 → 30 → 60 → Off
+                SettingsRow(
+                    icon = Icons.Default.Bedtime,
+                    iconColor = ColorHapticAccent,
+                    title = "Sleep Timer",
+                    subtitle = if (state.sleepTimerMinutes > 0) "Stops in ${state.sleepTimerMinutes} min" else "Off",
+                    onClick = {
+                        val next = when (state.sleepTimerMinutes) {
+                            0 -> 15; 15 -> 30; 30 -> 60; else -> 0
+                        }
+                        onAction(HaptiqUiAction.SetSleepTimer(next))
+                    }
+                )
+
+                HorizontalDivider(color = ColorOutlineVariant.copy(alpha = 0.2f), thickness = 1.dp)
+
                 // D4: Calibration row — navigates to Routes.CALIBRATION
                 SettingsRow(
                     icon = Icons.Default.Vibration,

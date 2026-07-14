@@ -16,8 +16,15 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+enum class SortMode(val label: String) {
+    TITLE("Title A–Z"),
+    ARTIST("Artist A–Z"),
+    DURATION("Longest first")
+}
+
 data class HaptiqUiState(
     val songs: List<Song> = emptyList(),
+    val sortMode: SortMode = SortMode.TITLE,
     val recentSongs: List<Song> = emptyList(),
     val searchQuery: String = "",
     val currentSong: Song? = null,
@@ -29,6 +36,7 @@ data class HaptiqUiState(
     val currentPresetId: String = "deep_bass",
     val intensity: Int = 75,
     val batterySaverEnabled: Boolean = false,
+    val sleepTimerMinutes: Int = 0,
     val calibrationMultiplier: Float = 1.0f,
     val visualizerBands: FloatArray = FloatArray(10) { 0.2f },
     // Calibration Wizard states
@@ -50,6 +58,7 @@ data class HaptiqUiState(
 
 sealed interface HaptiqUiAction {
     data class Search(val query: String) : HaptiqUiAction
+    data class SetSortMode(val mode: SortMode) : HaptiqUiAction
     data class SelectSong(val songs: List<Song>, val index: Int) : HaptiqUiAction
     object TogglePlayPause : HaptiqUiAction
     data class Seek(val progress: Float) : HaptiqUiAction
@@ -61,6 +70,7 @@ sealed interface HaptiqUiAction {
     data class ChangePreset(val presetId: String) : HaptiqUiAction
     data class ChangeIntensity(val intensity: Int) : HaptiqUiAction
     data class SetBatterySaver(val enabled: Boolean) : HaptiqUiAction
+    data class SetSleepTimer(val minutes: Int) : HaptiqUiAction
     // Calibration
     object RunTestPulse : HaptiqUiAction
     data class SelectCalibrationStrength(val strength: String) : HaptiqUiAction
@@ -131,6 +141,7 @@ class HaptiqViewModel @Inject constructor(
         playerManager.currentPresetId.collectIntoState { state, preset -> state.copy(currentPresetId = preset) }
         playerManager.intensity.collectIntoState { state, intensity -> state.copy(intensity = intensity) }
         playerManager.batterySaverEnabled.collectIntoState { state, enabled -> state.copy(batterySaverEnabled = enabled) }
+        playerManager.sleepTimerMinutes.collectIntoState { state, mins -> state.copy(sleepTimerMinutes = mins) }
         playerManager.visualizerBands.collectIntoState { state, bands -> state.copy(visualizerBands = bands) }
 
         // Has a side effect (recording history) beyond the state copy, so it stays its own launch.
@@ -207,6 +218,9 @@ class HaptiqViewModel @Inject constructor(
             is HaptiqUiAction.Search -> {
                 _uiState.update { it.copy(searchQuery = action.query) }
             }
+            is HaptiqUiAction.SetSortMode -> {
+                _uiState.update { it.copy(sortMode = action.mode) }
+            }
             is HaptiqUiAction.SelectSong -> {
                 playerManager.setSongs(action.songs, action.index)
             }
@@ -259,6 +273,9 @@ class HaptiqViewModel @Inject constructor(
             }
             is HaptiqUiAction.SetBatterySaver -> {
                 playerManager.setBatterySaver(action.enabled)
+            }
+            is HaptiqUiAction.SetSleepTimer -> {
+                playerManager.setSleepTimer(action.minutes)
             }
             // Calibration wizard steps
             is HaptiqUiAction.RunTestPulse -> {

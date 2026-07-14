@@ -38,15 +38,22 @@ fun LibraryScreen(
     onSearchQueryChanged: (String) -> Unit,
     onScanDevice: () -> Unit,
     onHapticStudioClicked: () -> Unit,
-    onToggleFavorite: (String) -> Unit = {}
+    onToggleFavorite: (String) -> Unit = {},
+    onSortModeChanged: (SortMode) -> Unit = {}
 ) {
-    val filteredSongs = remember(state.songs, state.searchQuery) {
-        if (state.searchQuery.isEmpty()) state.songs
+    val filteredSongs = remember(state.songs, state.searchQuery, state.sortMode) {
+        val matched = if (state.searchQuery.isEmpty()) state.songs
         else state.songs.filter {
             it.title.contains(state.searchQuery, ignoreCase = true) ||
                     it.artist.contains(state.searchQuery, ignoreCase = true)
         }
+        when (state.sortMode) {
+            SortMode.TITLE -> matched.sortedBy { it.title.lowercase() }
+            SortMode.ARTIST -> matched.sortedBy { it.artist.lowercase() }
+            SortMode.DURATION -> matched.sortedByDescending { it.durationSeconds }
+        }
     }
+    var showSortMenu by remember { mutableStateOf(false) }
 
     // Show skeleton while scanning and no songs loaded yet
     val showSkeleton = state.isScanning && state.songs.isEmpty()
@@ -67,6 +74,35 @@ fun LibraryScreen(
             modifier = Modifier.padding(horizontal = Layout.screenHorizontalPadding),
             trailing = {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+                // Sort menu
+                Box {
+                    IconButton(
+                        onClick = { showSortMenu = true },
+                        modifier = Modifier.background(ColorSurface, CircleShape)
+                    ) {
+                        Icon(Icons.Default.SwapVert, contentDescription = "Sort tracks", tint = ColorOnSurface)
+                    }
+                    DropdownMenu(
+                        expanded = showSortMenu,
+                        onDismissRequest = { showSortMenu = false },
+                        containerColor = ColorSurfaceVariant
+                    ) {
+                        SortMode.entries.forEach { mode ->
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        mode.label,
+                                        color = if (mode == state.sortMode) ColorPrimary else ColorOnSurface
+                                    )
+                                },
+                                onClick = {
+                                    onSortModeChanged(mode)
+                                    showSortMenu = false
+                                }
+                            )
+                        }
+                    }
+                }
                 // Search toggle — collapsing search to an icon keeps the default
                 // screen calm; the field slides open only when asked for.
                 IconButton(

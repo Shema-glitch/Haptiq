@@ -16,9 +16,16 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.ui.graphics.Brush
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import com.haptiq.app.ui.theme.ColorHapticAccent
+import com.haptiq.app.ui.theme.ColorOnSurface
 import com.haptiq.app.ui.theme.ColorOnSurface60
+import com.haptiq.app.ui.theme.ColorPrimary
+import com.haptiq.app.ui.theme.ColorPrimaryContainer
 import com.haptiq.app.ui.theme.ColorSurfaceVariant
 
 /**
@@ -35,7 +42,10 @@ fun ArtworkImage(
     modifier: Modifier = Modifier,
     contentScale: ContentScale = ContentScale.Crop,
     iconSize: Dp = 24.dp,
-    cornerRadius: Dp = 0.dp
+    cornerRadius: Dp = 0.dp,
+    /** When set, missing artwork shows this text's first letter on a warm
+     *  gradient instead of the generic music-note tile. */
+    fallbackLabel: String? = null
 ) {
     val context = LocalContext.current
 
@@ -50,19 +60,39 @@ fun ArtworkImage(
             .build()
     } else null
 
+    val letter = fallbackLabel?.trimStart { !it.isLetterOrDigit() }?.firstOrNull()?.uppercaseChar()
+
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(cornerRadius))
-            .background(ColorSurfaceVariant),
+            .background(
+                if (letter != null) {
+                    // Deterministic warm gradient per label so the same artist
+                    // always gets the same tile — reads as identity, not error.
+                    val hues = listOf(ColorPrimary, ColorHapticAccent, ColorPrimaryContainer)
+                    val base = hues[(letter.code) % hues.size]
+                    Brush.verticalGradient(listOf(base.copy(alpha = 0.75f), base.copy(alpha = 0.35f)))
+                } else {
+                    Brush.verticalGradient(listOf(ColorSurfaceVariant, ColorSurfaceVariant))
+                }
+            ),
         contentAlignment = Alignment.Center
     ) {
-        // Placeholder icon — always present behind the image
-        Icon(
-            imageVector = Icons.Default.MusicNote,
-            contentDescription = null,
-            tint = ColorOnSurface60,
-            modifier = Modifier.size(iconSize)
-        )
+        // Placeholder — letter tile when a label is known, icon otherwise
+        if (letter != null) {
+            Text(
+                text = letter.toString(),
+                style = MaterialTheme.typography.headlineMedium,
+                color = ColorOnSurface
+            )
+        } else {
+            Icon(
+                imageVector = Icons.Default.MusicNote,
+                contentDescription = null,
+                tint = ColorOnSurface60,
+                modifier = Modifier.size(iconSize)
+            )
+        }
 
         // AsyncImage overlays the placeholder once loaded; null model shows placeholder only
         if (imageRequest != null) {

@@ -138,6 +138,9 @@ fun HaptiqNavHost(
                     },
                     onToggleFavorite = { songId ->
                         haptiqViewModel.handleAction(HaptiqUiAction.ToggleFavorite(songId))
+                    },
+                    onSortModeChanged = { mode ->
+                        haptiqViewModel.handleAction(HaptiqUiAction.SetSortMode(mode))
                     }
                 )
             }

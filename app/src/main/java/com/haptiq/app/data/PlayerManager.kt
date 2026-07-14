@@ -15,12 +15,15 @@ interface PlayerManager {
     val intensity: StateFlow<Int>
     val batterySaverEnabled: StateFlow<Boolean>
     val visualizerBands: StateFlow<FloatArray>
+    /** Remaining sleep-timer allocation in minutes; 0 = off. */
+    val sleepTimerMinutes: StateFlow<Int>
 
     fun setSongs(songs: List<Song>, startIndex: Int)
     fun setHapticActive(active: Boolean)
     fun setPreset(presetId: String)
     fun updateIntensity(value: Int)
     fun setBatterySaver(enabled: Boolean)
+    fun setSleepTimer(minutes: Int)
     fun togglePlayPause()
     fun seekTo(progress: Float)
     fun playNext()

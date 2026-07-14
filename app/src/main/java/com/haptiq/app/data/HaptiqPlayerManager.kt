@@ -70,8 +70,12 @@ class HaptiqPlayerManager @Inject constructor(@ApplicationContext private val co
     private val _visualizerBands = MutableStateFlow(FloatArray(10) { 0.2f })
     override val visualizerBands: StateFlow<FloatArray> = _visualizerBands.asStateFlow()
 
+    private val _sleepTimerMinutes = MutableStateFlow(0)
+    override val sleepTimerMinutes: StateFlow<Int> = _sleepTimerMinutes.asStateFlow()
+
     private val playerScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private var progressJob: Job? = null
+    private var sleepJob: Job? = null
 
     // Queue management
     private var songsQueue = mutableListOf<Song>()
@@ -207,6 +211,19 @@ class HaptiqPlayerManager @Inject constructor(@ApplicationContext private val co
 
     override fun setBatterySaver(enabled: Boolean) {
         _batterySaverEnabled.value = enabled
+    }
+
+    override fun setSleepTimer(minutes: Int) {
+        sleepJob?.cancel()
+        _sleepTimerMinutes.value = minutes
+        if (minutes > 0) {
+            sleepJob = playerScope.launch {
+                delay(minutes * 60_000L)
+                pauseMedia()
+                vibrator?.cancel()
+                _sleepTimerMinutes.value = 0
+            }
+        }
     }
 
     override fun updateTuning(state: HapticTuningState) {
