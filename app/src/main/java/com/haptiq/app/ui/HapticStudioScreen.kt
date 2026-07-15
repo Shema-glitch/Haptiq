@@ -17,9 +17,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
@@ -106,14 +106,41 @@ fun HapticStudioScreen(
                         }
                     }
             ) {
-                // Ambient glow behind the bars — only when alive
+                // Ambient glow behind the bars — only when alive. Radial gradient,
+                // not Modifier.blur (blur clips to rectangular bounds → visible box).
+                // Not fixed either: it swells with the music's real energy and
+                // drifts slowly side to side, so the hero reads as breathing.
                 if (state.hapticActive) {
+                    val energy = state.visualizerBands.average().toFloat()
+                    val glowScale by animateFloatAsState(
+                        targetValue = if (state.isPlaying) 0.85f + energy * 0.7f else 0.85f,
+                        animationSpec = HaptiqMotion.standardSpring(),
+                        label = "studio_glow_scale"
+                    )
+                    val glowDrift = rememberInfiniteTransition(label = "studio_glow_drift")
+                    val driftX by glowDrift.animateFloat(
+                        initialValue = -32f,
+                        targetValue = 32f,
+                        animationSpec = infiniteRepeatable(
+                            tween(5200, easing = FastOutSlowInEasing),
+                            RepeatMode.Reverse
+                        ),
+                        label = "studio_glow_drift_x"
+                    )
                     Box(
                         modifier = Modifier
-                            .size(160.dp)
+                            .size(220.dp)
                             .align(Alignment.Center)
-                            .blur(48.dp)
-                            .background(ColorHapticAccent.copy(alpha = 0.12f), CircleShape)
+                            .offset(x = driftX.dp)
+                            .scale(glowScale)
+                            .background(
+                                Brush.radialGradient(
+                                    colors = listOf(
+                                        ColorHapticAccent.copy(alpha = 0.14f),
+                                        Color.Transparent
+                                    )
+                                )
+                            )
                     )
                 }
                 // Frequency bars

@@ -282,17 +282,21 @@ class HaptiqViewModel @Inject constructor(
     /**
      * Check if Do Not Disturb is active.
      * DND suppresses vibration, so haptics won't work.
+     *
+     * Both signals must agree before we warn. Some OEM ROMs (observed on Tecno
+     * Camon CLA5 / HiOS) report currentInterruptionFilter != ALL while
+     * zen_mode is 0 — i.e. DND is actually off. A false "DND is blocking
+     * haptics" banner that never goes away costs more trust than a missed one.
      */
     fun refreshDndStatus() {
         val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        val isDnd = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            notificationManager.currentInterruptionFilter != NotificationManager.INTERRUPTION_FILTER_ALL
-        } else {
-            @Suppress("DEPRECATION")
-            val zenMode = Settings.Global.getInt(context.contentResolver, "zen_mode", 0)
-            zenMode != 0
-        }
-        _uiState.update { it.copy(isDndActive = isDnd) }
+        val filter = notificationManager.currentInterruptionFilter
+        val filterSaysDnd = filter != NotificationManager.INTERRUPTION_FILTER_ALL &&
+            filter != NotificationManager.INTERRUPTION_FILTER_UNKNOWN
+        val zenSaysDnd = runCatching {
+            Settings.Global.getInt(context.contentResolver, "zen_mode", 0) != 0
+        }.getOrDefault(true) // unreadable setting → fall back to the filter alone
+        _uiState.update { it.copy(isDndActive = filterSaysDnd && zenSaysDnd) }
     }
 
     fun handleAction(action: HaptiqUiAction) {

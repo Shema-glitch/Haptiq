@@ -17,8 +17,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
@@ -63,13 +63,18 @@ fun PermissionsScreen(
             .testTag("permissions_screen"),
         contentAlignment = Alignment.Center
     ) {
-        // Ambient background glow
+        // Ambient background glow — radial gradient fading to transparent.
+        // (Not Modifier.blur: its default edge treatment clips to rectangular
+        // bounds, which rendered as a visible box on-device.)
         Box(
             modifier = Modifier
                 .size(300.dp)
-                .blur(60.dp)
-                .background(ColorHapticAccent.copy(alpha = 0.08f), CircleShape)
                 .align(Alignment.TopEnd)
+                .background(
+                    Brush.radialGradient(
+                        colors = listOf(ColorHapticAccent.copy(alpha = 0.10f), Color.Transparent)
+                    )
+                )
         )
 
         // Card Container

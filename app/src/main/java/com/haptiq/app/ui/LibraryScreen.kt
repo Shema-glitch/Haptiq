@@ -2,12 +2,16 @@ package com.haptiq.app.ui
 
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.ui.layout.onSizeChanged
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -20,7 +24,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import android.content.Context
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -219,12 +225,56 @@ fun LibraryScreen(
             Spacer(Modifier.height(Layout.sectionGap))
 
             // ─── Scrollable Content ──────────────────────────────
+            val listState = rememberLazyListState()
+            val scrollScope = rememberCoroutineScope()
+            val showRecents = state.searchQuery.isEmpty() && state.recentSongs.isNotEmpty()
+            // Items that precede the track rows in the LazyColumn — the alphabet
+            // rail needs this offset to land scrolls on the right song.
+            val headerItemCount = (if (showRecents) 3 else 0) +
+                (if (filteredSongs.isNotEmpty()) 1 else 0)
+            // First track-list index for each leading letter (A–Z, '#' for digits).
+            // LinkedHashMap preserves list order, so keys come out already sorted.
+            val letterIndexMap = remember(filteredSongs, state.sortMode) {
+                val map = linkedMapOf<Char, Int>()
+                filteredSongs.forEachIndexed { index, song ->
+                    val source = if (state.sortMode == SortMode.ARTIST) song.artist else song.title
+                    val key = source.firstOrNull { !it.isWhitespace() }
+                        ?.uppercaseChar()?.let { if (it.isLetter()) it else '#' } ?: '#'
+                    if (key !in map) map[key] = index
+                }
+                map
+            }
+            val showRail = filteredSongs.size > 50 && state.sortMode != SortMode.DURATION
+
+            // ─── One-time swipe-to-queue discovery nudge ─────────
+            // The gesture is invisible otherwise. Once, ever: the first row slides
+            // open twice to peek the amber "Play next" layer, then the flag is set.
+            val hintContext = androidx.compose.ui.platform.LocalContext.current
+            val hintDensity = androidx.compose.ui.platform.LocalDensity.current
+            val swipeHintOffset = remember { Animatable(0f) }
+            LaunchedEffect(filteredSongs.isNotEmpty()) {
+                if (filteredSongs.isEmpty()) return@LaunchedEffect
+                val prefs = hintContext.getSharedPreferences("haptiq_prefs", Context.MODE_PRIVATE)
+                if (prefs.getBoolean("swipe_queue_hint_shown", false)) return@LaunchedEffect
+                kotlinx.coroutines.delay(1500)
+                val peekPx = with(hintDensity) { 32.dp.toPx() }
+                repeat(2) {
+                    swipeHintOffset.animateTo(peekPx, tween(400, easing = FastOutSlowInEasing))
+                    swipeHintOffset.animateTo(0f, HaptiqMotion.standardSpring())
+                }
+                prefs.edit().putBoolean("swipe_queue_hint_shown", true).apply()
+            }
+
+            Box(Modifier.fillMaxSize()) {
             LazyColumn(
+                state = listState,
                 modifier = Modifier.fillMaxSize(),
                 verticalArrangement = Arrangement.spacedBy(Spacing.xs)
             ) {
-                // Recently Played (only when not searching)
-                if (state.searchQuery.isEmpty() && state.songs.isNotEmpty()) {
+                // Recently Played — real play history from Room, newest first.
+                // (Previously rendered state.songs.take(5): the first five scan
+                // results, which had nothing to do with what was played.)
+                if (showRecents) {
                     item {
                         Text(
                             "Recently Played",
@@ -239,8 +289,8 @@ fun LibraryScreen(
                             horizontalArrangement = Arrangement.spacedBy(Spacing.md),
                             contentPadding = PaddingValues(bottom = Spacing.xs)
                         ) {
-                            val recents = state.songs.take(5)
-                            itemsIndexed(recents) { _, song ->
+                            val recents = state.recentSongs.take(10)
+                            itemsIndexed(recents, key = { _, song -> song.id }) { _, song ->
                                 val isActive = state.currentSong?.id == song.id
                                 MediaCard(
                                     song = song,
@@ -288,7 +338,12 @@ fun LibraryScreen(
                         val isCurrent = state.currentSong?.id == song.id
                         SwipeToQueueRow(
                             song = song,
-                            onEnqueueNext = { onAction(HaptiqUiAction.EnqueueNext(song)) }
+                            onEnqueueNext = { onAction(HaptiqUiAction.EnqueueNext(song)) },
+                            contentOffsetX = if (index == 0) {
+                                { swipeHintOffset.value }
+                            } else {
+                                { 0f }
+                            }
                         ) {
                             TrackRow(
                                 song = song,
@@ -323,6 +378,24 @@ fun LibraryScreen(
 
                 // Bottom spacer for breathing room above MiniPlayer
                 item { Spacer(Modifier.height(Spacing.xxl)) }
+            }
+
+            // ─── A–Z fast-scroll rail ────────────────────────────
+            // Only for big, alphabetically sorted lists — on duration sort the
+            // letters would be meaningless jump targets.
+            if (showRail) {
+                AlphabetRail(
+                    letters = letterIndexMap.keys.toList(),
+                    onLetterSelected = { letter ->
+                        letterIndexMap[letter]?.let { songIndex ->
+                            scrollScope.launch {
+                                listState.scrollToItem(headerItemCount + songIndex)
+                            }
+                        }
+                    },
+                    modifier = Modifier.align(Alignment.CenterEnd)
+                )
+            }
             }
         }
         }
@@ -543,6 +616,74 @@ fun TrackRow(
     }
 }
 
+// ─── A–Z fast-scroll rail ───────────────────────────────────
+/**
+ * Vertical letter strip for jumping through a long, sorted list. Tap or drag —
+ * each new letter under the finger ticks the haptics and fires [onLetterSelected].
+ * Only letters actually present in the list are shown, so every touch lands.
+ */
+@Composable
+private fun AlphabetRail(
+    letters: List<Char>,
+    onLetterSelected: (Char) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val haptics = androidx.compose.ui.platform.LocalHapticFeedback.current
+    var railHeightPx by remember { mutableStateOf(0) }
+    var activeLetter by remember { mutableStateOf<Char?>(null) }
+
+    fun selectAt(y: Float) {
+        if (railHeightPx == 0 || letters.isEmpty()) return
+        val index = ((y / railHeightPx) * letters.size).toInt().coerceIn(0, letters.size - 1)
+        val letter = letters[index]
+        if (letter != activeLetter) {
+            activeLetter = letter
+            haptics.performHapticFeedback(
+                androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove
+            )
+            onLetterSelected(letter)
+        }
+    }
+
+    Column(
+        modifier = modifier
+            .fillMaxHeight(0.85f)
+            .width(24.dp)
+            .clip(RoundedCornerShape(Radius.pill))
+            .background(ColorSurface.copy(alpha = 0.6f))
+            .onSizeChanged { railHeightPx = it.height }
+            .pointerInput(letters) {
+                detectVerticalDragGestures(
+                    onDragStart = { selectAt(it.y) },
+                    onVerticalDrag = { change, _ -> selectAt(change.position.y) },
+                    onDragEnd = { activeLetter = null },
+                    onDragCancel = { activeLetter = null }
+                )
+            }
+            .pointerInput(letters) {
+                detectTapGestures(
+                    onPress = { offset ->
+                        selectAt(offset.y)
+                        tryAwaitRelease()
+                        activeLetter = null
+                    }
+                )
+            }
+            .padding(vertical = Spacing.xs),
+        verticalArrangement = Arrangement.SpaceEvenly,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        letters.forEach { letter ->
+            Text(
+                text = letter.toString(),
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold,
+                color = if (letter == activeLetter) ColorHapticAccent else ColorOnSurface60
+            )
+        }
+    }
+}
+
 // ─── Swipe-to-Queue wrapper ─────────────────────────────────
 /**
  * Swipe a row from the left edge to enqueue it right after the current song.
@@ -553,6 +694,9 @@ fun TrackRow(
 fun SwipeToQueueRow(
     song: Song,
     onEnqueueNext: () -> Unit,
+    /** Extra X offset (px) for the row content — drives the one-time discovery
+     *  nudge that peeks the "Play next" layer without a real swipe. */
+    contentOffsetX: () -> Float = { 0f },
     content: @Composable () -> Unit
 ) {
     val haptics = androidx.compose.ui.platform.LocalHapticFeedback.current
@@ -591,7 +735,17 @@ fun SwipeToQueueRow(
                 )
             }
         },
-        content = { content() }
+        content = {
+            // Opaque backing is load-bearing: TrackRow's resting background is
+            // transparent, and SwipeToDismissBox always composes backgroundContent
+            // behind the row — without this, "Play next" bleeds through under the
+            // artwork and title. Opaque here keeps it hidden until actually swiped.
+            Box(
+                Modifier
+                    .graphicsLayer { translationX = contentOffsetX() }
+                    .background(ColorBackground)
+            ) { content() }
+        }
     )
 }
 

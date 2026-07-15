@@ -35,10 +35,12 @@ fun SettingsScreen(
     onCalibrationClicked: () -> Unit
 ) {
     var showLicenses by remember { mutableStateOf(false) }
+    // No .padding(innerPadding) here: HaptiqScaffold already consumes it on the
+    // column that hosts this screen. Applying it again doubled the bottom inset
+    // (nav bar + mini player height), leaving a dead cutout under the content.
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(innerPadding)
             .verticalScroll(rememberScrollState())
             .padding(horizontal = Spacing.md)
             .testTag("settings_screen")

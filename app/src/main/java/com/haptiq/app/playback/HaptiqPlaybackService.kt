@@ -54,11 +54,19 @@ class HaptiqPlaybackService : MediaSessionService() {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
 
-        mediaSession = MediaSession.Builder(this, player)
+        val session = MediaSession.Builder(this, player)
             .setSessionActivity(sessionActivity)
             .setCallback(HaptiqSessionCallback())
             .setCustomLayout(listOf(hapticsButton()))
             .build()
+        mediaSession = session
+
+        // REQUIRED for the notification to exist at all: this app's UI drives the
+        // player directly (no MediaController ever connects), so onGetSession is
+        // never called and the service would otherwise hold zero sessions — and a
+        // MediaSessionService only posts/updates the media notification for
+        // sessions it knows about. Register the session explicitly.
+        addSession(session)
     }
 
     /** The one Haptiq-specific control: toggle haptics without opening the app. */

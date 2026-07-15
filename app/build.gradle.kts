@@ -23,8 +23,10 @@ android {
     applicationId = "com.haptiq.app"
     minSdk = 28
     targetSdk = 36
-    versionCode = 1
-    versionName = "1.0"
+    // Versioning convention: every change batch bumps versionName by 0.01
+    // (1.01 → 1.02 → …) and versionCode by 1. Majors reset the minor (2.00).
+    versionCode = 5
+    versionName = "1.04"
     // Public release codename, Android-dessert style: alphabetical, haptic-themed.
     // 1.0 "Aftershock" → next majors continue B, C, D… (Bassline? Crossfade?)
     buildConfigField("String", "RELEASE_CODENAME", "\"Aftershock\"")

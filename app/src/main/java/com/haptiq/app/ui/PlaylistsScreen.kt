@@ -12,6 +12,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PlaylistPlay
 import androidx.compose.material.icons.filled.RemoveCircleOutline
 import androidx.compose.material3.*
@@ -277,7 +278,7 @@ fun PlaylistDetailScreen(
                 Icon(Icons.Default.ArrowBack, "Back", tint = ColorOnSurface)
             }
             Spacer(Modifier.width(Spacing.md))
-            Column {
+            Column(Modifier.weight(1f)) {
                 Text(
                     playlist?.name ?: "Playlist",
                     style = MaterialTheme.typography.titleLarge,
@@ -289,6 +290,25 @@ fun PlaylistDetailScreen(
                     style = MaterialTheme.typography.labelSmall,
                     color = ColorOnSurface60
                 )
+            }
+            // Play the whole playlist as the queue — parity with the
+            // Favorites hero; the single most-wanted action on this screen.
+            if (state.activePlaylistSongs.isNotEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .size(ComponentSize.touchTarget)
+                        .clip(CircleShape)
+                        .background(ColorPrimary)
+                        .clickable { onSongSelected(state.activePlaylistSongs, 0) },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        Icons.Default.PlayArrow,
+                        contentDescription = "Play playlist",
+                        tint = ColorOnPrimary,
+                        modifier = Modifier.size(ComponentSize.iconLarge)
+                    )
+                }
             }
         }
         if (state.activePlaylistSongs.isEmpty()) {
@@ -303,26 +323,33 @@ fun PlaylistDetailScreen(
             LazyColumn(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
                 itemsIndexed(state.activePlaylistSongs, key = { _, s -> s.id }) { index, song ->
                     val isCurrent = state.currentSong?.id == song.id
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(Modifier.weight(1f)) {
-                            TrackRow(
-                                song = song,
-                                isCurrentPlaying = isCurrent,
-                                isPlaying = state.isPlaying && isCurrent,
-                                isFavorite = song.id in state.favoriteIds,
-                                onClick = { onSongSelected(state.activePlaylistSongs, index) },
-                                onToggleFavorite = { onAction(HaptiqUiAction.ToggleFavorite(song.id)) }
-                            )
-                        }
-                        IconButton(
-                            onClick = {
-                                state.activePlaylistId?.let {
-                                    onAction(HaptiqUiAction.RemoveFromPlaylist(it, song.id))
-                                }
-                            },
-                            modifier = Modifier.size(ComponentSize.touchTarget)
-                        ) {
-                            Icon(Icons.Default.RemoveCircleOutline, "Remove from playlist", tint = ColorOnSurface60)
+                    // Same swipe-right-to-queue gesture as the Library list —
+                    // one gesture vocabulary across every track list.
+                    SwipeToQueueRow(
+                        song = song,
+                        onEnqueueNext = { onAction(HaptiqUiAction.EnqueueNext(song)) }
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(Modifier.weight(1f)) {
+                                TrackRow(
+                                    song = song,
+                                    isCurrentPlaying = isCurrent,
+                                    isPlaying = state.isPlaying && isCurrent,
+                                    isFavorite = song.id in state.favoriteIds,
+                                    onClick = { onSongSelected(state.activePlaylistSongs, index) },
+                                    onToggleFavorite = { onAction(HaptiqUiAction.ToggleFavorite(song.id)) }
+                                )
+                            }
+                            IconButton(
+                                onClick = {
+                                    state.activePlaylistId?.let {
+                                        onAction(HaptiqUiAction.RemoveFromPlaylist(it, song.id))
+                                    }
+                                },
+                                modifier = Modifier.size(ComponentSize.touchTarget)
+                            ) {
+                                Icon(Icons.Default.RemoveCircleOutline, "Remove from playlist", tint = ColorOnSurface60)
+                            }
                         }
                     }
                 }

@@ -28,6 +28,7 @@ class MainActivity : ComponentActivity() {
     companion object {
         private const val PREFS_NAME = "haptiq_prefs"
         private const val KEY_PERMISSION_ASKED = "permission_asked"
+        private const val KEY_NOTIF_PERMISSION_ASKED = "notif_permission_asked"
     }
 
     private val requiredPermissions: Array<String>
@@ -83,6 +84,27 @@ class MainActivity : ComponentActivity() {
                     "library"
                 } else {
                     "splash"
+                }
+
+                // Backfill for installs that answered the permission batch BEFORE
+                // POST_NOTIFICATIONS was added to it: permission_asked is already true,
+                // so the batch never runs again and the Media3 playback notification
+                // silently never shows on Android 13+. Ask once, standalone.
+                val notifPermissionLauncher = rememberLauncherForActivityResult(
+                    ActivityResultContracts.RequestPermission()
+                ) { /* Media3 picks the grant up automatically on next playback */ }
+
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && alreadyAsked) {
+                    LaunchedEffect(Unit) {
+                        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                        val notifGranted = ContextCompat.checkSelfPermission(
+                            this@MainActivity, Manifest.permission.POST_NOTIFICATIONS
+                        ) == PackageManager.PERMISSION_GRANTED
+                        if (!notifGranted && !prefs.getBoolean(KEY_NOTIF_PERMISSION_ASKED, false)) {
+                            prefs.edit().putBoolean(KEY_NOTIF_PERMISSION_ASKED, true).apply()
+                            notifPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                        }
+                    }
                 }
 
                 // Permission launcher — fires after the system dialog returns

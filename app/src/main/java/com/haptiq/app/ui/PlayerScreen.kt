@@ -16,7 +16,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
@@ -69,7 +68,10 @@ fun PlayerScreen(
 
     LaunchedEffect(Unit) { onRefreshDndStatus() }
 
-    var sliderValue by remember(state.playbackProgress) { mutableStateOf(state.playbackProgress) }
+    // NOT remember(state.playbackProgress): keying on live progress reinitialized
+    // this every 500ms tick, snapping the thumb away from the finger mid-drag.
+    // While not dragging, the displayed value comes from state directly.
+    var sliderValue by remember { mutableStateOf(0f) }
     var isDraggingSlider by remember { mutableStateOf(false) }
     var showQueue by remember { mutableStateOf(false) }
 
@@ -120,12 +122,13 @@ fun PlayerScreen(
         val screenHeight = maxHeight
         val isShortScreen = screenHeight < 680.dp
 
-        // Ambient glow behind artwork
+        // Ambient glow behind artwork — the gradient already fades to transparent;
+        // the old Modifier.blur on top of it clipped to rectangular bounds and
+        // produced a visible box edge on-device.
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(if (isShortScreen) 220.dp else 350.dp)
-                .blur(100.dp)
                 .background(
                     Brush.verticalGradient(
                         colors = listOf(ColorHapticAccent.copy(alpha = 0.06f), Color.Transparent)
@@ -140,6 +143,17 @@ fun PlayerScreen(
                 .padding(horizontal = Spacing.xl),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
+            // ─── Drag handle ────────────────────────────────────
+            // The screen already dismisses on a downward drag; this pill is the
+            // affordance that tells users the sheet can be pulled down at all.
+            Box(
+                modifier = Modifier
+                    .padding(top = Spacing.xs)
+                    .width(36.dp)
+                    .height(4.dp)
+                    .background(ColorOutline, CircleShape)
+            )
+
             // ─── Top Bar ────────────────────────────────────────
             Row(
                 modifier = Modifier
@@ -157,7 +171,9 @@ fun PlayerScreen(
                         .background(ColorSurface, CircleShape)
                         .border(1.dp, ColorOutline, CircleShape)
                 ) {
-                    Icon(Icons.Default.ArrowBack, "Minimize", tint = ColorOnSurface, modifier = Modifier.size(20.dp))
+                    // Downward chevron, not a back arrow: this screen is a sheet that
+                    // slides up and drags down — the icon should match the gesture.
+                    Icon(Icons.Default.KeyboardArrowDown, "Minimize", tint = ColorOnSurface, modifier = Modifier.size(24.dp))
                 }
 
                 Text(
@@ -183,10 +199,12 @@ fun PlayerScreen(
             Spacer(Modifier.weight(if (isShortScreen) 0.05f else 0.15f))
 
             // ─── Artwork ────────────────────────────────────────
+            // 82% width, not full-bleed: full-width artwork ate all the vertical
+            // slack and crammed the top bar against the drag handle.
             val artworkModifier = if (isShortScreen) {
                 Modifier.size(180.dp)
             } else {
-                Modifier.fillMaxWidth().aspectRatio(1f)
+                Modifier.fillMaxWidth(0.82f).aspectRatio(1f)
             }
             Box(
                 modifier = artworkModifier

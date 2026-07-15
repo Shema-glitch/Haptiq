@@ -96,7 +96,10 @@ class MediaStoreScanner @Inject constructor(
                 while (cursor.moveToNext()) {
                     val id = cursor.getLong(idColumn)
                     val title = cursor.getString(titleColumn) ?: "Unknown"
-                    val artist = cursor.getString(artistColumn) ?: "Unknown Artist"
+                    // Untagged files come back as the literal string "<unknown>"
+                    val artist = cursor.getString(artistColumn)
+                        ?.takeUnless { it == MediaStore.UNKNOWN_STRING }
+                        ?: "Unknown Artist"
                     val durationMs = cursor.getLong(durationColumn)
                     val albumId = cursor.getLong(albumIdColumn)
                     val filePath = cursor.getString(dataColumn) ?: ""
@@ -189,9 +192,11 @@ class MediaStoreScanner @Inject constructor(
                     if (file.name == "Android") continue
                     scanDirectory(file, songs, depth + 1, maxDepth, onCount)
                 } else if (file.isFile && isAudioFile(file.name) && file.length() > 10_000) {
-                    // Extract title from filename
+                    // Extract title from filename. The artist is deliberately NOT the
+                    // parent folder name — that surfaced locations like "Download" or
+                    // "Telegram" as artist names under song titles in the UI.
                     val title = file.nameWithoutExtension
-                    val artist = file.parentFile?.name ?: "Unknown Artist"
+                    val artist = "Unknown Artist"
                     val id = "file_${file.absolutePath.hashCode()}"
 
                     // Avoid duplicates
