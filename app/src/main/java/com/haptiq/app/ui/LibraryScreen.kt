@@ -861,28 +861,32 @@ fun MiniPlayer(
             .clip(RoundedCornerShape(Radius.lg))
             .border(width = 1.dp, color = ColorOutlineVariant.copy(alpha = 0.1f), shape = RoundedCornerShape(Radius.lg))
             .clickable(onClick = onExpand)
-            // One drag gesture, one dominant axis — never both. Two separate pointerInput
-            // blocks (a vertical and a horizontal detector) both received the same pointer
-            // stream, so a downward "close" swipe with any sideways drift fired onDismiss
-            // AND onNext; onNext then re-queued a track after dismiss cleared it, leaving
-            // audio playing with no visible player. Deciding the axis at drag-end from the
-            // larger total displacement guarantees exactly one action fires.
+            // ONE gesture, axis LOCKED on first movement and never switched. A prior
+            // version decided the axis at drag-end from total displacement, which could
+            // still resolve a curved downward swipe as horizontal → firing onNext while
+            // dismiss also ran, so the strip vanished but audio kept playing (the
+            // "swipe down skips to next song" bug). Locking the axis the moment the
+            // finger clears a small slop means a downward dismiss can NEVER become a skip.
             //   vertical: up = open full player, down = dismiss playback
             //   horizontal: left = next, right = previous
             .pointerInput(Unit) {
                 val skipThreshold = 88.dp.toPx()
-                val dismissThreshold = 64.dp.toPx()
+                val dismissThreshold = 56.dp.toPx()
                 val expandThreshold = 40.dp.toPx()
+                val axisSlop = 14.dp.toPx()
                 var totalX = 0f
                 var totalY = 0f
+                var axis = 0 // 0 = undecided, 1 = horizontal, 2 = vertical
                 detectDragGestures(
-                    onDragStart = { totalX = 0f; totalY = 0f },
+                    onDragStart = { totalX = 0f; totalY = 0f; axis = 0 },
                     onDrag = { change, dragAmount ->
                         totalX += dragAmount.x
                         totalY += dragAmount.y
-                        // Follow the finger sideways only while the gesture reads as
-                        // horizontal, so a vertical dismiss doesn't shift the strip.
-                        if (abs(totalX) > abs(totalY)) {
+                        if (axis == 0 && (abs(totalX) > axisSlop || abs(totalY) > axisSlop)) {
+                            axis = if (abs(totalX) > abs(totalY)) 1 else 2
+                        }
+                        // Only a horizontally-locked gesture moves the strip sideways.
+                        if (axis == 1) {
                             scope.launch { swipeOffsetX.snapTo(swipeOffsetX.value + dragAmount.x * 0.6f) }
                         }
                         change.consume()
@@ -891,21 +895,24 @@ fun MiniPlayer(
                         scope.launch { swipeOffsetX.animateTo(0f, spring(stiffness = Spring.StiffnessMedium)) }
                     },
                     onDragEnd = {
-                        if (abs(totalY) > abs(totalX)) {
-                            if (totalY < -expandThreshold) {
-                                onExpand()
-                            } else if (totalY > dismissThreshold) {
-                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                                onDismiss()
+                        when (axis) {
+                            2 -> { // vertical only
+                                if (totalY < -expandThreshold) {
+                                    onExpand()
+                                } else if (totalY > dismissThreshold) {
+                                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    onDismiss()
+                                }
                             }
-                        } else {
-                            val settled = swipeOffsetX.value
-                            if (settled < -skipThreshold) {
-                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                                onNext()
-                            } else if (settled > skipThreshold) {
-                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                                onPrev()
+                            1 -> { // horizontal only
+                                val settled = swipeOffsetX.value
+                                if (settled < -skipThreshold) {
+                                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    onNext()
+                                } else if (settled > skipThreshold) {
+                                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    onPrev()
+                                }
                             }
                         }
                         scope.launch {

@@ -29,8 +29,8 @@ android {
     targetSdk = 36
     // Versioning convention: every change batch bumps versionName by 0.01
     // (1.01 → 1.02 → …) and versionCode by 1. Majors reset the minor (2.00).
-    versionCode = 9
-    versionName = "1.08"
+    versionCode = 10
+    versionName = "1.08.1"
     // Public release codename, Android-dessert style: alphabetical, haptic-themed.
     // 1.0 "Aftershock" → next majors continue B, C, D… (Bassline? Crossfade?)
     buildConfigField("String", "RELEASE_CODENAME", "\"Aftershock\"")

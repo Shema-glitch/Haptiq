@@ -81,7 +81,9 @@ fun FavoritesScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .systemBarsPadding()
+            // No systemBarsPadding here — the scaffold already insets content below the
+            // status bar via innerPadding; re-applying it double-counted the status-bar
+            // height and left a dead gap under the app bar.
             .padding(horizontal = Layout.screenHorizontalPadding)
             .testTag("favorites_screen")
     ) {

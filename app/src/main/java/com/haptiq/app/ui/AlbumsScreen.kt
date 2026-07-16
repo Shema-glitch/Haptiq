@@ -68,7 +68,9 @@ fun AlbumsScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .systemBarsPadding()
+            // No systemBarsPadding here — the scaffold already insets content below the
+            // status bar via innerPadding; re-applying it double-counted the status-bar
+            // height and left a dead gap under the app bar.
             .padding(horizontal = Layout.screenHorizontalPadding)
             .testTag("albums_screen")
     ) {
@@ -101,6 +103,19 @@ fun AlbumsScreen(
                 horizontalArrangement = Arrangement.spacedBy(Spacing.md),
                 verticalArrangement = Arrangement.spacedBy(Spacing.md)
             ) {
+                // ── Bento hero FIRST, mirroring Favorites: the largest collection,
+                //    full-width, sits above the count/sort row ──
+                if (hero != null) {
+                    item(span = { GridItemSpan(maxLineSpan) }, key = "hero_${hero.artist}") {
+                        val isPlaying = state.isPlaying && state.currentSong?.artist == hero.artist
+                        AlbumHeroTile(
+                            collection = hero,
+                            isPlaying = isPlaying,
+                            onClick = { onSongSelected(hero.songs, 0) }
+                        )
+                    }
+                }
+
                 // ── Sort/count header — makes the ordering visible, not implied ──
                 item(span = { GridItemSpan(maxLineSpan) }, key = "albums_header") {
                     Row(
@@ -171,18 +186,6 @@ fun AlbumsScreen(
                             icon = Icons.Default.SearchOff,
                             title = "No results",
                             subtitle = "Nothing matches \"$query\""
-                        )
-                    }
-                }
-
-                // ── Bento hero: the largest collection spans both columns ──
-                if (hero != null) {
-                    item(span = { GridItemSpan(maxLineSpan) }, key = "hero_${hero.artist}") {
-                        val isPlaying = state.isPlaying && state.currentSong?.artist == hero.artist
-                        AlbumHeroTile(
-                            collection = hero,
-                            isPlaying = isPlaying,
-                            onClick = { onSongSelected(hero.songs, 0) }
                         )
                     }
                 }
