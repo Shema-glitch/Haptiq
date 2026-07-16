@@ -320,14 +320,33 @@ fun PlayerScreen(
                     )
                 }
                 Spacer(Modifier.width(16.dp))
-                // Queue
-                IconButton(onClick = { showQueue = true }) {
-                    Icon(
-                        imageVector = Icons.Default.QueueMusic,
-                        contentDescription = "Queue",
-                        tint = ColorOnSurface60,
-                        modifier = Modifier.size(22.dp)
-                    )
+                // Queue — a labelled "Up Next" pill, not a bare icon. Testers kept
+                // missing the queue entirely when it was just a QueueMusic glyph among
+                // the others; the label makes "what's coming next" discoverable.
+                Surface(
+                    onClick = { showQueue = true },
+                    shape = RoundedCornerShape(percent = 50),
+                    color = ColorSurfaceVariant,
+                    contentColor = ColorOnSurface,
+                    modifier = Modifier.height(36.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = Spacing.md),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(Spacing.xs)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.QueueMusic,
+                            contentDescription = "Up Next",
+                            tint = ColorOnSurface,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Text(
+                            "Up Next",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = ColorOnSurface
+                        )
+                    }
                 }
             }
 
