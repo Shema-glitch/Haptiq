@@ -166,7 +166,11 @@ private fun HaptiqNavItem(
     onClick: () -> Unit
 ) {
     val iconAlpha by animateFloatAsState(
-        targetValue = if (isSelected) 1f else 0.5f,
+        // Unselected was 0.5 alpha over the already-muted OnSurface60 — ~30% effective
+        // contrast, which reads as "disabled" and risks failing WCAG. Keep unselected
+        // clearly legible (they're destinations, not disabled) and let colour, not
+        // dimming, carry the selected state.
+        targetValue = if (isSelected) 1f else 0.9f,
         animationSpec = spring(dampingRatio = 0.7f, stiffness = 400f),
         label = "icon_alpha"
     )
@@ -190,7 +194,7 @@ private fun HaptiqNavItem(
         Icon(
             imageVector = if (isSelected) item.selectedIcon else item.unselectedIcon,
             contentDescription = item.label,
-            tint = if (isSelected) ColorPrimary else ColorOnSurface60,
+            tint = if (isSelected) ColorPrimary else ColorOnSurfaceVariant,
             modifier = Modifier
                 .size(ComponentSize.iconLarge)
                 .alpha(iconAlpha)

@@ -312,6 +312,12 @@ fun HaptiqNavHost(
                     },
                     onToggleFavorite = { songId ->
                         haptiqViewModel.handleAction(HaptiqUiAction.ToggleFavorite(songId))
+                    },
+                    onBrowseLibrary = {
+                        navController.navigate(Routes.LIBRARY) {
+                            popUpTo(Routes.LIBRARY) { inclusive = true }
+                            launchSingleTop = true
+                        }
                     }
                 )
             }

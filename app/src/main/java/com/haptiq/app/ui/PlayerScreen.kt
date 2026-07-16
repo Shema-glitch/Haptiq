@@ -431,7 +431,10 @@ fun PlayerScreen(
                     Icon(
                         imageVector = Icons.Default.Shuffle,
                         contentDescription = "Shuffle",
-                        tint = if (state.isShuffle) ColorHapticAccent else ColorOnSurface60,
+                        // Clay = interactive/active; amber stays reserved for haptic
+                        // signalling only, so a lit transport control never reads as
+                        // "haptics are firing".
+                        tint = if (state.isShuffle) ColorPrimary else ColorOnSurface60,
                         modifier = Modifier.size(22.dp)
                     )
                 }
@@ -490,7 +493,7 @@ fun PlayerScreen(
                             com.haptiq.app.data.RepeatMode.ONE -> "Repeat one"
                         },
                         tint = if (state.repeatMode != com.haptiq.app.data.RepeatMode.OFF) {
-                            ColorHapticAccent
+                            ColorPrimary
                         } else ColorOnSurface60,
                         modifier = Modifier.size(24.dp)
                     )

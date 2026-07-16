@@ -267,7 +267,10 @@ fun LibraryScreen(
             LazyColumn(
                 state = listState,
                 modifier = Modifier.fillMaxSize(),
-                verticalArrangement = Arrangement.spacedBy(Spacing.xs)
+                verticalArrangement = Arrangement.spacedBy(Spacing.xs),
+                // Bottom breathing room so the last track clears the mini-player
+                // instead of sitting flush against it.
+                contentPadding = PaddingValues(bottom = Spacing.xl)
             ) {
                 // Recently Played — real play history from Room, newest first.
                 // (Previously rendered state.songs.take(5): the first five scan
@@ -517,21 +520,29 @@ fun MediaCard(
                 cornerRadius = Radius.md,
                 fallbackLabel = song.title
             )
+            // The tap target is a full 44dp (a11y minimum) even though the tinted
+            // badge stays small — a 32dp target this close to the artwork edge was
+            // fiddly to hit.
             Box(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
-                    .padding(Spacing.xs)
-                    .size(32.dp)
-                    .background(Color.Black.copy(alpha = 0.4f), CircleShape)
+                    .size(ComponentSize.touchTarget)
                     .clickable(onClick = onToggleFavorite),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(
-                    imageVector = if (isFavorite) Icons.Default.Favorite else Icons.Outlined.FavoriteBorder,
-                    contentDescription = if (isFavorite) "Remove from favorites" else "Add to favorites",
-                    tint = if (isFavorite) ColorPrimary else Color.White,
-                    modifier = Modifier.size(ComponentSize.iconSmall)
-                )
+                Box(
+                    modifier = Modifier
+                        .size(30.dp)
+                        .background(Color.Black.copy(alpha = 0.4f), CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = if (isFavorite) Icons.Default.Favorite else Icons.Outlined.FavoriteBorder,
+                        contentDescription = if (isFavorite) "Remove from favorites" else "Add to favorites",
+                        tint = if (isFavorite) ColorPrimary else Color.White,
+                        modifier = Modifier.size(ComponentSize.iconSmall)
+                    )
+                }
             }
             if (isActiveHaptic) {
                 Box(

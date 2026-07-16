@@ -16,6 +16,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.LibraryMusic
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SearchOff
@@ -43,7 +44,8 @@ private const val SHOWCASE_COUNT = 4
 fun FavoritesScreen(
     state: HaptiqUiState,
     onSongSelected: (List<Song>, Int) -> Unit,
-    onToggleFavorite: (String) -> Unit
+    onToggleFavorite: (String) -> Unit,
+    onBrowseLibrary: () -> Unit = {}
 ) {
     // A–Z so the order is predictable; the header row says so explicitly.
     // (favoriteIds is an unordered Set — "most recently favorited" isn't
@@ -89,12 +91,26 @@ fun FavoritesScreen(
                     icon = Icons.Default.FavoriteBorder,
                     title = "No favorites yet",
                     subtitle = "Tap the heart icon on any track to add it here"
-                )
+                ) {
+                    Spacer(Modifier.height(Spacing.lg))
+                    Button(
+                        onClick = onBrowseLibrary,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = ColorPrimary,
+                            contentColor = ColorOnPrimary
+                        ),
+                        contentPadding = PaddingValues(horizontal = Spacing.xl, vertical = Spacing.sm)
+                    ) {
+                        Icon(Icons.Default.LibraryMusic, null, Modifier.size(ComponentSize.iconSmall))
+                        Spacer(Modifier.width(Spacing.xs))
+                        Text("Browse Library")
+                    }
+                }
             }
         } else {
             LazyVerticalGrid(
                 columns = GridCells.Fixed(2),
-                contentPadding = PaddingValues(vertical = Spacing.md),
+                contentPadding = PaddingValues(top = Spacing.md, bottom = Spacing.xl),
                 horizontalArrangement = Arrangement.spacedBy(Spacing.md),
                 verticalArrangement = Arrangement.spacedBy(Spacing.md)
             ) {

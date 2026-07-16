@@ -97,7 +97,7 @@ fun AlbumsScreen(
         } else {
             LazyVerticalGrid(
                 columns = GridCells.Fixed(2),
-                contentPadding = PaddingValues(vertical = Spacing.md),
+                contentPadding = PaddingValues(top = Spacing.md, bottom = Spacing.xl),
                 horizontalArrangement = Arrangement.spacedBy(Spacing.md),
                 verticalArrangement = Arrangement.spacedBy(Spacing.md)
             ) {

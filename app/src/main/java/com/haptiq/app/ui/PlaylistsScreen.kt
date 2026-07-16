@@ -78,7 +78,10 @@ fun PlaylistsScreen(
                     Text("New", color = ColorPrimary, fontWeight = FontWeight.Bold)
                 }
             }
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+            LazyColumn(
+                verticalArrangement = Arrangement.spacedBy(Spacing.xs),
+                contentPadding = PaddingValues(bottom = Spacing.xl)
+            ) {
                 items(state.playlists, key = { it.id }) { playlist ->
                     PlaylistRow(
                         playlist = playlist,
@@ -320,7 +323,10 @@ fun PlaylistDetailScreen(
                 )
             }
         } else {
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+            LazyColumn(
+                verticalArrangement = Arrangement.spacedBy(Spacing.xs),
+                contentPadding = PaddingValues(bottom = Spacing.xl)
+            ) {
                 itemsIndexed(state.activePlaylistSongs, key = { _, s -> s.id }) { index, song ->
                     val isCurrent = state.currentSong?.id == song.id
                     // Same swipe-right-to-queue gesture as the Library list —
