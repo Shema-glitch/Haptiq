@@ -532,6 +532,18 @@ class HaptiqPlayerManager @Inject constructor(
         // Full teardown happens in destroy() called when the singleton is no longer needed.
     }
 
+    override fun dismissPlayback() {
+        stopPlayback()
+        exoPlayer?.clearMediaItems()
+        _currentSong.value = null
+        _isPlaying.value = false
+        _playbackProgress.value = 0f
+        _currentTimeText.value = "0:00"
+        _remainingTimeText.value = "-0:00"
+        // Without this, restoreSession() resurrects the dismissed track on next launch
+        playbackStateStore.clear()
+    }
+
     /**
      * Full teardown — call only when the app is finishing (e.g., process death).
      * In normal use, reuse the singleton player via stopPlayback().

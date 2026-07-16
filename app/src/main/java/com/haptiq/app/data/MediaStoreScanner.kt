@@ -192,21 +192,20 @@ class MediaStoreScanner @Inject constructor(
                     if (file.name == "Android") continue
                     scanDirectory(file, songs, depth + 1, maxDepth, onCount)
                 } else if (file.isFile && isAudioFile(file.name) && file.length() > 10_000) {
-                    // Extract title from filename. The artist is deliberately NOT the
-                    // parent folder name — that surfaced locations like "Download" or
-                    // "Telegram" as artist names under song titles in the UI.
-                    val title = file.nameWithoutExtension
-                    val artist = "Unknown Artist"
                     val id = "file_${file.absolutePath.hashCode()}"
 
                     // Avoid duplicates
                     if (songs.none { it.id == id }) {
+                        // Real tags where they exist; the artist fallback is deliberately
+                        // NOT the parent folder name — that surfaced locations like
+                        // "Download" or "Telegram" as artist names in the UI.
+                        val meta = extractMetadata(file)
                         songs.add(
                             Song(
                                 id = id,
-                                title = title,
-                                artist = artist,
-                                durationSeconds = 0, // Unknown without metadata extraction
+                                title = meta.title ?: file.nameWithoutExtension,
+                                artist = meta.artist ?: "Unknown Artist",
+                                durationSeconds = meta.durationSeconds,
                                 artworkUrl = "",
                                 audioUrl = file.toURI().toString()
                             )
@@ -223,5 +222,41 @@ class MediaStoreScanner @Inject constructor(
     private fun isAudioFile(name: String): Boolean {
         val ext = name.substringAfterLast('.', "").lowercase()
         return ext in AUDIO_EXTENSIONS
+    }
+
+    private data class FileMetadata(
+        val title: String?,
+        val artist: String?,
+        val durationSeconds: Int
+    )
+
+    /**
+     * Pull real tags out of a file found by the directory fallback. Without this,
+     * every fallback-scanned track shows 0:00 in the UI. Only runs on the fallback
+     * path — MediaStore rows already carry duration — so the per-file cost of
+     * MediaMetadataRetriever is acceptable.
+     */
+    private fun extractMetadata(file: File): FileMetadata {
+        val retriever = android.media.MediaMetadataRetriever()
+        return try {
+            retriever.setDataSource(file.absolutePath)
+            val durationMs = retriever
+                .extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)
+                ?.toLongOrNull() ?: 0L
+            FileMetadata(
+                title = retriever
+                    .extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_TITLE)
+                    ?.takeIf { it.isNotBlank() },
+                artist = retriever
+                    .extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_ARTIST)
+                    ?.takeIf { it.isNotBlank() },
+                durationSeconds = (durationMs / 1000).toInt()
+            )
+        } catch (e: Exception) {
+            Log.w(TAG, "Metadata extraction failed for ${file.name}: ${e.message}")
+            FileMetadata(null, null, 0)
+        } finally {
+            runCatching { retriever.release() }
+        }
     }
 }

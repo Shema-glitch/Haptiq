@@ -39,7 +39,8 @@ private data class ArtistCollection(val artist: String, val songs: List<Song>)
 @Composable
 fun AlbumsScreen(
     state: HaptiqUiState,
-    onSongSelected: (List<Song>, Int) -> Unit
+    onSongSelected: (List<Song>, Int) -> Unit,
+    onScanDevice: () -> Unit = {}
 ) {
     // Grouped by artist (Song carries no album metadata today) and sorted
     // A–Z so the ordering is predictable; the header row says so explicitly.
@@ -77,7 +78,21 @@ fun AlbumsScreen(
                     icon = Icons.Default.Album,
                     title = "No albums yet",
                     subtitle = "Scan your device to find music"
-                )
+                ) {
+                    Spacer(Modifier.height(Spacing.lg))
+                    Button(
+                        onClick = onScanDevice,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = ColorPrimary,
+                            contentColor = ColorOnPrimary
+                        ),
+                        contentPadding = PaddingValues(horizontal = Spacing.xl, vertical = Spacing.sm)
+                    ) {
+                        Icon(Icons.Default.Search, null, Modifier.size(ComponentSize.iconSmall))
+                        Spacer(Modifier.width(Spacing.xs))
+                        Text("Scan for music")
+                    }
+                }
             }
         } else {
             LazyVerticalGrid(

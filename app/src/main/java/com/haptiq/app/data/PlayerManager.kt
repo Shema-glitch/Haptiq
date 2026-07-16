@@ -48,6 +48,8 @@ interface PlayerManager {
     /** Reload the last session's queue/track/position, paused. */
     fun restoreSession(library: List<Song>)
     fun stopPlayback()
+    /** Mini-player swipe-down: stop, clear now-playing, and forget the saved session. */
+    fun dismissPlayback()
     fun updateTuning(state: HapticTuningState)
     fun getPlayer(): ExoPlayer?
 }

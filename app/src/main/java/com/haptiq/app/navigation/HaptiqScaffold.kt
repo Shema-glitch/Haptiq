@@ -49,6 +49,7 @@ fun HaptiqScaffold(
     onNextClicked: () -> Unit,
     onPrevClicked: () -> Unit,
     onMiniPlayerExpanded: () -> Unit,
+    onMiniPlayerDismissed: () -> Unit = {},
     topBar: @Composable () -> Unit = {},
     content: @Composable (PaddingValues) -> Unit
 ) {
@@ -88,7 +89,8 @@ fun HaptiqScaffold(
                 onTogglePlayPause = onTogglePlayPause,
                 onNext = onNextClicked,
                 onPrev = onPrevClicked,
-                onExpand = onMiniPlayerExpanded
+                onExpand = onMiniPlayerExpanded,
+                onDismiss = onMiniPlayerDismissed
             )
         }
     }

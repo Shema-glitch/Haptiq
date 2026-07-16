@@ -13,7 +13,11 @@ fun git(vararg args: String): String = providers.exec {
 }.standardOutput.asText.get().trim()
 
 val gitBranch = runCatching { git("rev-parse", "--abbrev-ref", "HEAD") }.getOrDefault("unknown")
-val gitSha = runCatching { git("rev-parse", "--short", "HEAD") }.getOrDefault("nogit")
+// ".dirty" marks builds made from uncommitted changes — without it, every build
+// between commits carries the same SHA and becomes indistinguishable.
+val gitDirty = runCatching { git("status", "--porcelain").isNotEmpty() }.getOrDefault(false)
+val gitSha = runCatching { git("rev-parse", "--short", "HEAD") }.getOrDefault("nogit") +
+  if (gitDirty) ".dirty" else ""
 
 android {
   namespace = "com.haptiq.app"
@@ -25,8 +29,8 @@ android {
     targetSdk = 36
     // Versioning convention: every change batch bumps versionName by 0.01
     // (1.01 → 1.02 → …) and versionCode by 1. Majors reset the minor (2.00).
-    versionCode = 5
-    versionName = "1.04"
+    versionCode = 6
+    versionName = "1.05"
     // Public release codename, Android-dessert style: alphabetical, haptic-themed.
     // 1.0 "Aftershock" → next majors continue B, C, D… (Bassline? Crossfade?)
     buildConfigField("String", "RELEASE_CODENAME", "\"Aftershock\"")
@@ -77,6 +81,21 @@ android {
     buildConfig = true
   }
   testOptions { unitTests { isIncludeAndroidResources = true } }
+
+}
+
+// Self-describing APK names: Haptiq-1.05-ui-tinkering+abc1234.dirty-debug.apk
+// instead of app-debug.apk, so sideloaded/uploaded builds stay tellable-apart.
+androidComponents {
+  onVariants { variant ->
+    variant.outputs.forEach { output ->
+      (output as? com.android.build.api.variant.impl.VariantOutputImpl)?.let { impl ->
+        impl.outputFileName.set(
+          impl.versionName.map { "Haptiq-$it-${variant.buildType}.apk" }
+        )
+      }
+    }
+  }
 }
 
 dependencies {

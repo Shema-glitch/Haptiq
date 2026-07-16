@@ -220,13 +220,24 @@ fun SettingsScreen(
                     .clip(RoundedCornerShape(Radius.md))
                     .background(ColorSurface)
             ) {
+                val context = androidx.compose.ui.platform.LocalContext.current
+                // lastUpdateTime = when THIS apk was sideloaded; the one signal that
+                // always differs between builds, even from the same commit.
+                val installedAt = remember {
+                    runCatching {
+                        val millis = context.packageManager
+                            .getPackageInfo(context.packageName, 0).lastUpdateTime
+                        java.text.SimpleDateFormat("MMM d · HH:mm", java.util.Locale.US)
+                            .format(java.util.Date(millis))
+                    }.getOrDefault("unknown")
+                }
                 SettingsRow(
                     icon = Icons.Default.Info,
                     iconColor = ColorOnSurface60,
                     title = "About",
                     subtitle = "Haptiq ${com.haptiq.app.BuildConfig.RELEASE_CODENAME} " +
-                        "v${com.haptiq.app.BuildConfig.VERSION_NAME} — " +
-                        "${com.haptiq.app.BuildConfig.BUILD_CODENAME} @ ${com.haptiq.app.BuildConfig.GIT_SHA}"
+                        "v${com.haptiq.app.BuildConfig.VERSION_NAME}\n" +
+                        "Installed $installedAt"
                 )
 
                 HorizontalDivider(color = ColorOutlineVariant.copy(alpha = 0.2f), thickness = 1.dp)

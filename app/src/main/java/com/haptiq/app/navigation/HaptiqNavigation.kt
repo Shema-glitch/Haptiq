@@ -71,6 +71,7 @@ fun HaptiqNavHost(
             onNextClicked = { haptiqViewModel.handleAction(HaptiqUiAction.PlayNext) },
             onPrevClicked = { haptiqViewModel.handleAction(HaptiqUiAction.PlayPrevious) },
             onMiniPlayerExpanded = { navController.navigate(Routes.PLAYER) },
+            onMiniPlayerDismissed = { haptiqViewModel.handleAction(HaptiqUiAction.DismissPlayback) },
             topBar = {
                 // The scaffold owns the app bar: screens with a plain header pass
                 // a subtitle; Library passes null because its header carries live
@@ -202,9 +203,10 @@ fun HaptiqNavHost(
             },
             exitTransition = { fadeOut(tween(180)) },
             popEnterTransition = { fadeIn(tween(220)) },
-            popExitTransition = {
-                slideOutVertically(animationSpec = tween(280)) { it } + fadeOut(tween(280))
-            }
+            // The screen animates itself fully off-screen (drag or chevron) BEFORE
+            // popping, so the nav pop only needs to fade — a second slide here would
+            // double up and cause the jarring snap the sheet used to have.
+            popExitTransition = { fadeOut(tween(160)) }
         ) {
             PlayerScreen(
                 state = haptiqState,
@@ -294,7 +296,8 @@ fun HaptiqNavHost(
                     onSongSelected = { list, index ->
                         haptiqViewModel.handleAction(HaptiqUiAction.SelectSong(list, index))
                         navController.navigate(Routes.PLAYER)
-                    }
+                    },
+                    onScanDevice = { haptiqViewModel.handleAction(HaptiqUiAction.ScanDevice) }
                 )
             }
         }

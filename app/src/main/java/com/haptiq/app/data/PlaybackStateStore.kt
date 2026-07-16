@@ -38,6 +38,11 @@ class PlaybackStateStore @Inject constructor(@ApplicationContext context: Contex
         prefs.edit { putLong("positionMs", positionMs) }
     }
 
+    /** Forget the session entirely — a dismissed player must not resurrect on relaunch. */
+    fun clear() {
+        prefs.edit { clear() }
+    }
+
     fun load(): PlaybackSnapshot? {
         val ids = prefs.getString("queueIds", null)?.split(',')?.filter { it.isNotBlank() }
         if (ids.isNullOrEmpty()) return null

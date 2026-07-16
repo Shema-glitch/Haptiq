@@ -3,7 +3,10 @@ package com.haptiq.app.ui
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -246,23 +249,17 @@ fun LibraryScreen(
             }
             val showRail = filteredSongs.size > 50 && state.sortMode != SortMode.DURATION
 
-            // ─── One-time swipe-to-queue discovery nudge ─────────
-            // The gesture is invisible otherwise. Once, ever: the first row slides
-            // open twice to peek the amber "Play next" layer, then the flag is set.
-            val hintContext = androidx.compose.ui.platform.LocalContext.current
-            val hintDensity = androidx.compose.ui.platform.LocalDensity.current
-            val swipeHintOffset = remember { Animatable(0f) }
-            LaunchedEffect(filteredSongs.isNotEmpty()) {
-                if (filteredSongs.isEmpty()) return@LaunchedEffect
-                val prefs = hintContext.getSharedPreferences("haptiq_prefs", Context.MODE_PRIVATE)
-                if (prefs.getBoolean("swipe_queue_hint_shown", false)) return@LaunchedEffect
-                kotlinx.coroutines.delay(1500)
-                val peekPx = with(hintDensity) { 32.dp.toPx() }
-                repeat(2) {
-                    swipeHintOffset.animateTo(peekPx, tween(400, easing = FastOutSlowInEasing))
-                    swipeHintOffset.animateTo(0f, HaptiqMotion.standardSpring())
-                }
-                prefs.edit().putBoolean("swipe_queue_hint_shown", true).apply()
+            // Gestures are now taught by the first-run GestureTutorialOverlay
+            // (shown once when the library first has songs), so the old peek-nudge
+            // that briefly slid the first row open has been removed.
+            val tutorialContext = androidx.compose.ui.platform.LocalContext.current
+            var showTutorial by remember {
+                mutableStateOf(
+                    tutorialContext
+                        .getSharedPreferences("haptiq_prefs", Context.MODE_PRIVATE)
+                        .getBoolean("gesture_tutorial_shown", false)
+                        .not()
+                )
             }
 
             Box(Modifier.fillMaxSize()) {
@@ -338,12 +335,7 @@ fun LibraryScreen(
                         val isCurrent = state.currentSong?.id == song.id
                         SwipeToQueueRow(
                             song = song,
-                            onEnqueueNext = { onAction(HaptiqUiAction.EnqueueNext(song)) },
-                            contentOffsetX = if (index == 0) {
-                                { swipeHintOffset.value }
-                            } else {
-                                { 0f }
-                            }
+                            onEnqueueNext = { onAction(HaptiqUiAction.EnqueueNext(song)) }
                         ) {
                             TrackRow(
                                 song = song,
@@ -394,6 +386,20 @@ fun LibraryScreen(
                         }
                     },
                     modifier = Modifier.align(Alignment.CenterEnd)
+                )
+            }
+
+            // First-run gesture tutorial — overlays the library once, teaches the
+            // swipe/skip/pull-down gestures, and celebrates the songs we found.
+            if (showTutorial && state.songs.isNotEmpty()) {
+                GestureTutorialOverlay(
+                    songCount = state.songs.size,
+                    onFinish = {
+                        tutorialContext
+                            .getSharedPreferences("haptiq_prefs", Context.MODE_PRIVATE)
+                            .edit().putBoolean("gesture_tutorial_shown", true).apply()
+                        showTutorial = false
+                    }
                 )
             }
             }
@@ -565,22 +571,24 @@ fun TrackRow(
             .clip(RoundedCornerShape(Radius.md))
             .background(if (isCurrentPlaying) ColorSurfaceVariant else Color.Transparent)
             .clickable(onClick = onClick)
-            .padding(Spacing.sm),
+            // Tighter rows: 44dp art + 8dp vertical padding ≈ 60dp tall vs. the old
+            // ~80dp, so a long library scrolls in far fewer swipes.
+            .padding(horizontal = Spacing.sm, vertical = Spacing.xs),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(Modifier.size(56.dp).clip(RoundedCornerShape(Radius.md)), contentAlignment = Alignment.Center) {
-            ArtworkImage(song.artworkUrl, null, Modifier.fillMaxSize(), iconSize = ComponentSize.iconMedium, cornerRadius = Radius.md)
+        Box(Modifier.size(44.dp).clip(RoundedCornerShape(Radius.sm)), contentAlignment = Alignment.Center) {
+            ArtworkImage(song.artworkUrl, null, Modifier.fillMaxSize(), iconSize = ComponentSize.iconSmall, cornerRadius = Radius.sm)
             if (isCurrentPlaying && isPlaying) {
                 Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.5f)), contentAlignment = Alignment.Center) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(3.dp), verticalAlignment = Alignment.Bottom, modifier = Modifier.height(20.dp)) {
-                        BouncingEqualizerBar(infiniteTransition, 0, 16)
-                        BouncingEqualizerBar(infiniteTransition, 200, 12)
-                        BouncingEqualizerBar(infiniteTransition, 400, 14)
+                    Row(horizontalArrangement = Arrangement.spacedBy(3.dp), verticalAlignment = Alignment.Bottom, modifier = Modifier.height(18.dp)) {
+                        BouncingEqualizerBar(infiniteTransition, 0, 14)
+                        BouncingEqualizerBar(infiniteTransition, 200, 10)
+                        BouncingEqualizerBar(infiniteTransition, 400, 12)
                     }
                 }
             }
         }
-        Spacer(Modifier.width(Spacing.md))
+        Spacer(Modifier.width(Spacing.sm))
         Column(Modifier.weight(1f)) {
             // The playing row already announces itself via the container highlight and
             // the equalizer overlay on its artwork — a third and fourth signal (clay
@@ -700,11 +708,22 @@ fun SwipeToQueueRow(
     content: @Composable () -> Unit
 ) {
     val haptics = androidx.compose.ui.platform.LocalHapticFeedback.current
+    // After a successful swipe the card flashes a "Playing next" confirmation over
+    // itself, then reverts — so the gesture visibly *did something* rather than just
+    // snapping back with no acknowledgement.
+    var justQueued by remember { mutableStateOf(false) }
+    LaunchedEffect(justQueued) {
+        if (justQueued) {
+            kotlinx.coroutines.delay(1300)
+            justQueued = false
+        }
+    }
     val dismissState = rememberSwipeToDismissBoxState(
         confirmValueChange = { value ->
             if (value == SwipeToDismissBoxValue.StartToEnd) {
                 haptics.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
                 onEnqueueNext()
+                justQueued = true
             }
             false // snap back; the action is queueing, not removing the row
         }
@@ -744,7 +763,41 @@ fun SwipeToQueueRow(
                 Modifier
                     .graphicsLayer { translationX = contentOffsetX() }
                     .background(ColorBackground)
-            ) { content() }
+            ) {
+                content()
+                // Confirmation overlay: an amber sheet slides in over the card,
+                // holds ~1.3s, then fades to reveal the normal row again.
+                androidx.compose.animation.AnimatedVisibility(
+                    visible = justQueued,
+                    enter = androidx.compose.animation.slideInHorizontally { -it } +
+                        androidx.compose.animation.fadeIn(tween(180)),
+                    exit = androidx.compose.animation.fadeOut(tween(220)),
+                    modifier = Modifier.matchParentSize()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clip(RoundedCornerShape(Radius.md))
+                            .background(ColorHapticAccent)
+                            .padding(horizontal = Spacing.md),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(Spacing.sm)
+                    ) {
+                        Icon(
+                            Icons.Default.Check,
+                            contentDescription = null,
+                            tint = ColorOnPrimary,
+                            modifier = Modifier.size(ComponentSize.iconMedium)
+                        )
+                        Text(
+                            "Playing next",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = ColorOnPrimary,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
         }
     )
 }
@@ -770,9 +823,15 @@ fun MiniPlayer(
     onTogglePlayPause: () -> Unit,
     onNext: () -> Unit,
     onPrev: () -> Unit,
-    onExpand: () -> Unit
+    onExpand: () -> Unit,
+    onDismiss: () -> Unit = {}
 ) {
     if (currentSong == null) return
+
+    val scope = rememberCoroutineScope()
+    val haptics = LocalHapticFeedback.current
+    // Horizontal swipe = skip track; the strip follows the finger with resistance
+    val swipeOffsetX = remember { Animatable(0f) }
 
     val infinitePulse = rememberInfiniteTransition(label = "glow_pulse")
     val dotAlpha by infinitePulse.animateFloat(
@@ -789,8 +848,8 @@ fun MiniPlayer(
             .clip(RoundedCornerShape(Radius.lg))
             .border(width = 1.dp, color = ColorOutlineVariant.copy(alpha = 0.1f), shape = RoundedCornerShape(Radius.lg))
             .clickable(onClick = onExpand)
-            // Swipe up on the strip = open the full player, mirroring the
-            // Player's own drag-down-to-dismiss
+            // Swipe up on the strip = open the full player (mirroring the Player's
+            // drag-down-to-dismiss); swipe down = dismiss playback entirely
             .pointerInput(Unit) {
                 var accumulated = 0f
                 detectVerticalDragGestures(
@@ -800,8 +859,39 @@ fun MiniPlayer(
                         if (accumulated < -40f) {
                             accumulated = 0f
                             onExpand()
+                        } else if (accumulated > 56f) {
+                            accumulated = 0f
+                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                            onDismiss()
                         }
                         change.consume()
+                    }
+                )
+            }
+            // Horizontal swipe = skip: left → next, right → previous
+            .pointerInput(Unit) {
+                val threshold = 88.dp.toPx()
+                detectHorizontalDragGestures(
+                    onHorizontalDrag = { change, dragAmount ->
+                        // 0.6 resistance so the strip feels anchored, not loose
+                        scope.launch { swipeOffsetX.snapTo(swipeOffsetX.value + dragAmount * 0.6f) }
+                        change.consume()
+                    },
+                    onDragCancel = {
+                        scope.launch { swipeOffsetX.animateTo(0f, spring(stiffness = Spring.StiffnessMedium)) }
+                    },
+                    onDragEnd = {
+                        val settled = swipeOffsetX.value
+                        if (settled < -threshold) {
+                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                            onNext()
+                        } else if (settled > threshold) {
+                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                            onPrev()
+                        }
+                        scope.launch {
+                            swipeOffsetX.animateTo(0f, spring(dampingRatio = 0.7f, stiffness = Spring.StiffnessMedium))
+                        }
                     }
                 )
             }
@@ -814,6 +904,8 @@ fun MiniPlayer(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(ComponentSize.miniPlayerHeight)
+                    // Content follows the horizontal swipe; the progress bar below stays put
+                    .graphicsLayer { translationX = swipeOffsetX.value }
                     .padding(horizontal = Spacing.md),
                 verticalAlignment = Alignment.CenterVertically
             ) {

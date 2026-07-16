@@ -43,6 +43,9 @@ data class HaptiqUiState(
     // Precomputed 0–1 bass envelope of the current track (null while analyzing or
     // undecodable) — drives the waveform seek bar and its haptic scrub preview
     val seekEnergy: FloatArray? = null,
+    // True while the envelope for the current track is being decoded. Lets the seek
+    // bar show a "rendering waveform" shimmer instead of looking bugged/empty.
+    val seekEnergyLoading: Boolean = false,
     // Calibration Wizard states
     val calibrationStep: Int = 1, // 1: Play test pulse, 2: Select strength, 3: Success
     val calibrationStrength: String = "Medium", // "Weak", "Medium", "Strong"
@@ -79,6 +82,8 @@ sealed interface HaptiqUiAction {
     data class SeekPreview(val progress: Float) : HaptiqUiAction
     object PlayNext : HaptiqUiAction
     object PlayPrevious : HaptiqUiAction
+    /** Mini-player swipe-down: stop and hide playback entirely. */
+    object DismissPlayback : HaptiqUiAction
     object ToggleShuffle : HaptiqUiAction
     object ToggleRepeat : HaptiqUiAction
     // Queue editing
@@ -206,7 +211,11 @@ class HaptiqViewModel @Inject constructor(
             playerManager.currentSong.collect { song ->
                 val songChanged = song?.id != _uiState.value.currentSong?.id
                 _uiState.update {
-                    it.copy(currentSong = song, seekEnergy = if (songChanged) null else it.seekEnergy)
+                    it.copy(
+                        currentSong = song,
+                        seekEnergy = if (songChanged) null else it.seekEnergy,
+                        seekEnergyLoading = if (songChanged) song != null else it.seekEnergyLoading
+                    )
                 }
                 if (song != null) {
                     recentSongRepository.addRecentSong(song.id)
@@ -321,6 +330,9 @@ class HaptiqViewModel @Inject constructor(
             }
             is HaptiqUiAction.PlayNext -> {
                 playerManager.playNext()
+            }
+            is HaptiqUiAction.DismissPlayback -> {
+                playerManager.dismissPlayback()
             }
             is HaptiqUiAction.PlayPrevious -> {
                 playerManager.playPrevious()
@@ -523,7 +535,7 @@ class HaptiqViewModel @Inject constructor(
         seekEnergyJob = viewModelScope.launch {
             val energy = energyMapRepository.energyFor(song)
             if (_uiState.value.currentSong?.id == song.id) {
-                _uiState.update { it.copy(seekEnergy = energy) }
+                _uiState.update { it.copy(seekEnergy = energy, seekEnergyLoading = false) }
             }
         }
     }

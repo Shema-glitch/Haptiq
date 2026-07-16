@@ -1,5 +1,6 @@
 package com.haptiq.app.ui
 
+import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.border
@@ -75,12 +76,43 @@ fun PlayerScreen(
     var isDraggingSlider by remember { mutableStateOf(false) }
     var showQueue by remember { mutableStateOf(false) }
 
+    // DND toast: a floating overlay that appears briefly when the player opens with
+    // DND silencing haptics, then fades. Deliberately NOT inline — an inline banner
+    // reflowed the artwork and controls downward every time it showed.
+    var dndToastVisible by remember { mutableStateOf(false) }
+    LaunchedEffect(state.isDndActive, state.hapticActive) {
+        if (state.isDndActive && state.hapticActive) {
+            dndToastVisible = true
+            kotlinx.coroutines.delay(6000)
+            dndToastVisible = false
+        } else {
+            dndToastVisible = false
+        }
+    }
+
     // Sheet physics: the whole screen tracks a downward drag and either commits
-    // to dismissing (past the threshold) or springs back. Matches the slide-up
-    // entrance — Now Playing behaves like a drawer, not a page.
+    // to dismissing (past the threshold OR on a fast flick) or springs back. On
+    // dismiss the sheet slides fully off-screen under its own animation before the
+    // nav pop, so the exit reads as one continuous motion — not an instant cut.
+    val density = LocalDensity.current
     val dragOffset = remember { Animatable(0f) }
     val dragScope = rememberCoroutineScope()
-    val dismissThresholdPx = with(LocalDensity.current) { 160.dp.toPx() }
+    val dismissThresholdPx = with(density) { 110.dp.toPx() }
+    val offScreenPx = with(density) {
+        (androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp.dp).toPx()
+    }
+    // A quick downward flick dismisses even before the distance threshold.
+    val flingVelocityThreshold = with(density) { 900.dp.toPx() }
+    var isDismissing by remember { mutableStateOf(false) }
+    val animatedDismiss: () -> Unit = {
+        if (!isDismissing) {
+            isDismissing = true
+            dragScope.launch {
+                dragOffset.animateTo(offScreenPx, tween(260, easing = FastOutLinearInEasing))
+                onBackClicked()
+            }
+        }
+    }
 
     BoxWithConstraints(
         modifier = Modifier
@@ -90,15 +122,19 @@ fun PlayerScreen(
                 alpha = 1f - (dragOffset.value / (dismissThresholdPx * 4f)).coerceIn(0f, 0.25f)
             }
             .pointerInput(Unit) {
+                val velocityTracker = androidx.compose.ui.input.pointer.util.VelocityTracker()
                 detectVerticalDragGestures(
+                    onDragStart = { velocityTracker.resetTracking() },
                     onVerticalDrag = { change, dragAmount ->
+                        velocityTracker.addPosition(change.uptimeMillis, change.position)
                         val next = (dragOffset.value + dragAmount).coerceAtLeast(0f)
                         if (next > 0f) change.consume()
                         dragScope.launch { dragOffset.snapTo(next) }
                     },
                     onDragEnd = {
-                        if (dragOffset.value > dismissThresholdPx) {
-                            onBackClicked()
+                        val velocityY = velocityTracker.calculateVelocity().y
+                        if (dragOffset.value > dismissThresholdPx || velocityY > flingVelocityThreshold) {
+                            animatedDismiss()
                         } else {
                             dragScope.launch {
                                 dragOffset.animateTo(0f, spring(dampingRatio = 0.8f, stiffness = 400f))
@@ -164,7 +200,7 @@ fun PlayerScreen(
             ) {
                 // Back button in a circular outline capsule
                 IconButton(
-                    onClick = onBackClicked,
+                    onClick = animatedDismiss,
                     modifier = Modifier
                         .size(ComponentSize.touchTarget)
                         .shadow(Elevation.low, CircleShape)
@@ -190,12 +226,6 @@ fun PlayerScreen(
                 Spacer(Modifier.size(ComponentSize.touchTarget))
             }
 
-            // DND Warning
-            if (state.isDndActive && state.hapticActive) {
-                DndWarningBanner()
-                Spacer(Modifier.height(Spacing.sm))
-            }
-
             Spacer(Modifier.weight(if (isShortScreen) 0.05f else 0.15f))
 
             // ─── Artwork ────────────────────────────────────────
@@ -211,13 +241,21 @@ fun PlayerScreen(
                     .shadow(Elevation.hero, RoundedCornerShape(24.dp))
                     .clip(RoundedCornerShape(24.dp))
             ) {
-                ArtworkImage(
-                    model = currentSong.artworkUrl,
-                    contentDescription = "Album Artwork",
-                    modifier = Modifier.fillMaxSize(),
-                    iconSize = if (isShortScreen) 48.dp else 64.dp,
-                    cornerRadius = 24.dp
-                )
+                // Crossfade keyed on artwork, not song id: consecutive tracks off the
+                // same album share art and shouldn't blink through a fade.
+                Crossfade(
+                    targetState = currentSong.artworkUrl,
+                    animationSpec = tween(durationMillis = 450),
+                    label = "artwork_crossfade"
+                ) { artworkUrl ->
+                    ArtworkImage(
+                        model = artworkUrl,
+                        contentDescription = "Album Artwork",
+                        modifier = Modifier.fillMaxSize(),
+                        iconSize = if (isShortScreen) 48.dp else 64.dp,
+                        cornerRadius = 24.dp
+                    )
+                }
             }
 
             Spacer(Modifier.weight(if (isShortScreen) 0.05f else 0.15f))
@@ -353,6 +391,10 @@ fun PlayerScreen(
                                     )
                                 }
                             }
+                        } else if (state.seekEnergyLoading) {
+                            // "Rendering waveform" — a travelling shimmer over placeholder
+                            // bars so the empty seek bar reads as *working*, not broken.
+                            WaveformRenderingShimmer()
                         } else {
                             SliderDefaults.Track(
                                 sliderState = sliderState,
@@ -507,6 +549,19 @@ fun PlayerScreen(
             Spacer(Modifier.height(if (isShortScreen) Spacing.md else Spacing.xl))
         }
 
+        // ─── Floating DND toast ─────────────────────────────────
+        // Overlays the header gap instead of pushing the layout down.
+        androidx.compose.animation.AnimatedVisibility(
+            visible = dndToastVisible,
+            enter = androidx.compose.animation.slideInVertically { -it } + androidx.compose.animation.fadeIn(),
+            exit = androidx.compose.animation.slideOutVertically { -it } + androidx.compose.animation.fadeOut(),
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .padding(top = ComponentSize.topBarHeight + Spacing.sm, start = Spacing.md, end = Spacing.md)
+        ) {
+            DndWarningBanner(onDismiss = { dndToastVisible = false })
+        }
+
         // Queue Bottom Sheet — shows the live play order, editable
         if (showQueue) {
             val queue = state.queue.ifEmpty { state.songs }
@@ -526,6 +581,46 @@ fun PlayerScreen(
                 onMove = { from, to -> onQueueAction(HaptiqUiAction.MoveInQueue(from, to)) },
                 onRemove = { index -> onQueueAction(HaptiqUiAction.RemoveFromQueue(index)) },
                 onDismiss = { showQueue = false }
+            )
+        }
+    }
+}
+
+/**
+ * Placeholder for the seek bar while the track's bass envelope is still decoding.
+ * A row of low, equal bars with a bright band sweeping left→right — the universal
+ * "computing" gesture — so users read it as loading, not a broken/empty slider.
+ */
+@Composable
+private fun WaveformRenderingShimmer() {
+    val transition = rememberInfiniteTransition(label = "waveform_shimmer")
+    val sweep by transition.animateFloat(
+        initialValue = -0.3f,
+        targetValue = 1.3f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1100, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "sweep"
+    )
+    val base = ColorOutlineVariant
+    val highlight = ColorHapticAccent
+    Canvas(Modifier.fillMaxWidth().height(28.dp)) {
+        val barW = 3.dp.toPx()
+        val gap = 2.dp.toPx()
+        val bars = (size.width / (barW + gap)).toInt().coerceAtLeast(1)
+        val restH = 6.dp.toPx()
+        for (i in 0 until bars) {
+            val pos = (i + 0.5f) / bars
+            // Gaussian-ish falloff around the sweep centre = a soft moving glow
+            val d = kotlin.math.abs(pos - sweep)
+            val glow = (1f - (d / 0.18f)).coerceIn(0f, 1f)
+            val h = restH + glow * (size.height - restH)
+            drawRoundRect(
+                color = androidx.compose.ui.graphics.lerp(base, highlight, glow),
+                topLeft = Offset(i * (barW + gap), (size.height - h) / 2f),
+                size = Size(barW, h),
+                cornerRadius = CornerRadius(barW / 2f)
             )
         }
     }
