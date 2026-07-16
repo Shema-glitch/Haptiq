@@ -203,7 +203,7 @@ fun OnboardingScreen(
                             .clickable(
                                 interactionSource = remember { MutableInteractionSource() },
                                 indication = null
-                            ) { scope.launch { pagerState.animateScrollToPage(i) } }
+                            ) { scope.launch { pagerState.animateScrollToPage(i, animationSpec = tween(620, easing = FastOutSlowInEasing)) } }
                     )
                 }
             }
@@ -214,7 +214,14 @@ fun OnboardingScreen(
                     if (isLastPage) {
                         onDone()
                     } else {
-                        scope.launch { pagerState.animateScrollToPage(pagerState.currentPage + 1) }
+                        // Slower, eased page glide so the parallax + traveling glow
+                        // read as a deliberate transition, not a hard snap.
+                        scope.launch {
+                            pagerState.animateScrollToPage(
+                                pagerState.currentPage + 1,
+                                animationSpec = tween(620, easing = FastOutSlowInEasing)
+                            )
+                        }
                     }
                 },
                 modifier = Modifier

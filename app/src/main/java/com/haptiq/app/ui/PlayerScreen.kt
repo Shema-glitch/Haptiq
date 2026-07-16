@@ -253,7 +253,8 @@ fun PlayerScreen(
                         contentDescription = "Album Artwork",
                         modifier = Modifier.fillMaxSize(),
                         iconSize = if (isShortScreen) 48.dp else 64.dp,
-                        cornerRadius = 24.dp
+                        cornerRadius = 24.dp,
+                        fallbackLabel = currentSong.title
                     )
                 }
             }

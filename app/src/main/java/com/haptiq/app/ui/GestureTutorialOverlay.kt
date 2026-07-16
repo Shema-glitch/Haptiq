@@ -29,6 +29,8 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.haptiq.app.ui.theme.*
 
 /**
@@ -47,6 +49,14 @@ fun GestureTutorialOverlay(
     var step by remember { mutableIntStateOf(0) }
     val lastStep = 2
 
+    // A full-screen Dialog, not an inline Box: rendered inside the library's
+    // content area, an inline scrim only darkened the list region and read as a
+    // black rectangle clipped between the header and nav bar. The dialog window
+    // covers the whole screen, so the scrim is uniform.
+    Dialog(
+        onDismissRequest = onFinish,
+        properties = DialogProperties(usePlatformDefaultWidth = false, dismissOnClickOutside = false)
+    ) {
     // Full-screen scrim. Tapping the scrim does nothing — users advance with the
     // button or Skip, so a stray tap can't leave them half-taught.
     Box(
@@ -99,8 +109,12 @@ fun GestureTutorialOverlay(
                     AnimatedContent(
                         targetState = step,
                         transitionSpec = {
-                            (slideInHorizontally { it / 2 } + fadeIn()) togetherWith
-                                (slideOutHorizontally { -it / 2 } + fadeOut())
+                            // Unhurried so each card has room to land — the incoming
+                            // slide+fade is slower than the outgoing, so steps feel
+                            // like they settle rather than snap.
+                            (slideInHorizontally(tween(520, easing = FastOutSlowInEasing)) { it / 3 } +
+                                fadeIn(tween(520))) togetherWith
+                                (slideOutHorizontally(tween(360)) { -it / 4 } + fadeOut(tween(280)))
                         },
                         label = "tutorial_demo"
                     ) { s ->
@@ -175,6 +189,7 @@ fun GestureTutorialOverlay(
                 }
             }
         }
+    }
     }
 }
 

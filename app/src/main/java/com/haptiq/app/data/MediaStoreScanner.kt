@@ -73,6 +73,7 @@ class MediaStoreScanner @Inject constructor(
             MediaStore.Audio.Media._ID,
             MediaStore.Audio.Media.TITLE,
             MediaStore.Audio.Media.ARTIST,
+            MediaStore.Audio.Media.ALBUM,
             MediaStore.Audio.Media.DURATION,
             MediaStore.Audio.Media.ALBUM_ID,
             MediaStore.Audio.Media.DATA,
@@ -89,6 +90,7 @@ class MediaStoreScanner @Inject constructor(
                 val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media._ID)
                 val titleColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.TITLE)
                 val artistColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ARTIST)
+                val albumColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ALBUM)
                 val durationColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DURATION)
                 val albumIdColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ALBUM_ID)
                 val dataColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DATA)
@@ -100,6 +102,7 @@ class MediaStoreScanner @Inject constructor(
                     val artist = cursor.getString(artistColumn)
                         ?.takeUnless { it == MediaStore.UNKNOWN_STRING }
                         ?: "Unknown Artist"
+                    val album = cursor.getString(albumColumn)
                     val durationMs = cursor.getLong(durationColumn)
                     val albumId = cursor.getLong(albumIdColumn)
                     val filePath = cursor.getString(dataColumn) ?: ""
@@ -114,9 +117,28 @@ class MediaStoreScanner @Inject constructor(
                     val contentUri = ContentUris.withAppendedId(
                         MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, id
                     )
-                    val albumArtUri = ContentUris.withAppendedId(
-                        Uri.parse("content://media/external/audio/albumart"), albumId
-                    )
+
+                    // Album art is keyed by albumId, which MediaStore SHARES across every
+                    // untagged file (they all fall into one "unknown album" bucket whose
+                    // album string is often a real-looking name, not "<unknown>"). Trusting
+                    // that URI paints ONE song's embedded cover onto all its neighbours —
+                    // the "every track shows the same Tate McRae art" bug. The only reliable
+                    // per-song source is the file's OWN embedded picture, so prefer that and
+                    // fall back to the shared album URI only when a track has no embedded art
+                    // (a genuine album where art lives on the album, not each file).
+                    val albumTrusted = albumId > 0 &&
+                        !album.isNullOrBlank() &&
+                        album != MediaStore.UNKNOWN_STRING
+                    val embeddedArt = extractEmbeddedArtwork(id.toString()) {
+                        it.setDataSource(context, contentUri)
+                    }
+                    val artworkUrl = embeddedArt.ifEmpty {
+                        if (albumTrusted) {
+                            ContentUris.withAppendedId(
+                                Uri.parse("content://media/external/audio/albumart"), albumId
+                            ).toString()
+                        } else ""
+                    }
 
                     songs.add(
                         Song(
@@ -124,7 +146,7 @@ class MediaStoreScanner @Inject constructor(
                             title = title,
                             artist = artist,
                             durationSeconds = durationSeconds,
-                            artworkUrl = albumArtUri.toString(),
+                            artworkUrl = artworkUrl,
                             audioUrl = contentUri.toString()
                         )
                     )
@@ -199,14 +221,14 @@ class MediaStoreScanner @Inject constructor(
                         // Real tags where they exist; the artist fallback is deliberately
                         // NOT the parent folder name — that surfaced locations like
                         // "Download" or "Telegram" as artist names in the UI.
-                        val meta = extractMetadata(file)
+                        val meta = extractMetadata(id, file)
                         songs.add(
                             Song(
                                 id = id,
                                 title = meta.title ?: file.nameWithoutExtension,
                                 artist = meta.artist ?: "Unknown Artist",
                                 durationSeconds = meta.durationSeconds,
-                                artworkUrl = "",
+                                artworkUrl = meta.artworkUrl,
                                 audioUrl = file.toURI().toString()
                             )
                         )
@@ -227,16 +249,18 @@ class MediaStoreScanner @Inject constructor(
     private data class FileMetadata(
         val title: String?,
         val artist: String?,
-        val durationSeconds: Int
+        val durationSeconds: Int,
+        val artworkUrl: String
     )
 
     /**
-     * Pull real tags out of a file found by the directory fallback. Without this,
-     * every fallback-scanned track shows 0:00 in the UI. Only runs on the fallback
-     * path — MediaStore rows already carry duration — so the per-file cost of
-     * MediaMetadataRetriever is acceptable.
+     * Pull real tags AND embedded cover art out of a file found by the directory
+     * fallback. Without this, every fallback-scanned track shows 0:00 and no art.
+     * Only runs on the fallback path — MediaStore rows already carry duration — so
+     * the per-file cost of MediaMetadataRetriever is acceptable, and reusing the one
+     * open retriever for art too avoids opening each file twice.
      */
-    private fun extractMetadata(file: File): FileMetadata {
+    private fun extractMetadata(songId: String, file: File): FileMetadata {
         val retriever = android.media.MediaMetadataRetriever()
         return try {
             retriever.setDataSource(file.absolutePath)
@@ -250,13 +274,61 @@ class MediaStoreScanner @Inject constructor(
                 artist = retriever
                     .extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_ARTIST)
                     ?.takeIf { it.isNotBlank() },
-                durationSeconds = (durationMs / 1000).toInt()
+                durationSeconds = (durationMs / 1000).toInt(),
+                artworkUrl = cacheEmbeddedPicture(songId, retriever.embeddedPicture)
             )
         } catch (e: Exception) {
             Log.w(TAG, "Metadata extraction failed for ${file.name}: ${e.message}")
-            FileMetadata(null, null, 0)
+            FileMetadata(null, null, 0, "")
         } finally {
             runCatching { retriever.release() }
+        }
+    }
+
+    // Where per-song extracted cover art is cached. cacheDir is OS-managed, so it can
+    // be reclaimed under pressure; a missing file just re-extracts on the next scan.
+    private val artworkCacheDir: File by lazy {
+        File(context.cacheDir, "artwork").apply { mkdirs() }
+    }
+
+    private fun artworkFileFor(songId: String): File =
+        File(artworkCacheDir, "${songId.hashCode()}.jpg")
+
+    /**
+     * Extract a single song's OWN embedded cover, cache it to disk, and return a
+     * file:// URI Coil can load. Cached by songId so rescans are free. Returns ""
+     * when the track has no embedded art (caller then falls back to a letter tile).
+     * Opens its own retriever — used by the MediaStore path, where rows otherwise
+     * never touch MediaMetadataRetriever.
+     */
+    private fun extractEmbeddedArtwork(
+        songId: String,
+        setSource: (android.media.MediaMetadataRetriever) -> Unit
+    ): String {
+        artworkFileFor(songId).let { if (it.exists() && it.length() > 0) return Uri.fromFile(it).toString() }
+        val retriever = android.media.MediaMetadataRetriever()
+        return try {
+            setSource(retriever)
+            cacheEmbeddedPicture(songId, retriever.embeddedPicture)
+        } catch (e: Exception) {
+            Log.w(TAG, "Embedded art extraction failed for $songId: ${e.message}")
+            ""
+        } finally {
+            runCatching { retriever.release() }
+        }
+    }
+
+    /** Write already-extracted picture bytes to the cache and return their file URI. */
+    private fun cacheEmbeddedPicture(songId: String, picture: ByteArray?): String {
+        if (picture == null || picture.isEmpty()) return ""
+        val out = artworkFileFor(songId)
+        if (out.exists() && out.length() > 0) return Uri.fromFile(out).toString()
+        return try {
+            out.writeBytes(picture)
+            Uri.fromFile(out).toString()
+        } catch (e: Exception) {
+            Log.w(TAG, "Caching embedded art failed for $songId: ${e.message}")
+            ""
         }
     }
 }

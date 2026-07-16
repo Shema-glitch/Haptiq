@@ -3,8 +3,9 @@ package com.haptiq.app.ui
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import kotlin.math.abs
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.input.pointer.pointerInput
@@ -513,7 +514,8 @@ fun MediaCard(
                 contentDescription = "${song.title} cover",
                 modifier = Modifier.fillMaxSize(),
                 iconSize = ComponentSize.iconXXL,
-                cornerRadius = Radius.md
+                cornerRadius = Radius.md,
+                fallbackLabel = song.title
             )
             Box(
                 modifier = Modifier
@@ -577,7 +579,7 @@ fun TrackRow(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(Modifier.size(44.dp).clip(RoundedCornerShape(Radius.sm)), contentAlignment = Alignment.Center) {
-            ArtworkImage(song.artworkUrl, null, Modifier.fillMaxSize(), iconSize = ComponentSize.iconSmall, cornerRadius = Radius.sm)
+            ArtworkImage(song.artworkUrl, null, Modifier.fillMaxSize(), iconSize = ComponentSize.iconSmall, cornerRadius = Radius.sm, fallbackLabel = song.title)
             if (isCurrentPlaying && isPlaying) {
                 Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.5f)), contentAlignment = Alignment.Center) {
                     Row(horizontalArrangement = Arrangement.spacedBy(3.dp), verticalAlignment = Alignment.Bottom, modifier = Modifier.height(18.dp)) {
@@ -848,46 +850,52 @@ fun MiniPlayer(
             .clip(RoundedCornerShape(Radius.lg))
             .border(width = 1.dp, color = ColorOutlineVariant.copy(alpha = 0.1f), shape = RoundedCornerShape(Radius.lg))
             .clickable(onClick = onExpand)
-            // Swipe up on the strip = open the full player (mirroring the Player's
-            // drag-down-to-dismiss); swipe down = dismiss playback entirely
+            // One drag gesture, one dominant axis — never both. Two separate pointerInput
+            // blocks (a vertical and a horizontal detector) both received the same pointer
+            // stream, so a downward "close" swipe with any sideways drift fired onDismiss
+            // AND onNext; onNext then re-queued a track after dismiss cleared it, leaving
+            // audio playing with no visible player. Deciding the axis at drag-end from the
+            // larger total displacement guarantees exactly one action fires.
+            //   vertical: up = open full player, down = dismiss playback
+            //   horizontal: left = next, right = previous
             .pointerInput(Unit) {
-                var accumulated = 0f
-                detectVerticalDragGestures(
-                    onDragStart = { accumulated = 0f },
-                    onVerticalDrag = { change, dragAmount ->
-                        accumulated += dragAmount
-                        if (accumulated < -40f) {
-                            accumulated = 0f
-                            onExpand()
-                        } else if (accumulated > 56f) {
-                            accumulated = 0f
-                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                            onDismiss()
+                val skipThreshold = 88.dp.toPx()
+                val dismissThreshold = 64.dp.toPx()
+                val expandThreshold = 40.dp.toPx()
+                var totalX = 0f
+                var totalY = 0f
+                detectDragGestures(
+                    onDragStart = { totalX = 0f; totalY = 0f },
+                    onDrag = { change, dragAmount ->
+                        totalX += dragAmount.x
+                        totalY += dragAmount.y
+                        // Follow the finger sideways only while the gesture reads as
+                        // horizontal, so a vertical dismiss doesn't shift the strip.
+                        if (abs(totalX) > abs(totalY)) {
+                            scope.launch { swipeOffsetX.snapTo(swipeOffsetX.value + dragAmount.x * 0.6f) }
                         }
-                        change.consume()
-                    }
-                )
-            }
-            // Horizontal swipe = skip: left → next, right → previous
-            .pointerInput(Unit) {
-                val threshold = 88.dp.toPx()
-                detectHorizontalDragGestures(
-                    onHorizontalDrag = { change, dragAmount ->
-                        // 0.6 resistance so the strip feels anchored, not loose
-                        scope.launch { swipeOffsetX.snapTo(swipeOffsetX.value + dragAmount * 0.6f) }
                         change.consume()
                     },
                     onDragCancel = {
                         scope.launch { swipeOffsetX.animateTo(0f, spring(stiffness = Spring.StiffnessMedium)) }
                     },
                     onDragEnd = {
-                        val settled = swipeOffsetX.value
-                        if (settled < -threshold) {
-                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                            onNext()
-                        } else if (settled > threshold) {
-                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                            onPrev()
+                        if (abs(totalY) > abs(totalX)) {
+                            if (totalY < -expandThreshold) {
+                                onExpand()
+                            } else if (totalY > dismissThreshold) {
+                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                onDismiss()
+                            }
+                        } else {
+                            val settled = swipeOffsetX.value
+                            if (settled < -skipThreshold) {
+                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                onNext()
+                            } else if (settled > skipThreshold) {
+                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                onPrev()
+                            }
                         }
                         scope.launch {
                             swipeOffsetX.animateTo(0f, spring(dampingRatio = 0.7f, stiffness = Spring.StiffnessMedium))
@@ -914,7 +922,8 @@ fun MiniPlayer(
                     null,
                     Modifier.size(ComponentSize.artworkMedium),
                     iconSize = ComponentSize.iconMedium,
-                    cornerRadius = Radius.sm
+                    cornerRadius = Radius.sm,
+                    fallbackLabel = currentSong.title
                 )
                 Spacer(Modifier.width(Spacing.md))
                 Column(Modifier.weight(1f)) {
