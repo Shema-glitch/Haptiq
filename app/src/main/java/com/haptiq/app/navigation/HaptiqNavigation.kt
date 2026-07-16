@@ -251,6 +251,12 @@ fun HaptiqNavHost(
                 },
                 onToggleFavorite = { songId ->
                     haptiqViewModel.handleAction(HaptiqUiAction.ToggleFavorite(songId))
+                },
+                onSetSpeed = { speed ->
+                    haptiqViewModel.handleAction(HaptiqUiAction.SetPlaybackSpeed(speed))
+                },
+                onSetVolume = { fraction ->
+                    haptiqViewModel.handleAction(HaptiqUiAction.SetVolume(fraction))
                 }
             )
         }

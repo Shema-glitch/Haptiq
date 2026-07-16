@@ -43,6 +43,20 @@ import com.haptiq.app.data.Song
 import com.haptiq.app.ui.theme.*
 import kotlinx.coroutines.launch
 
+private val SPEED_STEPS = listOf(0.5f, 1f, 1.25f, 1.5f, 2f)
+
+/** Next value in the speed cycle, wrapping back to the start. */
+private fun nextSpeed(current: Float): Float {
+    val i = SPEED_STEPS.indexOfFirst { kotlin.math.abs(it - current) < 0.01f }
+    return SPEED_STEPS[((if (i < 0) 1 else i) + 1) % SPEED_STEPS.size]
+}
+
+/** "1×", "1.25×", "0.5×" — no trailing zeros. */
+private fun formatSpeed(speed: Float): String {
+    val s = if (speed == speed.toInt().toFloat()) speed.toInt().toString() else speed.toString()
+    return "${s}×"
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PlayerScreen(
@@ -60,7 +74,9 @@ fun PlayerScreen(
     onRefreshDndStatus: () -> Unit = {},
     onToggleShuffle: () -> Unit = {},
     onToggleRepeat: () -> Unit = {},
-    onToggleFavorite: (String) -> Unit = {}
+    onToggleFavorite: (String) -> Unit = {},
+    onSetSpeed: (Float) -> Unit = {},
+    onSetVolume: (Float) -> Unit = {}
 ) {
     val currentSong = state.currentSong ?: return
     val isFav = currentSong.id in state.favoriteIds
@@ -516,6 +532,51 @@ fun PlayerScreen(
                         } else ColorOnSurface60,
                         modifier = Modifier.size(24.dp)
                     )
+                }
+            }
+
+            // ─── Volume + Speed row ─────────────────────────────
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = Spacing.sm),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(Spacing.sm)
+            ) {
+                Icon(
+                    imageVector = if (state.volume <= 0f) Icons.Default.VolumeOff else Icons.Default.VolumeUp,
+                    contentDescription = "Volume",
+                    tint = ColorOnSurface60,
+                    modifier = Modifier.size(ComponentSize.iconSmall)
+                )
+                Slider(
+                    value = state.volume,
+                    onValueChange = onSetVolume,
+                    valueRange = 0f..1f,
+                    colors = SliderDefaults.colors(
+                        thumbColor = ColorOnSurface,
+                        activeTrackColor = ColorPrimary,
+                        inactiveTrackColor = ColorOutlineVariant
+                    ),
+                    modifier = Modifier.weight(1f).height(24.dp)
+                )
+                // Speed pill cycles 0.5× → 1× → 1.25× → 1.5× → 2×
+                Surface(
+                    onClick = { onSetSpeed(nextSpeed(state.playbackSpeed)) },
+                    shape = RoundedCornerShape(percent = 50),
+                    color = if (state.playbackSpeed != 1f) ColorPrimary.copy(alpha = 0.18f) else ColorSurfaceVariant,
+                    modifier = Modifier.height(32.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .defaultMinSize(minWidth = 44.dp)
+                            .padding(horizontal = Spacing.sm),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            formatSpeed(state.playbackSpeed),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = if (state.playbackSpeed != 1f) ColorPrimary else ColorOnSurface
+                        )
+                    }
                 }
             }
 

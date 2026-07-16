@@ -59,6 +59,8 @@ data class HaptiqUiState(
     // Transport state
     val isShuffle: Boolean = false,
     val repeatMode: RepeatMode = RepeatMode.OFF,
+    val playbackSpeed: Float = 1f,
+    val volume: Float = 1f,
     // Live play order (reflects shuffle + queue edits)
     val queue: List<Song> = emptyList(),
     // Favorites
@@ -87,6 +89,8 @@ sealed interface HaptiqUiAction {
     object ToggleShuffle : HaptiqUiAction
     object ToggleRepeat : HaptiqUiAction
     // Queue editing
+    data class SetPlaybackSpeed(val speed: Float) : HaptiqUiAction
+    data class SetVolume(val fraction: Float) : HaptiqUiAction
     data class PlayQueueIndex(val index: Int) : HaptiqUiAction
     data class MoveInQueue(val from: Int, val to: Int) : HaptiqUiAction
     data class RemoveFromQueue(val index: Int) : HaptiqUiAction
@@ -192,6 +196,8 @@ class HaptiqViewModel @Inject constructor(
         playerManager.queue.collectIntoState { state, q -> state.copy(queue = q) }
         playerManager.isShuffleEnabled.collectIntoState { state, on -> state.copy(isShuffle = on) }
         playerManager.repeatMode.collectIntoState { state, mode -> state.copy(repeatMode = mode) }
+        playerManager.playbackSpeed.collectIntoState { state, s -> state.copy(playbackSpeed = s) }
+        playerManager.volume.collectIntoState { state, v -> state.copy(volume = v) }
         playlistRepository.allPlaylists.collectIntoState { state, lists -> state.copy(playlists = lists) }
         favoritesRepository.allFavoriteIds.collectIntoState { state, ids -> state.copy(favoriteIds = ids) }
 
@@ -342,6 +348,12 @@ class HaptiqViewModel @Inject constructor(
             }
             is HaptiqUiAction.ToggleRepeat -> {
                 playerManager.toggleRepeat()
+            }
+            is HaptiqUiAction.SetPlaybackSpeed -> {
+                playerManager.setPlaybackSpeed(action.speed)
+            }
+            is HaptiqUiAction.SetVolume -> {
+                playerManager.setVolume(action.fraction)
             }
             is HaptiqUiAction.PlayQueueIndex -> {
                 playerManager.playAt(action.index)

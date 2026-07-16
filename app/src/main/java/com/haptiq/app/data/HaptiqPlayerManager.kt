@@ -24,6 +24,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.math.roundToInt
 
 @Singleton
 class HaptiqPlayerManager @Inject constructor(
@@ -95,6 +96,14 @@ class HaptiqPlayerManager @Inject constructor(
     private val _repeatMode = MutableStateFlow(RepeatMode.OFF)
     override val repeatMode: StateFlow<RepeatMode> = _repeatMode.asStateFlow()
 
+    private val _playbackSpeed = MutableStateFlow(1f)
+    override val playbackSpeed: StateFlow<Float> = _playbackSpeed.asStateFlow()
+
+    // System media-stream volume as a 0..1 fraction. Kept in sync with the hardware
+    // volume keys via a ContentObserver so the in-app slider never drifts from reality.
+    private val _volume = MutableStateFlow(currentVolumeFraction())
+    override val volume: StateFlow<Float> = _volume.asStateFlow()
+
     private var lastPositionSaveAt = 0L
 
     // Live DSP tuning state — written from UI thread, read from Visualizer callback thread
@@ -103,6 +112,23 @@ class HaptiqPlayerManager @Inject constructor(
     init {
         initVibrator()
         initExoPlayer()
+        registerVolumeObserver()
+    }
+
+    private fun currentVolumeFraction(): Float {
+        val max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC).coerceAtLeast(1)
+        return audioManager.getStreamVolume(AudioManager.STREAM_MUSIC).toFloat() / max
+    }
+
+    private fun registerVolumeObserver() {
+        context.contentResolver.registerContentObserver(
+            android.provider.Settings.System.CONTENT_URI, true,
+            object : android.database.ContentObserver(android.os.Handler(android.os.Looper.getMainLooper())) {
+                override fun onChange(selfChange: Boolean) {
+                    _volume.value = currentVolumeFraction()
+                }
+            }
+        )
     }
 
     private fun initVibrator() {
@@ -164,6 +190,16 @@ class HaptiqPlayerManager @Inject constructor(
 
                 override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                     Log.d("HaptiqPlayer", "MediaItem transition: ${mediaItem?.mediaId}")
+                    // Native playlist moved to a new item (manual skip OR auto-advance).
+                    // Mirror it into our model + now-playing UI so the app, notification,
+                    // and haptics all track the track ExoPlayer is actually playing.
+                    val idx = exoPlayer?.currentMediaItemIndex ?: return
+                    if (idx in songsQueue.indices) {
+                        currentSongIndex = idx
+                        val song = songsQueue[idx]
+                        if (_currentSong.value?.id != song.id) applySongUi(song)
+                        saveSession()
+                    }
                     updateProgressFlows()
                 }
             })
@@ -209,7 +245,7 @@ class HaptiqPlayerManager @Inject constructor(
         }
         publishQueue()
         if (songsQueue.isNotEmpty()) {
-            loadSong(songsQueue[currentSongIndex])
+            loadQueue(currentSongIndex)
         }
     }
 
@@ -244,10 +280,8 @@ class HaptiqPlayerManager @Inject constructor(
         currentSongIndex = index
         _isShuffleEnabled.value = snapshot.shuffle
         _repeatMode.value = snapshot.repeatMode
-        exoPlayer?.repeatMode =
-            if (snapshot.repeatMode == RepeatMode.ONE) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
         publishQueue()
-        loadSong(songsQueue[index], autoPlay = false, startPositionMs = snapshot.positionMs)
+        loadQueue(index, startPositionMs = snapshot.positionMs, autoPlay = false)
     }
 
     override fun setHapticActive(active: Boolean) {
@@ -286,51 +320,90 @@ class HaptiqPlayerManager @Inject constructor(
         }
     }
 
+    override fun setPlaybackSpeed(speed: Float) {
+        val s = speed.coerceIn(0.5f, 2f)
+        _playbackSpeed.value = s
+        exoPlayer?.setPlaybackSpeed(s)
+    }
+
+    override fun setVolume(fraction: Float) {
+        val max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+        val target = (fraction.coerceIn(0f, 1f) * max).roundToInt()
+        runCatching {
+            audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, target, 0)
+        }
+        _volume.value = currentVolumeFraction()
+    }
+
     override fun updateTuning(state: HapticTuningState) {
         tuningState = state
         bassVisualizer.tuning = state
     }
 
-    private fun loadSong(song: Song, autoPlay: Boolean = true, startPositionMs: Long = 0L) {
+    /**
+     * Media3 item for a song. Artwork Uri is null (not an empty-string parse) when the
+     * track has no cover, so the notification falls back cleanly.
+     */
+    private fun mediaItemFor(song: Song): MediaItem {
+        val meta = androidx.media3.common.MediaMetadata.Builder()
+            .setTitle(song.title)
+            .setArtist(song.artist)
+            .setArtworkUri(song.artworkUrl.takeIf { it.isNotBlank() }?.let { android.net.Uri.parse(it) })
+            .build()
+        return MediaItem.Builder()
+            .setUri(song.audioUrl)
+            .setMediaId(song.id)
+            .setMediaMetadata(meta)
+            .build()
+    }
+
+    private fun exoRepeatMode(mode: RepeatMode): Int = when (mode) {
+        RepeatMode.ONE -> Player.REPEAT_MODE_ONE
+        RepeatMode.ALL -> Player.REPEAT_MODE_ALL
+        RepeatMode.OFF -> Player.REPEAT_MODE_OFF
+    }
+
+    /** Push the now-playing UI (title / progress / time) for [song] at [startPositionMs]. */
+    private fun applySongUi(song: Song, startPositionMs: Long = 0L) {
+        _currentSong.value = song
+        val startSecs = (startPositionMs / 1000).toInt()
+        _playbackProgress.value = if (song.durationSeconds > 0) {
+            (startSecs.toFloat() / song.durationSeconds).coerceIn(0f, 1f)
+        } else 0f
+        _currentTimeText.value = formatTime(startSecs)
+        _remainingTimeText.value = "-${formatTime((song.durationSeconds - startSecs).coerceAtLeast(0))}"
+    }
+
+    /**
+     * Load the ENTIRE songsQueue into ExoPlayer as one playlist, starting at [startIndex].
+     * This is the core of native playback: ExoPlayer auto-advances through the queue by
+     * itself, and because it now holds real next/previous items the media notification
+     * shows working skip controls. The old model loaded one item at a time, so the player
+     * never had a "next" — hence no auto-advance past a single-song context and no skip
+     * buttons on the notification.
+     *
+     * DO NOT call player.stop() — it tears down the audio renderer and kills the
+     * Visualizer session; setMediaItems + prepare handles transitions correctly.
+     */
+    private fun loadQueue(startIndex: Int, startPositionMs: Long = 0L, autoPlay: Boolean = true) {
         try {
-            Log.d("HaptiqPlayer", "Loading song: ${song.title} (autoPlay=$autoPlay)")
-
-            val player = exoPlayer ?: run {
-                initExoPlayer()
-                exoPlayer!!
-            }
-
-            // DO NOT call player.stop() here — it tears down the audio renderer
-            // and kills the Visualizer's session. ExoPlayer handles track transitions
-            // correctly with just setMediaItem() + prepare().
+            if (songsQueue.isEmpty()) return
+            val player = exoPlayer ?: run { initExoPlayer(); exoPlayer!! }
             stopProgressUpdate()
 
-            _currentSong.value = song
-            val startSecs = (startPositionMs / 1000).toInt()
-            _playbackProgress.value = if (song.durationSeconds > 0) {
-                (startSecs.toFloat() / song.durationSeconds).coerceIn(0f, 1f)
-            } else 0f
-            _currentTimeText.value = formatTime(startSecs)
-            _remainingTimeText.value = "-${formatTime((song.durationSeconds - startSecs).coerceAtLeast(0))}"
+            val index = startIndex.coerceIn(0, songsQueue.size - 1)
+            currentSongIndex = index
+            applySongUi(songsQueue[index], startPositionMs)
 
-            val mediaMetadata = androidx.media3.common.MediaMetadata.Builder()
-                .setTitle(song.title)
-                .setArtist(song.artist)
-                .setArtworkUri(android.net.Uri.parse(song.artworkUrl))
-                .build()
-
-            val mediaItem = MediaItem.Builder()
-                .setUri(song.audioUrl)
-                .setMediaMetadata(mediaMetadata)
-                .build()
-
-            player.setMediaItem(mediaItem, startPositionMs)
+            player.setMediaItems(songsQueue.map { mediaItemFor(it) }, index, startPositionMs)
+            player.repeatMode = exoRepeatMode(_repeatMode.value)
+            player.setPlaybackSpeed(_playbackSpeed.value)
             player.prepare()
             player.playWhenReady = autoPlay
             if (autoPlay) startPlaybackService()
             saveSession()
         } catch (e: Exception) {
-            Log.e("HaptiqPlayer", "Error loading song: ${e.message}", e)
+            Log.e("HaptiqPlayer", "Error loading queue: ${e.message}", e)
         }
     }
 
@@ -366,22 +439,30 @@ class HaptiqPlayerManager @Inject constructor(
     }
 
     override fun playNext() {
+        val player = exoPlayer ?: return
         if (songsQueue.isEmpty()) return
-        // Manual skips always wrap — the queue is already in shuffled order when shuffle is on
-        currentSongIndex = (currentSongIndex + 1) % songsQueue.size
-        loadSong(songsQueue[currentSongIndex])
+        // Manual skips always wrap; onMediaItemTransition syncs currentSong/index.
+        val next = (currentSongIndex + 1) % songsQueue.size
+        player.seekTo(next, 0L)
+        player.playWhenReady = true
+        startPlaybackService()
     }
 
     override fun playPrevious() {
+        val player = exoPlayer ?: return
         if (songsQueue.isEmpty()) return
-        currentSongIndex = if (currentSongIndex - 1 < 0) songsQueue.size - 1 else currentSongIndex - 1
-        loadSong(songsQueue[currentSongIndex])
+        val prev = if (currentSongIndex - 1 < 0) songsQueue.size - 1 else currentSongIndex - 1
+        player.seekTo(prev, 0L)
+        player.playWhenReady = true
+        startPlaybackService()
     }
 
     override fun playAt(index: Int) {
+        val player = exoPlayer ?: return
         if (index !in songsQueue.indices) return
-        currentSongIndex = index
-        loadSong(songsQueue[index])
+        player.seekTo(index, 0L)
+        player.playWhenReady = true
+        startPlaybackService()
     }
 
     override fun toggleShuffle() {
@@ -402,7 +483,9 @@ class HaptiqPlayerManager @Inject constructor(
             currentSongIndex = songsQueue.indexOfFirst { it.id == current?.id }.coerceAtLeast(0)
         }
         publishQueue()
-        saveSession()
+        // Rebuild the ExoPlayer playlist to match the new order, keeping the current
+        // track playing from where it was so shuffle doesn't restart the song.
+        loadQueue(currentSongIndex, startPositionMs = exoPlayer?.currentPosition ?: 0L, autoPlay = _isPlaying.value)
     }
 
     override fun toggleRepeat() {
@@ -411,8 +494,9 @@ class HaptiqPlayerManager @Inject constructor(
             RepeatMode.ALL -> RepeatMode.ONE
             RepeatMode.ONE -> RepeatMode.OFF
         }
-        exoPlayer?.repeatMode =
-            if (_repeatMode.value == RepeatMode.ONE) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
+        // ALL/ONE are now native ExoPlayer loop modes; onSongCompleted only handles the
+        // OFF end-of-queue case.
+        exoPlayer?.repeatMode = exoRepeatMode(_repeatMode.value)
         saveSession()
     }
 
@@ -421,12 +505,10 @@ class HaptiqPlayerManager @Inject constructor(
         if (from !in songsQueue.indices || to !in songsQueue.indices || from == to) return
         val song = songsQueue.removeAt(from)
         songsQueue.add(to, song)
-        currentSongIndex = when (currentSongIndex) {
-            from -> to
-            in (minOf(from, to))..(maxOf(from, to)) ->
-                if (from < to) currentSongIndex - 1 else currentSongIndex + 1
-            else -> currentSongIndex
-        }
+        // Mirror the move into ExoPlayer; it keeps currentMediaItemIndex pointing at the
+        // still-playing track, so we read the authoritative index back from it.
+        exoPlayer?.moveMediaItem(from, to)
+        currentSongIndex = exoPlayer?.currentMediaItemIndex ?: currentSongIndex
         publishQueue()
         saveSession()
     }
@@ -434,7 +516,9 @@ class HaptiqPlayerManager @Inject constructor(
     override fun removeFromQueue(index: Int) {
         if (index !in songsQueue.indices || index == currentSongIndex) return
         songsQueue.removeAt(index)
-        if (index < currentSongIndex) currentSongIndex--
+        exoPlayer?.removeMediaItem(index)
+        currentSongIndex = exoPlayer?.currentMediaItemIndex
+            ?: (if (index < currentSongIndex) currentSongIndex - 1 else currentSongIndex)
         publishQueue()
         saveSession()
     }
@@ -453,31 +537,21 @@ class HaptiqPlayerManager @Inject constructor(
         if (existing >= 0) {
             if (existing != currentSongIndex) playSongNext(existing)
         } else {
-            songsQueue.add((currentSongIndex + 1).coerceAtMost(songsQueue.size), song)
+            val insertAt = (currentSongIndex + 1).coerceAtMost(songsQueue.size)
+            songsQueue.add(insertAt, song)
+            exoPlayer?.addMediaItem(insertAt, mediaItemFor(song))
             publishQueue()
             saveSession()
         }
     }
 
     private fun onSongCompleted() {
-        when (_repeatMode.value) {
-            RepeatMode.ONE -> {
-                // ExoPlayer's REPEAT_MODE_ONE normally handles this; kept as a fallback
-                exoPlayer?.seekTo(0)
-                exoPlayer?.playWhenReady = true
-            }
-            RepeatMode.ALL -> playNext()
-            RepeatMode.OFF -> {
-                if (currentSongIndex < songsQueue.size - 1) {
-                    playNext()
-                } else {
-                    // End of queue: stay on the last track, paused at the start
-                    pauseMedia()
-                    exoPlayer?.seekTo(0)
-                    updateProgressFlows()
-                }
-            }
-        }
+        // With a native playlist ExoPlayer auto-advances and loops (repeat ALL/ONE) on
+        // its own, so STATE_ENDED now fires only at the very end of the queue with repeat
+        // OFF. Park paused at the start of the last track.
+        pauseMedia()
+        exoPlayer?.seekTo(currentSongIndex, 0L)
+        updateProgressFlows()
     }
 
     private fun startProgressUpdate() {

@@ -23,6 +23,10 @@ interface PlayerManager {
     val queue: StateFlow<List<Song>>
     val isShuffleEnabled: StateFlow<Boolean>
     val repeatMode: StateFlow<RepeatMode>
+    /** Playback speed multiplier (0.5–2.0; 1.0 = normal). */
+    val playbackSpeed: StateFlow<Float>
+    /** System media volume as a 0..1 fraction. */
+    val volume: StateFlow<Float>
 
     fun setSongs(songs: List<Song>, startIndex: Int)
     fun setHapticActive(active: Boolean)
@@ -38,6 +42,10 @@ interface PlayerManager {
     fun playAt(index: Int)
     fun toggleShuffle()
     fun toggleRepeat()
+    /** Set playback speed (0.5–2.0). */
+    fun setPlaybackSpeed(speed: Float)
+    /** Set system media volume from a 0..1 fraction. */
+    fun setVolume(fraction: Float)
     // ── Queue editing ──
     fun moveInQueue(from: Int, to: Int)
     fun removeFromQueue(index: Int)
