@@ -10,189 +10,269 @@
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="icon" type="image/svg+xml" href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><polygon points="50,8 88,30 50,52 12,30" fill="%23D98E62"/><polygon points="12,30 50,52 50,94 12,72" fill="%23C77B4F"/><polygon points="88,30 50,52 50,94 88,72" fill="%238F5432"/></svg>'>
 <style>
+  /* ── Design tokens ─────────────────────────────────────────────
+     Paper Tactile. Flat solid color only: no gradients, no alpha,
+     no shadows. Depth = surface steps + borders. */
   :root {
-    --bg: #211B16;
-    --surface: #2B241E;
-    --surface-2: #352C25;
-    --border: #46392E;
-    --text: #F4ECE3;
-    --muted: #B7ACA0;
-    --faint: #857A6D;
-    --clay: #C77B4F;
-    --clay-light: #D98E62;
-    --clay-deep: #8F5432;
-    --amber: #E0A458;
-    --ink: #211B16;
+    /* color */
+    --bg:            #211B16;
+    --surface:       #2B241E;
+    --surface-2:     #352C25;
+    --surface-3:     #40352C;
+    --border:        #46392E;
+    --border-strong: #5F4E3F;
+    --text:          #F4ECE3;
+    --text-muted:    #B7ACA0;
+    --text-faint:    #8F8578;
+    --accent:        #C77B4F;
+    --accent-strong: #D98E62;
+    --accent-deep:   #8F5432;
+    --haptic:        #E0A458;
+    --on-accent:     #211B16;
+    /* spacing scale — the only spacing values used anywhere */
+    --s1: 4px;  --s2: 8px;  --s3: 12px; --s4: 16px; --s5: 24px;
+    --s6: 32px; --s7: 48px; --s8: 72px; --s9: 112px;
+    /* radius */
+    --r-sm: 10px; --r-md: 16px; --r-lg: 24px; --r-pill: 999px;
+    /* type */
+    --font: "Space Grotesk", system-ui, -apple-system, sans-serif;
+    --mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+    /* motion */
+    --t: 130ms ease;
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html { scroll-behavior: smooth; }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    * { transition: none !important; }
+  }
   body {
-    background: var(--bg);
-    color: var(--text);
-    font-family: "Space Grotesk", system-ui, -apple-system, sans-serif;
-    line-height: 1.6;
+    background: var(--bg); color: var(--text);
+    font-family: var(--font); line-height: 1.6; font-size: 16px;
     -webkit-font-smoothing: antialiased;
   }
-  ::selection { background: var(--clay); color: var(--ink); }
+  ::selection { background: var(--accent); color: var(--on-accent); }
+  :focus-visible { outline: 2px solid var(--haptic); outline-offset: 2px; border-radius: var(--r-sm); }
 
-  .wrap { max-width: 1060px; margin: 0 auto; padding: 0 24px; }
+  .skip-link {
+    position: absolute; left: var(--s4); top: -60px; z-index: 100;
+    background: var(--haptic); color: var(--on-accent);
+    padding: var(--s2) var(--s4); border-radius: var(--r-sm);
+    font-weight: 600; text-decoration: none;
+  }
+  .skip-link:focus { top: var(--s4); }
 
-  /* ── Nav ─────────────────────────────────────────── */
-  nav {
-    position: sticky; top: 0; z-index: 10;
-    background: var(--bg);
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 var(--s5); }
+
+  /* ── Status ticker ────────────────────────────────── */
+  .ticker {
     border-bottom: 1px solid var(--border);
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.14em;
+    color: var(--text-faint); text-transform: uppercase;
+    padding: var(--s2) var(--s5); text-align: center;
+    overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
   }
-  .nav-inner {
-    display: flex; align-items: center; gap: 12px;
-    padding: 14px 24px; max-width: 1060px; margin: 0 auto;
-  }
-  .nav-brand { display: flex; align-items: center; gap: 10px; text-decoration: none; color: var(--text); font-weight: 700; letter-spacing: 0.18em; font-size: 15px; }
-  .nav-brand svg { width: 26px; height: 26px; }
-  .nav-links { margin-left: auto; display: flex; gap: 22px; }
-  .nav-links a { color: var(--muted); text-decoration: none; font-size: 14px; }
-  .nav-links a:hover { color: var(--clay-light); }
-  @media (max-width: 640px) { .nav-links a:not(.nav-gh) { display: none; } }
+  .ticker b { color: var(--haptic); font-weight: 500; }
 
-  /* ── Hero ────────────────────────────────────────── */
-  header { padding: 84px 0 0; text-align: center; }
-  .hero-mark { width: 88px; height: 88px; margin-bottom: 28px; }
-  h1 {
-    font-size: clamp(2.1rem, 6vw, 3.6rem);
-    font-weight: 700; line-height: 1.12; letter-spacing: -0.01em;
-    max-width: 15ch; margin: 0 auto;
+  /* ── Floating pill navbar ─────────────────────────── */
+  .nav-dock {
+    position: sticky; top: var(--s4); z-index: 50;
+    display: flex; justify-content: center; padding: 0 var(--s4);
   }
-  h1 .accent { color: var(--clay); }
-  .hero-sub {
-    color: var(--muted); font-size: clamp(1rem, 2.4vw, 1.15rem);
-    max-width: 52ch; margin: 22px auto 0;
+  .nav-pill {
+    display: flex; align-items: center; gap: var(--s5);
+    background: var(--surface); border: 1px solid var(--border-strong);
+    border-radius: var(--r-pill); padding: var(--s2) var(--s2) var(--s2) var(--s4);
+    width: 100%; max-width: 720px;
   }
-  .hero-cta { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; margin-top: 36px; }
+  .brand { display: flex; align-items: center; gap: var(--s2); text-decoration: none; color: var(--text); font-weight: 700; letter-spacing: 0.16em; font-size: 14px; }
+  .brand svg { width: 24px; height: 24px; }
+  .nav-links { display: flex; gap: var(--s4); margin-left: auto; align-items: center; }
+  .nav-links a { color: var(--text-muted); text-decoration: none; font-size: 14px; padding: var(--s1) var(--s2); border-radius: var(--r-pill); transition: color var(--t), background var(--t); }
+  .nav-links a:hover { color: var(--text); background: var(--surface-2); }
+  .nav-gh {
+    background: var(--accent); color: var(--on-accent) !important;
+    font-weight: 600; padding: var(--s2) var(--s4) !important;
+  }
+  .nav-gh:hover { background: var(--accent-strong) !important; color: var(--on-accent) !important; }
+  .menu-btn {
+    display: none; margin-left: auto; background: var(--surface-2); color: var(--text);
+    border: 1px solid var(--border); border-radius: var(--r-pill);
+    font-family: var(--font); font-size: 14px; font-weight: 600;
+    padding: var(--s2) var(--s4); cursor: pointer;
+  }
+  .menu-btn:hover { background: var(--surface-3); }
+  @media (max-width: 680px) {
+    .nav-links { display: none; }
+    .menu-btn { display: block; }
+  }
+  .mobile-menu {
+    position: fixed; inset: 0; z-index: 60; background: var(--bg);
+    display: none; flex-direction: column; padding: var(--s5);
+  }
+  .mobile-menu.open { display: flex; }
+  .mobile-menu .top { display: flex; align-items: center; justify-content: space-between; }
+  .mobile-menu nav { display: flex; flex-direction: column; gap: var(--s4); margin-top: var(--s8); }
+  .mobile-menu nav a {
+    color: var(--text); text-decoration: none; font-size: 2rem; font-weight: 700;
+    border-bottom: 1px solid var(--border); padding-bottom: var(--s4);
+  }
+  .mobile-menu nav a:hover { color: var(--accent-strong); }
+
+  /* ── Hero ─────────────────────────────────────────── */
+  .hero { padding: var(--s9) 0 var(--s8); text-align: center; }
+  .hero-mark { width: 96px; height: 96px; margin-bottom: var(--s6); }
+  .hero h1 {
+    font-size: clamp(2.6rem, 8vw, 5rem);
+    font-weight: 700; line-height: 1.04; letter-spacing: -0.02em;
+    text-transform: uppercase; max-width: 14ch; margin: 0 auto;
+  }
+  .hero h1 .accent { color: var(--accent); }
+  .hero-sub { color: var(--text-muted); font-size: clamp(1rem, 2.4vw, 1.2rem); max-width: 54ch; margin: var(--s5) auto 0; }
+  .hero-cta { display: flex; gap: var(--s3); justify-content: center; flex-wrap: wrap; margin-top: var(--s6); }
   .btn {
     display: inline-block; text-decoration: none; cursor: pointer;
-    font-family: inherit; font-size: 15px; font-weight: 600;
-    padding: 13px 26px; border-radius: 10px; border: 1px solid var(--border);
-    color: var(--text); background: var(--surface);
-    transition: background 120ms ease, border-color 120ms ease;
+    font-family: var(--font); font-size: 15px; font-weight: 600;
+    padding: var(--s3) var(--s5); border-radius: var(--r-pill);
+    border: 1px solid var(--border-strong); color: var(--text); background: var(--surface);
+    transition: background var(--t), border-color var(--t);
   }
-  .btn:hover { background: var(--surface-2); border-color: var(--faint); }
-  .btn-primary { background: var(--clay); border-color: var(--clay); color: var(--ink); }
-  .btn-primary:hover { background: var(--clay-light); border-color: var(--clay-light); }
-  .demo-hint { color: var(--faint); font-size: 13px; margin-top: 14px; min-height: 20px; }
+  .btn:hover { background: var(--surface-2); border-color: var(--text-faint); }
+  .btn:active { background: var(--surface-3); }
+  .btn-primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+  .btn-primary:hover { background: var(--accent-strong); border-color: var(--accent-strong); }
+  .btn-primary:active { background: var(--accent-deep); border-color: var(--accent-deep); }
+  .demo-hint { color: var(--text-faint); font-size: 13px; margin-top: var(--s4); min-height: 20px; }
 
-  /* ── Visualizer ──────────────────────────────────── */
-  .viz {
-    display: flex; align-items: flex-end; justify-content: center; gap: 5px;
-    height: 120px; margin-top: 56px; padding: 0 24px;
-    border-bottom: 1px solid var(--border);
+  .hero-stats {
+    display: flex; justify-content: center; gap: var(--s5); flex-wrap: wrap;
+    margin-top: var(--s7); font-family: var(--mono); font-size: 12px;
+    color: var(--text-faint); letter-spacing: 0.1em; text-transform: uppercase;
   }
-  .viz span {
-    width: 12px; border-radius: 3px 3px 0 0; background: var(--clay-deep);
-    height: 8%;
+  .hero-stats span b { color: var(--haptic); font-weight: 500; display: block; font-size: 20px; letter-spacing: 0; margin-bottom: var(--s1); }
+
+  /* ── Sections ─────────────────────────────────────── */
+  section { padding: var(--s8) 0; }
+  .kicker { color: var(--accent); font-size: 13px; font-weight: 600; letter-spacing: 0.22em; text-transform: uppercase; margin-bottom: var(--s3); }
+  h2 { font-size: clamp(1.7rem, 4.5vw, 2.5rem); font-weight: 700; line-height: 1.15; letter-spacing: -0.01em; max-width: 22ch; }
+  .section-sub { color: var(--text-muted); max-width: 58ch; margin-top: var(--s4); }
+
+  /* ── Bento ────────────────────────────────────────── */
+  .bento {
+    display: grid; gap: var(--s3); margin-top: var(--s6);
+    grid-template-columns: repeat(6, 1fr);
   }
-  .viz span.hot { background: var(--clay); }
-  .viz span.peak { background: var(--amber); }
-
-  /* ── Sections ────────────────────────────────────── */
-  section { padding: 88px 0; border-bottom: 1px solid var(--border); }
-  .kicker { color: var(--clay); font-size: 13px; font-weight: 600; letter-spacing: 0.22em; text-transform: uppercase; margin-bottom: 14px; }
-  h2 { font-size: clamp(1.6rem, 4vw, 2.2rem); font-weight: 700; line-height: 1.2; max-width: 24ch; }
-  .section-sub { color: var(--muted); max-width: 58ch; margin-top: 14px; }
-
-  .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin-top: 44px; }
-  @media (max-width: 800px) { .cards { grid-template-columns: 1fr; } }
-  .card {
+  .b {
     background: var(--surface); border: 1px solid var(--border);
-    border-radius: 14px; padding: 26px;
+    border-radius: var(--r-md); padding: var(--s5);
+    display: flex; flex-direction: column; gap: var(--s3);
   }
-  .card h3 { font-size: 1.1rem; margin-bottom: 10px; display: flex; align-items: center; gap: 10px; }
-  .card p { color: var(--muted); font-size: 0.95rem; }
-  .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--clay); flex: none; }
-  .dot.amber { background: var(--amber); }
-
-  /* ── Engine steps ────────────────────────────────── */
-  .steps { margin-top: 44px; display: grid; gap: 0; }
-  .step {
-    display: grid; grid-template-columns: 56px 1fr; gap: 18px;
-    padding: 24px 0; border-top: 1px solid var(--border);
+  .b h3 { font-size: 1.05rem; font-weight: 600; }
+  .b p { color: var(--text-muted); font-size: 0.93rem; }
+  .b .tag {
+    align-self: flex-start; font-family: var(--mono); font-size: 11px;
+    letter-spacing: 0.12em; text-transform: uppercase; color: var(--haptic);
+    border: 1px solid var(--border-strong); border-radius: var(--r-pill);
+    padding: 2px var(--s3);
   }
-  .step:last-child { border-bottom: 1px solid var(--border); }
-  .step-num {
-    font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
-    color: var(--clay); font-size: 1.3rem; font-weight: 600; padding-top: 2px;
+  .b svg { width: 100%; height: auto; display: block; margin-top: auto; }
+  .span2 { grid-column: span 2; }
+  .span3 { grid-column: span 3; }
+  .span4 { grid-column: span 4; }
+  .span6 { grid-column: span 6; }
+  .rows2 { grid-row: span 2; }
+  .b-big { background: var(--surface); }
+  .b-accent { background: var(--accent); border-color: var(--accent); }
+  .b-accent h3, .b-accent .big { color: var(--on-accent); }
+  .b-accent p { color: var(--on-accent); }
+  .b-deep { background: var(--surface-2); }
+  .big { font-size: clamp(1.3rem, 3vw, 1.9rem); font-weight: 700; line-height: 1.15; }
+  @media (max-width: 860px) {
+    .span2, .span3, .span4 { grid-column: span 3; }
+    .bento { grid-template-columns: repeat(6, 1fr); }
   }
-  .step h3 { font-size: 1.05rem; margin-bottom: 6px; }
-  .step p { color: var(--muted); font-size: 0.95rem; max-width: 62ch; }
-
-  /* ── Feature grid ────────────────────────────────── */
-  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 44px; }
-  @media (max-width: 800px) { .grid { grid-template-columns: repeat(2, 1fr); } }
-  @media (max-width: 520px) { .grid { grid-template-columns: 1fr; } }
-  .cell {
-    background: var(--surface); border: 1px solid var(--border);
-    border-radius: 12px; padding: 18px 20px;
+  @media (max-width: 600px) {
+    .span2, .span3, .span4, .span6 { grid-column: span 6; }
+    .rows2 { grid-row: span 1; }
   }
-  .cell strong { display: block; font-size: 0.98rem; margin-bottom: 4px; }
-  .cell span { color: var(--faint); font-size: 0.88rem; line-height: 1.45; display: block; }
 
-  /* ── Honesty ─────────────────────────────────────── */
-  .honesty { display: grid; grid-template-columns: repeat(2, 1fr); gap: 18px; margin-top: 44px; }
-  @media (max-width: 720px) { .honesty { grid-template-columns: 1fr; } }
-  .honesty .card h3 { color: var(--amber); }
+  /* ── Mock studio UI ───────────────────────────────── */
+  .mock { display: flex; flex-direction: column; gap: var(--s3); margin-top: var(--s3); }
+  .mock-row { display: flex; align-items: center; gap: var(--s3); }
+  .mock-label { font-family: var(--mono); font-size: 11px; letter-spacing: 0.1em; color: var(--text-faint); text-transform: uppercase; width: 118px; flex: none; }
+  .mock-track { flex: 1; height: 8px; border-radius: var(--r-pill); background: var(--surface-3); position: relative; }
+  .mock-fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: var(--r-pill); background: var(--accent); }
+  .mock-fill.amber { background: var(--haptic); }
+  .mock-val { font-family: var(--mono); font-size: 12px; color: var(--text); width: 44px; text-align: right; flex: none; }
+  .mock-toggles { display: flex; gap: var(--s2); margin-top: var(--s2); flex-wrap: wrap; }
+  .mock-toggle {
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.1em;
+    padding: var(--s1) var(--s3); border-radius: var(--r-pill);
+    border: 1px solid var(--border-strong); color: var(--text-muted);
+  }
+  .mock-toggle.on { background: var(--accent-deep); border-color: var(--accent-deep); color: var(--text); }
 
-  /* ── Journey ─────────────────────────────────────── */
-  .timeline { margin-top: 44px; border-left: 2px solid var(--border); padding-left: 26px; display: grid; gap: 26px; }
+  /* ── Timeline ─────────────────────────────────────── */
+  .timeline { margin-top: var(--s6); border-left: 2px solid var(--border); padding-left: var(--s5); display: grid; gap: var(--s5); }
   .tl-item { position: relative; }
   .tl-item::before {
-    content: ""; position: absolute; left: -33px; top: 7px;
+    content: ""; position: absolute; left: calc(-1 * var(--s5) - 7px); top: 7px;
     width: 12px; height: 12px; border-radius: 50%;
-    background: var(--clay-deep); border: 2px solid var(--bg);
+    background: var(--accent-deep); border: 2px solid var(--bg);
   }
-  .tl-item.now::before { background: var(--amber); }
-  .tl-ver { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; color: var(--clay-light); font-weight: 600; font-size: 0.95rem; }
-  .tl-item p { color: var(--muted); font-size: 0.93rem; max-width: 60ch; }
+  .tl-item.now::before { background: var(--haptic); }
+  .tl-ver { font-family: var(--mono); color: var(--accent-strong); font-weight: 600; font-size: 0.95rem; }
+  .tl-item p { color: var(--text-muted); font-size: 0.93rem; max-width: 60ch; }
 
-  .commits { margin-top: 56px; }
-  .commits h3 { font-size: 1.05rem; margin-bottom: 6px; }
-  .commits .note { color: var(--faint); font-size: 0.85rem; margin-bottom: 18px; }
-  .commit-list { display: grid; gap: 10px; }
+  .commits { margin-top: var(--s7); }
+  .commits h3 { font-size: 1.05rem; margin-bottom: var(--s1); }
+  .commits .note { color: var(--text-faint); font-size: 0.85rem; margin-bottom: var(--s4); }
+  .commit-list { display: grid; gap: var(--s2); }
   .commit {
-    display: grid; grid-template-columns: 82px 1fr auto; gap: 14px; align-items: baseline;
+    display: grid; grid-template-columns: 82px 1fr auto; gap: var(--s3); align-items: baseline;
     background: var(--surface); border: 1px solid var(--border);
-    border-radius: 10px; padding: 13px 18px; text-decoration: none;
+    border-radius: var(--r-sm); padding: var(--s3) var(--s4); text-decoration: none;
+    transition: border-color var(--t), background var(--t);
   }
-  .commit:hover { border-color: var(--faint); }
-  .commit .sha { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; color: var(--clay); font-size: 0.85rem; }
+  .commit:hover { border-color: var(--border-strong); background: var(--surface-2); }
+  .commit .sha { font-family: var(--mono); color: var(--accent); font-size: 0.85rem; }
   .commit .msg { color: var(--text); font-size: 0.92rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .commit .when { color: var(--faint); font-size: 0.82rem; white-space: nowrap; }
+  .commit .when { color: var(--text-faint); font-size: 0.82rem; white-space: nowrap; }
   @media (max-width: 560px) {
-    .commit { grid-template-columns: 1fr; gap: 4px; }
+    .commit { grid-template-columns: 1fr; gap: var(--s1); }
     .commit .msg { white-space: normal; }
   }
 
-  /* ── Download ────────────────────────────────────── */
+  /* ── Download ─────────────────────────────────────── */
   .dl-box {
-    margin-top: 44px; background: var(--surface); border: 1px solid var(--border);
-    border-radius: 16px; padding: 36px; text-align: center;
+    margin-top: var(--s6); background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--r-lg); padding: var(--s7) var(--s5); text-align: center;
   }
-  .dl-box p { color: var(--muted); max-width: 52ch; margin: 0 auto 26px; }
+  .dl-box p { color: var(--text-muted); max-width: 52ch; margin: 0 auto var(--s5); }
   .code {
-    font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
-    background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
-    padding: 12px 18px; display: inline-block; margin-top: 22px;
-    color: var(--clay-light); font-size: 0.88rem;
+    font-family: var(--mono);
+    background: var(--bg); border: 1px solid var(--border); border-radius: var(--r-sm);
+    padding: var(--s3) var(--s4); display: inline-block; margin-top: var(--s5);
+    color: var(--accent-strong); font-size: 0.85rem; max-width: 100%;
+    overflow-x: auto; white-space: nowrap;
   }
 
-  footer { padding: 44px 0 60px; text-align: center; color: var(--faint); font-size: 0.88rem; }
-  footer a { color: var(--muted); }
-  footer a:hover { color: var(--clay-light); }
+  footer { border-top: 1px solid var(--border); padding: var(--s6) 0; text-align: center; color: var(--text-faint); font-size: 0.88rem; }
+  footer a { color: var(--text-muted); }
+  footer a:hover { color: var(--accent-strong); }
 </style>
 </head>
 <body>
 
-<nav>
-  <div class="nav-inner">
-    <a class="nav-brand" href="#">
+<a class="skip-link" href="#main">Skip to content</a>
+
+<div class="ticker" aria-hidden="true">
+  open source · <b>v1.11 “aftershock”</b> · two haptic engines · no ads · no accounts · built &amp; feel-tested on a budget phone
+</div>
+
+<div class="nav-dock">
+  <div class="nav-pill">
+    <a class="brand" href="#">
       <svg viewBox="0 0 100 100" aria-hidden="true">
         <polygon points="50,8 88,30 50,52 12,30" fill="#D98E62"/>
         <polygon points="12,30 50,52 50,94 12,72" fill="#C77B4F"/>
@@ -201,70 +281,147 @@
       HAPTIQ
     </a>
     <div class="nav-links">
-      <a href="#what">What it does</a>
-      <a href="#engine">The engine</a>
-      <a href="#player">The player</a>
+      <a href="#what">What it is</a>
+      <a href="#engine">Engine</a>
+      <a href="#studio">Studio</a>
       <a href="#journey">Journey</a>
       <a class="nav-gh" href="https://github.com/Shema-glitch/Haptiq">GitHub</a>
     </div>
+    <button class="menu-btn" id="menu-btn" aria-expanded="false" aria-controls="mobile-menu">Menu</button>
   </div>
-</nav>
+</div>
 
-<header class="wrap">
+<div class="mobile-menu" id="mobile-menu">
+  <div class="top">
+    <a class="brand" href="#">
+      <svg viewBox="0 0 100 100" aria-hidden="true">
+        <polygon points="50,8 88,30 50,52 12,30" fill="#D98E62"/>
+        <polygon points="12,30 50,52 50,94 12,72" fill="#C77B4F"/>
+        <polygon points="88,30 50,52 50,94 88,72" fill="#8F5432"/>
+      </svg>
+      HAPTIQ
+    </a>
+    <button class="menu-btn" id="menu-close">Close</button>
+  </div>
+  <nav aria-label="Mobile">
+    <a href="#what">What it is</a>
+    <a href="#engine">Engine</a>
+    <a href="#studio">Studio</a>
+    <a href="#player">Player</a>
+    <a href="#journey">Journey</a>
+    <a href="https://github.com/Shema-glitch/Haptiq">GitHub</a>
+  </nav>
+</div>
+
+<main id="main">
+
+<header class="hero wrap">
   <svg class="hero-mark" viewBox="0 0 100 100" aria-hidden="true">
     <polygon points="50,8 88,30 50,52 12,30" fill="#D98E62"/>
     <polygon points="12,30 50,52 50,94 12,72" fill="#C77B4F"/>
     <polygon points="88,30 50,52 50,94 88,72" fill="#8F5432"/>
   </svg>
-  <h1>Feel the music <span class="accent">you already have.</span></h1>
+  <h1>Feel the music <span class="accent">you already have</span></h1>
   <p class="hero-sub">
     Haptiq is a free Android music player that turns your phone's vibration motor
-    into a tiny subwoofer. It listens to the song as it plays and taps the kick drum
-    and hums the bassline against your palm — live, in time, on your own files.
+    into a tiny subwoofer. It listens while a song plays and taps the kick drum and
+    hums the bassline against your palm — live, in time, on your own files.
   </p>
   <div class="hero-cta">
     <a class="btn btn-primary" href="https://github.com/Shema-glitch/Haptiq/releases">Download on GitHub</a>
     <button class="btn" id="demo-btn" type="button">Feel a demo</button>
   </div>
   <p class="demo-hint" id="demo-hint">The demo vibrates your phone — open this page on Android to try it.</p>
+  <div class="hero-stats">
+    <span><b>20/s</b> spectrum reads</span>
+    <span><b>2</b> haptic engines</span>
+    <span><b>0</b> ads &amp; accounts</span>
+    <span><b>100%</b> on-device</span>
+  </div>
 </header>
-
-<div class="viz" id="viz" aria-hidden="true"></div>
 
 <section id="what">
   <div class="wrap">
-    <p class="kicker">What it does</p>
-    <h2>Two engines, one motor.</h2>
+    <p class="kicker">What it is</p>
+    <h2>A music player that plays your skin too.</h2>
     <p class="section-sub">
-      Most music apps treat vibration as a notification tool. Haptiq treats it as
-      an instrument, split into the two things a body actually feels at a concert.
+      Most apps treat vibration as a notification tool. Haptiq treats it as an
+      instrument, split into the two things a body actually feels at a concert.
     </p>
-    <div class="cards">
-      <div class="card">
-        <h3><span class="dot"></span>The kick hits</h3>
+
+    <div class="bento">
+      <div class="b b-big span4 rows2">
+        <span class="tag">Engine 1</span>
+        <h3 class="big">The kick hits.</h3>
         <p>
-          When the song's kick drum lands, the motor fires one sharp thump — the same
-          decisive snap you feel tapping a button, timed to the beat. After each hit
-          the engine waits for the sound to actually drop before it can fire again,
-          so long risers and sound-effect swells can't make it stutter.
+          A kick drum is a sudden jump in low-end energy that falls right back down.
+          Haptiq fires one sharp thump on the jump — then stays quiet until the energy
+          actually falls before it can fire again. That fall is what separates a drum
+          hit from a long bass note, and it's why risers and sound-effect swells can't
+          fake a beat.
+        </p>
+        <svg viewBox="0 0 400 110" role="img" aria-label="Diagram: energy spikes sharply and falls, the engine fires at the peak and re-arms after the fall">
+          <polyline points="0,95 60,93 90,90 110,18 130,80 170,92 210,90 230,14 250,78 300,92 400,94"
+            fill="none" stroke="#C77B4F" stroke-width="3" stroke-linejoin="round"/>
+          <circle cx="110" cy="18" r="6" fill="#E0A458"/>
+          <circle cx="230" cy="14" r="6" fill="#E0A458"/>
+          <text x="120" y="14" fill="#E0A458" font-size="12" font-family="monospace">fires</text>
+          <text x="135" y="72" fill="#8F8578" font-size="11" font-family="monospace">re-arms</text>
+        </svg>
+      </div>
+
+      <div class="b b-deep span2 rows2">
+        <span class="tag">Adaptive</span>
+        <h3>It tunes itself</h3>
+        <p>
+          Every song is mixed differently and every motor is different. The engine
+          tracks how loud each song's own bass gets and moves its trigger points to
+          match — a quiet ballad and a heavy drop both work without touching a slider.
+        </p>
+        <p>
+          Prefer full control? Switch adaptive off and every threshold is yours.
         </p>
       </div>
-      <div class="card">
-        <h3><span class="dot"></span>The bass hums</h3>
+
+      <div class="b span4">
+        <span class="tag">Engine 2</span>
+        <h3 class="big">The bass hums.</h3>
         <p>
           The bassline becomes one continuous rumble that rises and falls with the
-          music — not an on-off buzz. Louder bass, harder push. When the bass fades,
-          the motor fades with it, like a speaker cone following the wave.
+          music — not an on-off buzz. Louder bass, harder push; when it fades, the
+          motor fades with it, like a speaker cone following the wave.
         </p>
+        <svg viewBox="0 0 400 70" role="img" aria-label="Diagram: a smooth wave rising and falling, the rumble follows it">
+          <polyline points="0,52 30,48 60,38 90,24 120,18 150,24 180,40 210,52 240,46 270,30 300,20 330,26 360,42 400,50"
+            fill="none" stroke="#C77B4F" stroke-width="3" stroke-linejoin="round"/>
+          <polyline points="0,58 30,55 60,47 90,35 120,30 150,35 180,49 210,58 240,53 270,40 300,31 330,36 360,51 400,57"
+            fill="none" stroke="#8F5432" stroke-width="3" stroke-linejoin="round"/>
+          <text x="6" y="16" fill="#8F8578" font-size="11" font-family="monospace">bass in the song</text>
+          <text x="250" y="66" fill="#8F8578" font-size="11" font-family="monospace">motor follows</text>
+        </svg>
       </div>
-      <div class="card">
-        <h3><span class="dot amber"></span>It tunes itself</h3>
-        <p>
-          Every song is mixed differently and every phone motor is different. The
-          engine tracks how loud each song's own bass gets and moves its trigger
-          points to match, so a quiet ballad and a heavy drop both work without
-          touching a slider.
-        </p>
+
+      <div class="b span2">
+        <span class="tag">Sidechain</span>
+        <h3>Punch stays clean</h3>
+        <p>When a kick fires, the rumble ducks out of the way for a fraction of a second so the thump stays distinct.</p>
+      </div>
+
+      <div class="b span2">
+        <span class="tag">808-aware</span>
+        <h3>One sound, two jobs</h3>
+        <p>If the bass swells right back after a kick, it's one 808 doing both jobs — the rumble returns early, softer, like the real tail.</p>
+      </div>
+
+      <div class="b span2">
+        <span class="tag">Character</span>
+        <h3>Drum or 808?</h3>
+        <p>A real kick carries a high "click" from the beater. Haptiq hears it and adds a snap on top; a clickless 808 gets a pure deep thud.</p>
+      </div>
+
+      <div class="b b-accent span2">
+        <h3 class="big">Any motor.</h3>
+        <p>Haptiq checks once what your motor can do — composed pulses, timed amplitude, or plain on-off — and always speaks its best language.</p>
       </div>
     </div>
   </div>
@@ -272,44 +429,15 @@
 
 <section id="engine">
   <div class="wrap">
-    <p class="kicker">The engine</p>
-    <h2>How a song becomes touch.</h2>
-    <div class="steps">
-      <div class="step">
-        <div class="step-num">01</div>
-        <div>
-          <h3>Read the spectrum</h3>
-          <p>While a song plays, Haptiq reads its frequency spectrum about twenty times a second — enough to catch every beat without draining the battery.</p>
-        </div>
-      </div>
-      <div class="step">
-        <div class="step-num">02</div>
-        <div>
-          <h3>Spot the kick by its behavior</h3>
-          <p>A kick drum is a sudden jump in low-end energy that falls right back down. The engine fires on the jump, then stays quiet until the energy actually falls — that fall is what separates a drum hit from a long bass note, and it's why sustained sounds can't fake a beat.</p>
-        </div>
-      </div>
-      <div class="step">
-        <div class="step-num">03</div>
-        <div>
-          <h3>Follow the bass like a wave</h3>
-          <p>The bassline is tracked with a smoothed envelope: a running measure of how loud the bass is right now compared to the song's own recent peak. That number drives the rumble strength directly.</p>
-        </div>
-      </div>
-      <div class="step">
-        <div class="step-num">04</div>
-        <div>
-          <h3>Keep the punch clean</h3>
-          <p>When a kick fires, the bass rumble ducks out of the way for a fraction of a second so the thump stays distinct. If the bass swells right back, the engine recognizes one 808 doing both jobs and lets the rumble return early, softer.</p>
-        </div>
-      </div>
-      <div class="step">
-        <div class="step-num">05</div>
-        <div>
-          <h3>Speak the motor's language</h3>
-          <p>Phones differ. On newer motors Haptiq plays composed thud-and-click pulses; on older ones, timed amplitude; on basic motors that only switch on and off, it fakes loudness with rapid duty-cycling. The app checks what your motor can do once, then always uses the best option it has.</p>
-        </div>
-      </div>
+    <p class="kicker">Under the hood</p>
+    <h2>Real parts, no magic.</h2>
+    <div class="bento">
+      <div class="b span2"><span class="tag">Analysis</span><h3>20 reads a second</h3><p>The audio spectrum is read about twenty times per second — enough to catch every beat without draining the battery.</p></div>
+      <div class="b span2"><span class="tag">Detection</span><h3>Behavior, not bands</h3><p>Kicks are found by how energy moves — sharp rise, real fall — not just by which frequencies are loud.</p></div>
+      <div class="b span2"><span class="tag">Rendering</span><h3>Native vibration</h3><p>Thud and click primitives on modern motors, amplitude waveforms on older ones, duty-cycling on basic motors.</p></div>
+      <div class="b span2"><span class="tag">Stack</span><h3>Kotlin + Compose</h3><p>Jetpack Compose UI, Media3/ExoPlayer playback, Room for your library. Standard Android, no exotic dependencies.</p></div>
+      <div class="b span2"><span class="tag">Calibration</span><h3>Knows your phone</h3><p>A guided wizard measures your motor once and stores a strength profile for your exact device.</p></div>
+      <div class="b span2"><span class="tag">Privacy</span><h3>Zero network</h3><p>No account, no ads, no analytics. The audio-capture permission Android requires is used only to read Haptiq's own playback — never the microphone around you.</p></div>
     </div>
   </div>
 </section>
@@ -319,16 +447,51 @@
     <p class="kicker">Haptic Studio</p>
     <h2>Every knob is yours.</h2>
     <p class="section-sub">
-      Open the Studio and the spectrum is live on screen. Everything the engine
-      does can be watched, and everything it decides can be overridden.
+      The Studio shows the engine working and lets you override any decision it makes.
     </p>
-    <div class="grid">
-      <div class="cell"><strong>Live visualizer</strong><span>Ten frequency bands drawn in real time from the playing song.</span></div>
-      <div class="cell"><strong>Kick &amp; bass intensity</strong><span>Separate strength sliders for each engine — they work in adaptive mode too.</span></div>
-      <div class="cell"><strong>Engine switches</strong><span>Run kick only, bass only, or both.</span></div>
-      <div class="cell"><strong>Frequency ranges</strong><span>Move which part of the spectrum each engine listens to.</span></div>
-      <div class="cell"><strong>Adaptive or manual</strong><span>Let the engine set its own trigger points, or take over with sliders.</span></div>
-      <div class="cell"><strong>Calibration wizard</strong><span>A guided test pulse that measures your motor and stores a strength profile for your exact phone.</span></div>
+    <div class="bento">
+      <div class="b span3 rows2">
+        <span class="tag">Tuning dashboard</span>
+        <h3>Set the feel, live</h3>
+        <div class="mock" aria-hidden="true">
+          <div class="mock-toggles">
+            <span class="mock-toggle on">ADAPTIVE</span>
+            <span class="mock-toggle on">KICK</span>
+            <span class="mock-toggle on">BASS</span>
+          </div>
+          <div class="mock-row">
+            <span class="mock-label">Kick intensity</span>
+            <span class="mock-track"><span class="mock-fill amber" style="width:72%"></span></span>
+            <span class="mock-val">1.4×</span>
+          </div>
+          <div class="mock-row">
+            <span class="mock-label">Bass intensity</span>
+            <span class="mock-track"><span class="mock-fill" style="width:55%"></span></span>
+            <span class="mock-val">1.1×</span>
+          </div>
+          <div class="mock-row">
+            <span class="mock-label">Kick range</span>
+            <span class="mock-track"><span class="mock-fill" style="width:34%"></span></span>
+            <span class="mock-val">86–215</span>
+          </div>
+          <div class="mock-row">
+            <span class="mock-label">Bass range</span>
+            <span class="mock-track"><span class="mock-fill" style="width:20%"></span></span>
+            <span class="mock-val">43–86</span>
+          </div>
+        </div>
+        <p>Separate strength for each engine — they work in adaptive mode too. Frequency ranges, trigger thresholds and engine switches are all live while the song plays.</p>
+      </div>
+      <div class="b span3">
+        <span class="tag">Visual</span>
+        <h3>The spectrum, on screen</h3>
+        <p>Ten frequency bands drawn in real time from the playing song, so you can see exactly what the motor is reacting to while you tune it.</p>
+      </div>
+      <div class="b span3">
+        <span class="tag">Presets</span>
+        <h3>Four starting points</h3>
+        <p>Deep Bass, Punch, Concert and Soft Pulse — pick a character, then bend it with the sliders.</p>
+      </div>
     </div>
   </div>
 </section>
@@ -338,19 +501,17 @@
     <p class="kicker">The player</p>
     <h2>A real music player underneath.</h2>
     <p class="section-sub">
-      The haptics sit on top of a complete local player — your files, no account,
-      no ads, nothing leaves the phone.
+      The haptics sit on top of a complete local player — your files, nothing leaves the phone.
     </p>
-    <div class="grid">
-      <div class="cell"><strong>Your library</strong><span>Songs, albums, playlists, favorites — scanned from the music already on your phone.</span></div>
-      <div class="cell"><strong>Up Next queue</strong><span>Drag to reorder, insert a song next, swipe to enqueue.</span></div>
-      <div class="cell"><strong>Notification controls</strong><span>Play, pause and skip from the lock screen, with artwork.</span></div>
-      <div class="cell"><strong>Picks up where you left off</strong><span>Queue, position, shuffle and repeat all survive closing the app.</span></div>
-      <div class="cell"><strong>Waveform seeking</strong><span>The seek bar draws the song's energy, with a haptic preview while you scrub.</span></div>
-      <div class="cell"><strong>Speed &amp; volume</strong><span>0.5×–2× playback speed; the volume slider stays in sync with the hardware keys.</span></div>
-      <div class="cell"><strong>Sleep timer</strong><span>15, 30 or 60 minutes, then everything goes quiet — motor included.</span></div>
-      <div class="cell"><strong>Battery saver</strong><span>One switch trims haptic energy by 30% for long days.</span></div>
-      <div class="cell"><strong>Equalizer picker</strong><span>Lists the EQ apps installed on your phone and opens the one you choose.</span></div>
+    <div class="bento">
+      <div class="b span2"><h3>Your library</h3><p>Songs, albums, playlists, favorites — scanned from the music already on your phone.</p></div>
+      <div class="b span2"><h3>Up Next queue</h3><p>Drag to reorder, insert a song next, swipe to enqueue.</p></div>
+      <div class="b span2"><h3>Lock-screen controls</h3><p>Play, pause and skip from the notification, with artwork.</p></div>
+      <div class="b span3"><h3>Picks up where you left off</h3><p>Queue, position, shuffle and repeat all survive closing the app — even a swipe-kill loses at most a few seconds.</p></div>
+      <div class="b span3"><h3>Waveform seeking</h3><p>The seek bar draws the song's energy, with a haptic preview under your finger while you scrub.</p></div>
+      <div class="b span2"><h3>Speed &amp; volume</h3><p>0.5×–2× playback speed; the in-app volume slider stays in sync with the hardware keys.</p></div>
+      <div class="b span2"><h3>Sleep timer</h3><p>15, 30 or 60 minutes, then everything goes quiet — motor included.</p></div>
+      <div class="b span2"><h3>Equalizer picker</h3><p>Lists the EQ apps installed on your phone and opens the one you choose.</p></div>
     </div>
   </div>
 </section>
@@ -359,23 +520,11 @@
   <div class="wrap">
     <p class="kicker">Straight answers</p>
     <h2>What Haptiq is not.</h2>
-    <div class="honesty">
-      <div class="card">
-        <h3>Not a subwoofer</h3>
-        <p>A subwoofer moves air; a phone motor moves millimeters. Haptiq doesn't pretend otherwise — it uses sharp timing, real silence between hits, and rumble that follows the music to make your hands believe what your chest would feel.</p>
-      </div>
-      <div class="card">
-        <h3>Not the same on every phone</h3>
-        <p>Motors range from precise linear actuators to basic spinning weights. Haptiq detects what yours can do and adapts. It's built and tuned daily on a budget phone, so a better motor only makes it feel better.</p>
-      </div>
-      <div class="card">
-        <h3>Not watching you</h3>
-        <p>No account, no ads, no analytics, no network use. Android requires the audio-capture permission for the visualizer API — Haptiq uses it only to read its own playback, never the microphone around you.</p>
-      </div>
-      <div class="card">
-        <h3>Not finished</h3>
-        <p>Haptiq is in active development, versioned one feel-test at a time. The commit list below is live from the repository — what you see is exactly where the work is.</p>
-      </div>
+    <div class="bento">
+      <div class="b span3"><h3>Not a subwoofer</h3><p>A subwoofer moves air; a phone motor moves millimeters. Haptiq doesn't pretend otherwise — it uses sharp timing, real silence between hits, and rumble that follows the music to make your hands believe what your chest would feel.</p></div>
+      <div class="b span3"><h3>Not the same on every phone</h3><p>Motors range from precise linear actuators to basic spinning weights. Haptiq detects what yours can do and adapts. It's tuned daily on a budget phone, so a better motor only makes it feel better.</p></div>
+      <div class="b span3"><h3>Not watching you</h3><p>No account, no ads, no analytics, no network use. Your music, your phone, full stop.</p></div>
+      <div class="b span3"><h3>Not finished</h3><p>Haptiq is in active development, versioned one feel-test at a time. The commit list below is live from the repository — what you see is exactly where the work is.</p></div>
     </div>
   </div>
 </section>
@@ -388,7 +537,7 @@
       Haptiq started in July 2026 with a simple question: phones have had vibration
       motors forever — why does music never use them well? The first version was a
       player with a single crude pulse. Everything since has been built by playing
-      real songs on a real phone and asking, does this feel right?
+      real songs on a real phone and asking: does this feel right?
     </p>
     <div class="timeline">
       <div class="tl-item">
@@ -423,7 +572,7 @@
   </div>
 </section>
 
-<section id="download" style="border-bottom:none;">
+<section id="download">
   <div class="wrap">
     <p class="kicker">Get it</p>
     <h2>Open source, on GitHub.</h2>
@@ -440,6 +589,8 @@
   </div>
 </section>
 
+</main>
+
 <footer>
   <div class="wrap">
     Built by <a href="https://github.com/Shema-glitch">Shema-glitch</a> · Android 9+ ·
@@ -450,42 +601,24 @@
 <script>
 (function () {
   "use strict";
-  var reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-  /* ── Visualizer bars ─────────────────────────────── */
-  var viz = document.getElementById("viz");
-  var BAR_COUNT = 28;
-  var bars = [];
-  for (var i = 0; i < BAR_COUNT; i++) {
-    var b = document.createElement("span");
-    viz.appendChild(b);
-    bars.push(b);
+  /* ── Mobile menu ─────────────────────────────────── */
+  var menuBtn = document.getElementById("menu-btn");
+  var menuClose = document.getElementById("menu-close");
+  var menu = document.getElementById("mobile-menu");
+  function setMenu(open) {
+    menu.classList.toggle("open", open);
+    menuBtn.setAttribute("aria-expanded", String(open));
+    if (open) menuClose.focus(); else menuBtn.focus();
   }
-
-  // A fake but musical pattern: a 4/4 groove at 96 BPM. Low bars carry the
-  // bass wave, a kick flash lifts everything on beats 1 and 3.
-  var BEAT_MS = 625;
-  function animate(t) {
-    var beatPos = (t % (BEAT_MS * 4)) / BEAT_MS;       // 0..4 through the bar
-    var kick = (beatPos % 2) < 0.22 ? 1 - (beatPos % 2) / 0.22 : 0;
-    var bassWave = 0.45 + 0.35 * Math.sin(t / 900);
-    for (var i = 0; i < BAR_COUNT; i++) {
-      var band = i / BAR_COUNT;                        // 0 = lows, 1 = highs
-      var low = Math.max(0, 1 - band * 2.1);
-      var jitter = 0.10 * Math.sin(t / 130 + i * 1.7) + 0.08 * Math.sin(t / 71 + i * 3.1);
-      var h = 0.08 + low * bassWave * 0.75 + kick * low * 0.5 + Math.max(0, jitter) * (0.35 + band * 0.3);
-      h = Math.min(1, h);
-      bars[i].style.height = (h * 100).toFixed(1) + "%";
-      bars[i].className = h > 0.72 ? "peak" : (h > 0.4 ? "hot" : "");
-    }
-    if (!reducedMotion) requestAnimationFrame(animate);
-  }
-  if (reducedMotion) {
-    // One static, pleasant frame
-    animate(200);
-  } else {
-    requestAnimationFrame(animate);
-  }
+  menuBtn.addEventListener("click", function () { setMenu(true); });
+  menuClose.addEventListener("click", function () { setMenu(false); });
+  menu.querySelectorAll("a").forEach(function (a) {
+    a.addEventListener("click", function () { setMenu(false); });
+  });
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape" && menu.classList.contains("open")) setMenu(false);
+  });
 
   /* ── Haptic demo ─────────────────────────────────── */
   var demoBtn = document.getElementById("demo-btn");
