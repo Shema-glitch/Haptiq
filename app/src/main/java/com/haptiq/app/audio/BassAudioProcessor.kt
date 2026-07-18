@@ -36,6 +36,10 @@ class BassVisualizer(
     private val subGateRatio = 0.80f     // sustain drone above 80% of recent peak
     private val minSignal = 0.12f        // absolute floor: silence never triggers
 
+    // Smoothed continuous bass envelope (0..1) — see the "CONTINUOUS BASS ENVELOPE"
+    // block in processFft() for how it's derived and why.
+    private var subEnvelopeSmoothed = 0f
+
     /** Live DSP tuning — written from UI thread, read on Visualizer callback thread. */
     @Volatile var tuning = HapticTuningState()
 
@@ -174,7 +178,20 @@ class BassVisualizer(
         val effSubDrone = if (t.isAdaptiveEnabled)
             (rollingSubPeak * subGateRatio).coerceAtLeast(minSignal) else t.subDroneThreshold
         val effKickDelta = if (t.isAdaptiveEnabled)
-            (rollingKickPeak * 0.08f).coerceAtLeast(0.03f) else t.kickThreshold
+            (rollingKickPeak * 0.05f).coerceAtLeast(0.02f) else t.kickThreshold
+
+        // ── CONTINUOUS BASS ENVELOPE ──────────────────────────────────────────────
+        // How loud is bass RIGHT NOW relative to this song's own recent bass peak —
+        // self-calibrating per track/device, same philosophy as the adaptive gates
+        // above. Feeding this straight to the drone amplitude (instead of a hard
+        // on/off gate + squared post-threshold scale) is what turns the haptic into a
+        // continuous "speaker wave" that rises and falls with the bassline, rather
+        // than a flat buzz that's either fully off or pinned near max.
+        val subEnvelopeRaw = (tunedSubBass / rollingSubPeak.coerceAtLeast(minSignal)).coerceIn(0f, 1f)
+        // Asymmetric follower: snap up fast on a swell, ease down slower on the way
+        // out so it reads as one continuous wave instead of flickering frame to frame.
+        subEnvelopeSmoothed += (subEnvelopeRaw - subEnvelopeSmoothed) *
+            (if (subEnvelopeRaw > subEnvelopeSmoothed) 0.6f else 0.15f)
 
         // Pass the live tuning thresholds through BassEnergy so HapticMapper
         // can apply the correct gate values without needing its own copy of the state.
@@ -189,7 +206,8 @@ class BassVisualizer(
                 kickThreshold = effKickDelta,
                 noiseFloorGate = effNoiseFloor,
                 subDroneThreshold = effSubDrone,
-                bassGain = t.bassGain
+                bassGain = t.bassGain,
+                subEnvelope = if (t.isBassEnabled) subEnvelopeSmoothed else 0f
             )
         )
     }

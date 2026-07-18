@@ -167,16 +167,7 @@ class HaptiqPlayerManager @Inject constructor(
                     when (playbackState) {
                         Player.STATE_READY -> {
                             Log.d("HaptiqPlayer", "STATE_READY")
-                            // Re-attach Visualizer every time a track becomes ready.
-                            // This is necessary because player.prepare() may reuse the same
-                            // audio session ID (no onAudioSessionIdChanged fires), yet the
-                            // underlying audio renderer was rebuilt — the old Visualizer
-                            // attachment is silently dead. Re-attaching here is the fix.
-                            val sessionId = exoPlayer?.audioSessionId ?: return
-                            if (sessionId != androidx.media3.common.C.AUDIO_SESSION_ID_UNSET) {
-                                Log.d("HaptiqPlayer", "STATE_READY: re-attaching Visualizer to session $sessionId")
-                                bassVisualizer.attach(sessionId)
-                            }
+                            reattachVisualizer("STATE_READY")
                         }
                         Player.STATE_BUFFERING -> Log.d("HaptiqPlayer", "STATE_BUFFERING")
                         Player.STATE_ENDED     -> onSongCompleted()
@@ -200,11 +191,31 @@ class HaptiqPlayerManager @Inject constructor(
                         if (_currentSong.value?.id != song.id) applySongUi(song)
                         saveSession()
                     }
+                    // Re-bind the FFT Visualizer to the new track. In the native-playlist
+                    // engine prepare() runs ONCE for the whole queue, so STATE_READY does NOT
+                    // fire on auto-advance or a seekTo skip — yet the transition can rebuild
+                    // the audio renderer, silently killing the old attachment. Without this,
+                    // the studio bars and the haptic motor go dead after the first song change.
+                    reattachVisualizer("mediaItemTransition")
                     updateProgressFlows()
                 }
             })
         }
         exoPlayer = player
+    }
+
+    /**
+     * (Re)bind the FFT [BassVisualizer] to the player's current audio session. ExoPlayer keeps
+     * a single session id across a playlist, but a track transition can rebuild the underlying
+     * audio renderer and silently kill the old attachment. attach() releases the previous
+     * Visualizer first, so calling this repeatedly is safe (idempotent).
+     */
+    private fun reattachVisualizer(source: String) {
+        val sessionId = exoPlayer?.audioSessionId ?: return
+        if (sessionId != androidx.media3.common.C.AUDIO_SESSION_ID_UNSET) {
+            Log.d("HaptiqPlayer", "$source: re-attaching Visualizer to session $sessionId")
+            bassVisualizer.attach(sessionId)
+        }
     }
 
     private fun onBassEnergyDetected(bassEnergy: BassEnergy) {
@@ -227,7 +238,8 @@ class HaptiqPlayerManager @Inject constructor(
                 kickThreshold = bassEnergy.kickThreshold,
                 noiseFloorGate = bassEnergy.noiseFloorGate,
                 subDroneThreshold = bassEnergy.subDroneThreshold,
-                bassGain = bassEnergy.bassGain
+                bassGain = bassEnergy.bassGain,
+                subEnvelope = bassEnergy.subEnvelope
             )
         }
     }

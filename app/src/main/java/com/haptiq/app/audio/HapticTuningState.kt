@@ -21,9 +21,9 @@ data class HapticTuningState(
     /** Absolute raw energy floor gate — filters out silence/noise. Range: 0.30–0.95 */
     val noiseFloorGate: Float = 0.70f,
     /** Low FFT bin index for kick/bass detection (inclusive). Range: 1–15 */
-    val kickFreqMinBin: Int = 1,
+    val kickFreqMinBin: Int = 2,
     /** High FFT bin index for kick/bass detection (inclusive). Range: 1–15 */
-    val kickFreqMaxBin: Int = 3,
+    val kickFreqMaxBin: Int = 5,
     /** Minimum sustained sub-bass energy to trigger the drone. Range: 0.50–0.99 */
     val subDroneThreshold: Float = 0.78f,
 
@@ -32,7 +32,7 @@ data class HapticTuningState(
     /** Low FFT bin index for sustained bass drone (inclusive). Range: 1–20 */
     val bassFreqMinBin: Int = 1,
     /** High FFT bin index for sustained bass drone (inclusive). Range: 1–20 */
-    val bassFreqMaxBin: Int = 4,
+    val bassFreqMaxBin: Int = 2,
     /** Output gain multiplier for the bass drone engine. Range: 0.5–2.0 */
     val bassGain: Float = 1.0f
 )

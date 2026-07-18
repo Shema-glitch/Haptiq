@@ -13,5 +13,9 @@ data class BassEnergy(
     val kickThreshold: Float = 0.15f,
     val noiseFloorGate: Float = 0.70f,
     val subDroneThreshold: Float = 0.78f,
-    val bassGain: Float = 1.0f
+    val bassGain: Float = 1.0f,
+    // Smoothed 0..1 "how loud is bass right now vs. this song's own recent bass peak" —
+    // song-relative and self-calibrating, drives a continuous speaker-like drone
+    // amplitude instead of a hard on/off gate. See BassAudioProcessor.subEnvelope.
+    val subEnvelope: Float = 0f
 )
