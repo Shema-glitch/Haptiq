@@ -136,7 +136,7 @@ fun SettingsScreen(
                     icon = Icons.Default.Equalizer,
                     iconColor = ColorOnSurface60,
                     title = "Equalizer",
-                    subtitle = "Open the system equalizer",
+                    subtitle = "Choose an equalizer app",
                     onClick = { onAction(HaptiqUiAction.OpenEqualizer) }
                 )
             }
@@ -282,6 +282,44 @@ fun SettingsScreen(
             confirmButton = {
                 TextButton(onClick = { showLicenses = false }) {
                     Text("Close", color = ColorPrimary)
+                }
+            }
+        )
+    }
+
+    // Equalizer picker — lists every installed app that can handle the system EQ
+    // intent. Firing the intent blind blank-screens on ROMs with a broken handler.
+    state.equalizerChoices?.let { choices ->
+        AlertDialog(
+            onDismissRequest = { onAction(HaptiqUiAction.DismissEqualizerPicker) },
+            containerColor = ColorSurface,
+            title = { Text("Choose Equalizer", color = ColorOnSurface) },
+            text = {
+                if (choices.isEmpty()) {
+                    Text(
+                        "No equalizer app found on this device. Install one from the Play Store (Wavelet is a good free option) and it will show up here.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = ColorOnSurfaceVariant
+                    )
+                } else {
+                    Column(Modifier.verticalScroll(rememberScrollState())) {
+                        choices.forEach { app ->
+                            Text(
+                                app.label,
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = ColorOnSurface,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { onAction(HaptiqUiAction.SelectEqualizer(app)) }
+                                    .padding(vertical = 12.dp)
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { onAction(HaptiqUiAction.DismissEqualizerPicker) }) {
+                    Text("Cancel", color = ColorPrimary)
                 }
             }
         )

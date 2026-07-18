@@ -239,7 +239,9 @@ class HaptiqPlayerManager @Inject constructor(
                 noiseFloorGate = bassEnergy.noiseFloorGate,
                 subDroneThreshold = bassEnergy.subDroneThreshold,
                 bassGain = bassEnergy.bassGain,
-                subEnvelope = bassEnergy.subEnvelope
+                kickGain = bassEnergy.kickGain,
+                subEnvelope = bassEnergy.subEnvelope,
+                clickTransient = bassEnergy.clickTransient
             )
         }
     }

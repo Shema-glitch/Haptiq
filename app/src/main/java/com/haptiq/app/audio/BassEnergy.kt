@@ -14,8 +14,13 @@ data class BassEnergy(
     val noiseFloorGate: Float = 0.70f,
     val subDroneThreshold: Float = 0.78f,
     val bassGain: Float = 1.0f,
+    val kickGain: Float = 1.0f,
     // Smoothed 0..1 "how loud is bass right now vs. this song's own recent bass peak" —
     // song-relative and self-calibrating, drives a continuous speaker-like drone
     // amplitude instead of a hard on/off gate. See BassAudioProcessor.subEnvelope.
-    val subEnvelope: Float = 0f
+    val subEnvelope: Float = 0f,
+    // True when this frame carries a simultaneous 1.3–5.5kHz burst — a drum kick's
+    // beater "click". Distinguishes drum-kick punch from a clickless 808 attack;
+    // classification only, never a firing gate.
+    val clickTransient: Boolean = false
 )

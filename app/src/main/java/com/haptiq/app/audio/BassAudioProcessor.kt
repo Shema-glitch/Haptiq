@@ -18,6 +18,7 @@ class BassVisualizer(
     private var isReleased = false
 
     private var prevRawKick = 0f
+    private var prevClickEnergy = 0f
     private var attachTime = 0L
 
     // Rolling 1s window stats, logged for on-device threshold calibration
@@ -25,6 +26,7 @@ class BassVisualizer(
     private var statMaxKick = 0f
     private var statMaxSub = 0f
     private var statMaxDelta = 0f
+    private var statMaxClick = 0f
 
     // Adaptive gates: rolling peaks with per-frame exponential decay (~10s memory
     // at ~19Hz capture). Gates track the music's own energy envelope, so a quiet
@@ -155,16 +157,28 @@ class BassVisualizer(
         // Determine dominant pitch: Sub (Bar 0) vs Kick (Bar 1) energy
         val dominantPitch = if (spectrum[0] > spectrum[1]) DominantPitch.SUB else DominantPitch.KICK
 
+        // ── MOMENTARY CLICK / SPECTRAL BRIGHTNESS ─────────────────────────────────
+        // A real kick drum carries a beater "click" — a simultaneous burst in the
+        // 1.3–5.5kHz bands — while a pure 808 attack is all sub with no click. This
+        // classifies the transient's CHARACTER (drum kick vs 808 attack); it never
+        // gates whether the punch fires. Bands are already computed for the UI, so
+        // this costs one max + one subtraction per frame.
+        val clickEnergy = maxOf(spectrum[5], spectrum[6])
+        val clickDelta = (clickEnergy - prevClickEnergy).coerceAtLeast(0f)
+        prevClickEnergy = clickEnergy
+        val clickTransient = clickDelta > 0.05f
+
         // 1s-window peak stats — cheap (3 compares/frame + 1 log line/sec) and the only
         // way to calibrate gate thresholds against a real device's FFT magnitude range.
         val now = System.currentTimeMillis()
         statMaxKick = maxOf(statMaxKick, rawKick)
         statMaxSub = maxOf(statMaxSub, tunedSubBass)
         statMaxDelta = maxOf(statMaxDelta, kickDelta)
+        statMaxClick = maxOf(statMaxClick, clickDelta)
         if (now - statWindowStart >= 1000L) {
-            Log.d(TAG, "1s peaks: rawKick=$statMaxKick sub=$statMaxSub delta=$statMaxDelta gates(k=${t.noiseFloorGate} s=${t.subDroneThreshold} d=${t.kickThreshold})")
+            Log.d(TAG, "1s peaks: rawKick=$statMaxKick sub=$statMaxSub delta=$statMaxDelta click=$statMaxClick gates(k=${t.noiseFloorGate} s=${t.subDroneThreshold} d=${t.kickThreshold})")
             statWindowStart = now
-            statMaxKick = 0f; statMaxSub = 0f; statMaxDelta = 0f
+            statMaxKick = 0f; statMaxSub = 0f; statMaxDelta = 0f; statMaxClick = 0f
         }
 
         // ── ADAPTIVE GATES ─────────────────────────────────────────────────
@@ -207,7 +221,9 @@ class BassVisualizer(
                 noiseFloorGate = effNoiseFloor,
                 subDroneThreshold = effSubDrone,
                 bassGain = t.bassGain,
-                subEnvelope = if (t.isBassEnabled) subEnvelopeSmoothed else 0f
+                kickGain = t.kickGain,
+                subEnvelope = if (t.isBassEnabled) subEnvelopeSmoothed else 0f,
+                clickTransient = clickTransient
             )
         )
     }

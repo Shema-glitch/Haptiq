@@ -23,6 +23,9 @@ enum class SortMode(val label: String) {
     DURATION("Longest first")
 }
 
+/** An installed app able to handle the system audio-effect (equalizer) intent. */
+data class EqualizerApp(val label: String, val packageName: String, val activityName: String)
+
 data class HaptiqUiState(
     val songs: List<Song> = emptyList(),
     val sortMode: SortMode = SortMode.TITLE,
@@ -56,6 +59,9 @@ data class HaptiqUiState(
     val scanStatus: String = "",
     // DND detection — haptics are suppressed when DND is active
     val isDndActive: Boolean = false,
+    // Equalizer picker: null = hidden; non-null shows the dialog listing installed
+    // EQ apps (empty = none installed — dialog explains, instead of a blank screen)
+    val equalizerChoices: List<EqualizerApp>? = null,
     // Transport state
     val isShuffle: Boolean = false,
     val repeatMode: RepeatMode = RepeatMode.OFF,
@@ -107,6 +113,8 @@ sealed interface HaptiqUiAction {
     data class SetSeekPreviewEnabled(val enabled: Boolean) : HaptiqUiAction
     object ClearRecents : HaptiqUiAction
     object OpenEqualizer : HaptiqUiAction
+    data class SelectEqualizer(val app: EqualizerApp) : HaptiqUiAction
+    object DismissEqualizerPicker : HaptiqUiAction
     // Calibration
     object RunTestPulse : HaptiqUiAction
     data class SelectCalibrationStrength(val strength: String) : HaptiqUiAction
@@ -137,6 +145,7 @@ sealed interface HaptiqUiAction {
     data class SetSubDroneThreshold(val value: Float) : HaptiqUiAction
     data class SetBassFreqRange(val min: Int, val max: Int) : HaptiqUiAction
     data class SetBassGain(val value: Float) : HaptiqUiAction
+    data class SetKickGain(val value: Float) : HaptiqUiAction
     object ResetTuning : HaptiqUiAction
 }
 
@@ -413,25 +422,39 @@ class HaptiqViewModel @Inject constructor(
                 viewModelScope.launch { recentSongRepository.clearAll() }
             }
             is HaptiqUiAction.OpenEqualizer -> {
-                try {
-                    val intent = android.content.Intent(
-                        android.media.audiofx.AudioEffect.ACTION_DISPLAY_AUDIO_EFFECT_CONTROL_PANEL
-                    ).apply {
-                        putExtra(
-                            android.media.audiofx.AudioEffect.EXTRA_AUDIO_SESSION,
-                            playerManager.getPlayer()?.audioSessionId ?: 0
-                        )
-                        putExtra(android.media.audiofx.AudioEffect.EXTRA_PACKAGE_NAME, context.packageName)
-                        putExtra(
-                            android.media.audiofx.AudioEffect.EXTRA_CONTENT_TYPE,
-                            android.media.audiofx.AudioEffect.CONTENT_TYPE_MUSIC
-                        )
-                        addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-                    }
-                    context.startActivity(intent)
-                } catch (_: Exception) {
-                    // No system equalizer on this device — nothing to open
+                // Never fire the EQ intent blind: some ROMs (Tecno) resolve it to a
+                // broken blank panel. List every installed handler and let the user pick.
+                val pm = context.packageManager
+                val probe = equalizerIntent()
+                val handlers = if (android.os.Build.VERSION.SDK_INT >= 33) {
+                    pm.queryIntentActivities(
+                        probe, android.content.pm.PackageManager.ResolveInfoFlags.of(0)
+                    )
+                } else {
+                    @Suppress("DEPRECATION") pm.queryIntentActivities(probe, 0)
                 }
+                _uiState.update { s ->
+                    s.copy(equalizerChoices = handlers.map { ri ->
+                        EqualizerApp(
+                            label = ri.loadLabel(pm).toString(),
+                            packageName = ri.activityInfo.packageName,
+                            activityName = ri.activityInfo.name
+                        )
+                    })
+                }
+            }
+            is HaptiqUiAction.SelectEqualizer -> {
+                _uiState.update { it.copy(equalizerChoices = null) }
+                try {
+                    context.startActivity(equalizerIntent().apply {
+                        setClassName(action.app.packageName, action.app.activityName)
+                    })
+                } catch (_: Exception) {
+                    // Chosen app failed to launch — nothing more we can do
+                }
+            }
+            is HaptiqUiAction.DismissEqualizerPicker -> {
+                _uiState.update { it.copy(equalizerChoices = null) }
             }
             // ── Playlists ─────────────────────────────────────────
             is HaptiqUiAction.CreatePlaylist -> {
@@ -532,6 +555,10 @@ class HaptiqViewModel @Inject constructor(
                 _hapticTuning.update { it.copy(bassGain = action.value) }
                 playerManager.updateTuning(_hapticTuning.value)
             }
+            is HaptiqUiAction.SetKickGain -> {
+                _hapticTuning.update { it.copy(kickGain = action.value) }
+                playerManager.updateTuning(_hapticTuning.value)
+            }
             is HaptiqUiAction.ResetTuning -> {
                 _hapticTuning.update { HapticTuningState() }
                 playerManager.updateTuning(_hapticTuning.value)
@@ -541,6 +568,22 @@ class HaptiqViewModel @Inject constructor(
 
     /** Kept per-song so a slow analysis of the previous track can't clobber the new one. */
     private var seekEnergyJob: kotlinx.coroutines.Job? = null
+
+    /** The standard audio-effect control-panel intent, targeted at our audio session. */
+    private fun equalizerIntent() = android.content.Intent(
+        android.media.audiofx.AudioEffect.ACTION_DISPLAY_AUDIO_EFFECT_CONTROL_PANEL
+    ).apply {
+        putExtra(
+            android.media.audiofx.AudioEffect.EXTRA_AUDIO_SESSION,
+            playerManager.getPlayer()?.audioSessionId ?: 0
+        )
+        putExtra(android.media.audiofx.AudioEffect.EXTRA_PACKAGE_NAME, context.packageName)
+        putExtra(
+            android.media.audiofx.AudioEffect.EXTRA_CONTENT_TYPE,
+            android.media.audiofx.AudioEffect.CONTENT_TYPE_MUSIC
+        )
+        addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+    }
 
     private fun loadSeekEnergy(song: Song) {
         seekEnergyJob?.cancel()

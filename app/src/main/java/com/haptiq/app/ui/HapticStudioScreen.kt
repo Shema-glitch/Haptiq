@@ -497,6 +497,14 @@ private fun TuningDashboardCard(
                     letterSpacing = 1.5.sp
                 )
                 TuningSliderRow(
+                    label = "KICK INTENSITY",
+                    value = tuning.kickGain,
+                    range = 0.5f..2.0f,
+                    displayValue = String.format("%.1fx", tuning.kickGain),
+                    description = "Strength of the kick punch. Works in both adaptive and manual mode.",
+                    onValueChange = { onAction(HaptiqUiAction.SetKickGain(it)) }
+                )
+                TuningSliderRow(
                     label = "KICK THRESHOLD",
                     value = tuning.kickThreshold,
                     range = 0.01f..0.50f,
@@ -547,11 +555,11 @@ private fun TuningDashboardCard(
                     onValueChange = { onAction(HaptiqUiAction.SetSubDroneThreshold(it)) }
                 )
                 TuningSliderRow(
-                    label = "BASS GAIN",
+                    label = "BASS INTENSITY",
                     value = tuning.bassGain,
                     range = 0.5f..2.0f,
                     displayValue = String.format("%.1fx", tuning.bassGain),
-                    description = "Amplifies or reduces the intensity of the sustained bass drone.",
+                    description = "Strength of the sustained bass rumble. Works in both adaptive and manual mode.",
                     onValueChange = { onAction(HaptiqUiAction.SetBassGain(it)) }
                 )
                 TuningSliderRow(

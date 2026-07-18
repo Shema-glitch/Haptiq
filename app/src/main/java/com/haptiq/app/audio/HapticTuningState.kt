@@ -18,6 +18,8 @@ data class HapticTuningState(
     val isBassEnabled: Boolean = true,
     /** Kick delta threshold — how sharp a transient must be to trigger. Range: 0.01–0.50 */
     val kickThreshold: Float = 0.15f,
+    /** Output gain multiplier for the kick punch engine. Range: 0.5–2.0 */
+    val kickGain: Float = 1.0f,
     /** Absolute raw energy floor gate — filters out silence/noise. Range: 0.30–0.95 */
     val noiseFloorGate: Float = 0.70f,
     /** Low FFT bin index for kick/bass detection (inclusive). Range: 1–15 */
