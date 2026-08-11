@@ -34,10 +34,10 @@ val InterFamily = FontFamily(
     Font(googleFont = InterFont, fontProvider = provider, weight = FontWeight.SemiBold),
     Font(googleFont = InterFont, fontProvider = provider, weight = FontWeight.Bold),
     Font(googleFont = InterFont, fontProvider = provider, weight = FontWeight.ExtraBold),
+    // The Splash wordmark renders at Black (900); without the 900 face in the
+    // family, Compose silently substitutes the closest registered weight (800).
+    Font(googleFont = InterFont, fontProvider = provider, weight = FontWeight.Black),
 )
-
-// Fallback family for tooling/previews where GMS fonts aren't available
-val FallbackFamily = FontFamily.SansSerif
 
 val Typography = Typography(
     // ─── Display ─────────────────────────────────────────────

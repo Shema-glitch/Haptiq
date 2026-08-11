@@ -293,19 +293,25 @@ private fun MiniPlayerContent(
     onNext: () -> Unit,
     onPrev: () -> Unit
 ) {
-    // The dot pulses to draw the eye while haptics are live; under reduced motion
-    // it sits at a fixed mid-pulse alpha — state is the signal, not the motion.
-    val dotAlpha = if (isReducedMotionEnabled()) 0.7f else {
-        val infinitePulse = androidx.compose.animation.core.rememberInfiniteTransition(label = "glow_pulse")
-        val a by infinitePulse.animateFloat(
-            initialValue = 0.4f, targetValue = 1.0f,
-            animationSpec = androidx.compose.animation.core.infiniteRepeatable(
-                androidx.compose.animation.core.tween(1000, easing = androidx.compose.animation.core.EaseInOut),
-                androidx.compose.animation.core.RepeatMode.Reverse
-            ),
-            label = "dot_alpha"
-        )
-        a
+    // The dot breathes slowly to draw the eye while haptics are live; under
+    // reduced motion it sits at a fixed mid-pulse alpha, and when haptics are off
+    // the transition isn't even created (the dot isn't rendered) — an idle docked
+    // bar must not run an infinite animation. State is the signal, not the motion.
+    val dotAlpha = when {
+        isReducedMotionEnabled() -> 0.7f
+        !hapticActive -> 1f
+        else -> {
+            val infinitePulse = androidx.compose.animation.core.rememberInfiniteTransition(label = "glow_pulse")
+            val a by infinitePulse.animateFloat(
+                initialValue = 0.45f, targetValue = 0.95f,
+                animationSpec = androidx.compose.animation.core.infiniteRepeatable(
+                    androidx.compose.animation.core.tween(2200, easing = androidx.compose.animation.core.EaseInOut),
+                    androidx.compose.animation.core.RepeatMode.Reverse
+                ),
+                label = "dot_alpha"
+            )
+            a
+        }
     }
     Row(
         modifier = modifier
