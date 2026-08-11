@@ -12,6 +12,11 @@ class HapticMapper {
     private var lastKickTime = 0L
     private var lastDroneTime = 0L
 
+    // DEBUG kick-latency instrumentation (KickLatencyTracker): fed the capture/dispatch
+    // stamps of every kick so gyro-confirmed motor onset can be measured on-device.
+    // Wired by HaptiqPlayerManager; null in release builds (start() no-ops there).
+    var latencyTracker: KickLatencyTracker? = null
+
     // AOT lookahead sets this after each scheduled kick; the live gate stays silent
     // until it passes so one mapped onset isn't felt twice (once pre-fired, once when
     // the live FFT detector catches it ~50ms later). 0L = never suppressing.
@@ -151,7 +156,10 @@ class HapticMapper {
         clickTransient: Boolean = false,
         // Playback position at detection time (ms) — DEBUG instrumentation only, used to
         // correlate fire timestamps with the music when tuning kick timing on-device.
-        playbackPositionMs: Long = 0L
+        playbackPositionMs: Long = 0L,
+        // Monotonic (elapsedRealtime) FFT frame arrival — DEBUG kick-latency
+        // instrumentation only (KickLatencyTracker); 0 when unknown.
+        captureAtElapsedMs: Long = 0L
     ) {
         if (vibrator != null) ensureCapabilitiesCached(vibrator)
 
@@ -198,7 +206,9 @@ class HapticMapper {
             // string formatting on the timing-critical thread stalls kick dispatch when
             // logd throttles or the buffer fills.
             if (BuildConfig.DEBUG) Log.d(TAG, "KICK fire: delta=$kickDelta raw=$rawKick scale=$kickScale click=$clickTransient posMs=$playbackPositionMs vib=${vibrator != null}")
+            val dispatchAt = SystemClock.elapsedRealtime()
             fireKick(vibrator, kickScale, clickTransient)
+            latencyTracker?.onKick(captureAtElapsedMs, dispatchAt, playbackPositionMs, "live")
             lastKickTime = now
             kickArmed = false
             rearmPeak = rawKick
@@ -261,7 +271,10 @@ class HapticMapper {
         val kickIntensityScalar = intensityScalar.coerceAtLeast(0.88f)
         val scale = (kickIntensityScalar * kickGain).coerceIn(0f, 1f)
         if (BuildConfig.DEBUG) Log.d(TAG, "AOT kick pre-fire: onsetMs=$onsetMs scale=$scale")
+        val dispatchAt = SystemClock.elapsedRealtime()
         fireKick(vibrator, scale, clickTransient = true)
+        // No capture stage for pre-fires — dispatch→onset is exactly the lead needed.
+        latencyTracker?.onKick(0L, dispatchAt, onsetMs, "aot")
         lastKickTime = now
         suppressLiveKickUntil = now + SCHEDULED_KICK_SUPPRESS_MS
     }

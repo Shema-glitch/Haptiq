@@ -22,5 +22,9 @@ data class BassEnergy(
     // True when this frame carries a simultaneous 1.3–5.5kHz burst — a drum kick's
     // beater "click". Distinguishes drum-kick punch from a clickless 808 attack;
     // classification only, never a firing gate.
-    val clickTransient: Boolean = false
+    val clickTransient: Boolean = false,
+    // Monotonic (elapsedRealtime) time this frame arrived on the Visualizer callback
+    // thread — DEBUG kick-latency instrumentation only (KickLatencyTracker): the
+    // "capture" endpoint of the capture→dispatch→motor-onset measurement.
+    val captureAtElapsedMs: Long = 0L
 )

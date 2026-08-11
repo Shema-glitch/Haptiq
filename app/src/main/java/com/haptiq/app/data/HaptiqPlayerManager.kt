@@ -16,6 +16,7 @@ import com.haptiq.app.audio.BassVisualizer
 import com.haptiq.app.audio.BassEnergy
 import com.haptiq.app.audio.HapticMapper
 import com.haptiq.app.audio.HapticTuningState
+import com.haptiq.app.audio.KickLatencyTracker
 import com.haptiq.app.playback.HaptiqPlaybackService
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.*
@@ -57,6 +58,10 @@ class HaptiqPlayerManager @Inject constructor(
     private val bassVisualizer = BassVisualizer { bassEnergy ->
         onBassEnergyDetected(bassEnergy)
     }
+
+    // DEBUG kick-latency instrumentation (capture→dispatch→gyro-confirmed motor onset).
+    // start() no-ops in release builds, so this is inert outside debug.
+    private val kickLatencyTracker = KickLatencyTracker()
 
     // ── AOT lookahead scheduler state (active only while isAotLookaheadEnabled) ──
     private var lookaheadJob: Job? = null
@@ -143,6 +148,8 @@ class HaptiqPlayerManager @Inject constructor(
         initVibrator()
         initExoPlayer()
         registerVolumeObserver()
+        hapticMapper.latencyTracker = kickLatencyTracker
+        kickLatencyTracker.start(context)
     }
 
     private fun currentVolumeFraction(): Float {
@@ -294,7 +301,10 @@ class HaptiqPlayerManager @Inject constructor(
                 // DEBUG instrumentation: playback position at detection, for correlating fire
                 // timestamps with the music when tuning kick timing on-device. Best-effort
                 // read from the callback thread (position may lag by a frame — fine for logs).
-                playbackPositionMs = runCatching { exoPlayer?.currentPosition ?: 0L }.getOrDefault(0L)
+                playbackPositionMs = runCatching { exoPlayer?.currentPosition ?: 0L }.getOrDefault(0L),
+                // DEBUG instrumentation: FFT frame arrival, the "capture" endpoint of the
+                // kick-latency measurement (KickLatencyTracker).
+                captureAtElapsedMs = bassEnergy.captureAtElapsedMs
             )
         }
     }
@@ -775,6 +785,7 @@ class HaptiqPlayerManager @Inject constructor(
         pauseMedia()
         stopLookahead()
         bassVisualizer.release()
+        kickLatencyTracker.stop()
         exoPlayer?.release()
         exoPlayer = null
         volumeObserver?.let { context.contentResolver.unregisterContentObserver(it) }

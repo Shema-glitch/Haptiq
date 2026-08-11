@@ -105,6 +105,11 @@ class BassVisualizer(
     private fun processFft(fft: ByteArray) {
         if (fft.size < 4) return
 
+        // DEBUG kick-latency instrumentation: stamp the frame the moment it arrives on
+        // the callback thread — the "capture" endpoint of capture→dispatch→motor-onset
+        // (KickLatencyTracker). One elapsedRealtime read per frame, zero string work.
+        val captureAtElapsedMs = SystemClock.elapsedRealtime()
+
         // First frame: this IS the timing-critical capture-to-vibrate thread (a system
         // binder thread the framework uses for Visualizer capture callbacks). Promote it
         // once so kick/drone dispatch stays snappy when the device is under load.
@@ -261,7 +266,8 @@ class BassVisualizer(
                 bassGain = t.bassGain,
                 kickGain = t.kickGain,
                 subEnvelope = if (t.isBassEnabled) subEnvelopeSmoothed else 0f,
-                clickTransient = clickTransient
+                clickTransient = clickTransient,
+                captureAtElapsedMs = captureAtElapsedMs
             )
         )
     }
