@@ -17,6 +17,12 @@ class HapticMapper {
     // Wired by HaptiqPlayerManager; null in release builds (start() no-ops there).
     var latencyTracker: KickLatencyTracker? = null
 
+    // Surface-adaptive kick boost: asks the tracker (gyro-confirmed) how strongly
+    // kicks are actually moving the phone and returns a character shift (+1/+2 on
+    // damping surfaces, -1 when motion is unusually free). Wired by
+    // HaptiqPlayerManager; gated on tuningState.isSurfaceAdaptiveEnabled.
+    var surfaceCharacterShift: () -> Int = { 0 }
+
     // AOT lookahead sets this after each scheduled kick; the live gate stays silent
     // until it passes so one mapped onset isn't felt twice (once pre-fired, once when
     // the live FFT detector catches it ~50ms later). 0L = never suppressing.
@@ -88,7 +94,8 @@ class HapticMapper {
                 Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q -> true // no query API; system falls back safely
                 else -> false
             }
-            Log.d(TAG, "Vibrator capabilities cached: kickMode=$kickPrimitiveMode amplitudeControl=$hasAmplitudeControl heavyClick=$heavyClickSupported")
+            // Log.i, not Log.d: Tecno/MTK ROMs set log.tag to I and drop D-level lines.
+            Log.i(TAG, "Vibrator capabilities cached: kickMode=$kickPrimitiveMode amplitudeControl=$hasAmplitudeControl heavyClick=$heavyClickSupported")
         } catch (e: Exception) {
             kickPrimitiveMode = KickPrimitiveMode.NONE
             heavyClickSupported = false
@@ -159,7 +166,10 @@ class HapticMapper {
         playbackPositionMs: Long = 0L,
         // Monotonic (elapsedRealtime) FFT frame arrival — DEBUG kick-latency
         // instrumentation only (KickLatencyTracker); 0 when unknown.
-        captureAtElapsedMs: Long = 0L
+        captureAtElapsedMs: Long = 0L,
+        // Kick hit character (Snap/Punch/Thump/Heavy) — how long the kick drives
+        // the motor as a decaying strike-train.
+        kickCharacter: KickCharacter = KickCharacter.PUNCH
     ) {
         if (vibrator != null) ensureCapabilitiesCached(vibrator)
 
@@ -205,9 +215,9 @@ class HapticMapper {
             // Debug-gated: release builds ship with minify OFF, and unstripped Log.d with
             // string formatting on the timing-critical thread stalls kick dispatch when
             // logd throttles or the buffer fills.
-            if (BuildConfig.DEBUG) Log.d(TAG, "KICK fire: delta=$kickDelta raw=$rawKick scale=$kickScale click=$clickTransient posMs=$playbackPositionMs vib=${vibrator != null}")
+            if (BuildConfig.DEBUG) Log.i(TAG, "KICK fire: delta=$kickDelta raw=$rawKick scale=$kickScale click=$clickTransient char=$kickCharacter posMs=$playbackPositionMs vib=${vibrator != null}")
             val dispatchAt = SystemClock.elapsedRealtime()
-            fireKick(vibrator, kickScale, clickTransient)
+            fireKick(vibrator, kickScale, clickTransient, kickCharacter.shift(surfaceCharacterShift()))
             latencyTracker?.onKick(captureAtElapsedMs, dispatchAt, playbackPositionMs, "live")
             lastKickTime = now
             kickArmed = false
@@ -238,7 +248,7 @@ class HapticMapper {
                 val tailDamp = if (is808Tail) TAIL_808_DAMP else 1f
                 val droneScale = (droneAmplitude / 255f) * intensityScalar * bassGain * tailDamp
 
-                if (BuildConfig.DEBUG) Log.d(TAG, "DRONE fire: env=$subEnvelope level=$level tail808=$is808Tail scale=$droneScale posMs=$playbackPositionMs vib=${vibrator != null}")
+                if (BuildConfig.DEBUG) Log.i(TAG, "DRONE fire: env=$subEnvelope level=$level tail808=$is808Tail scale=$droneScale posMs=$playbackPositionMs vib=${vibrator != null}")
                 fireDrone(vibrator, droneScale)
                 isDronePlaying = true
                 lastDroneTime = now
@@ -261,7 +271,8 @@ class HapticMapper {
         calibrationMultiplier: Float,
         batterySaverEnabled: Boolean,
         kickGain: Float,
-        onsetMs: Long
+        onsetMs: Long,
+        kickCharacter: KickCharacter = KickCharacter.PUNCH
     ) {
         val now = SystemClock.elapsedRealtime()
         if (now - lastKickTime < KICK_COOLDOWN_MS) return
@@ -270,9 +281,9 @@ class HapticMapper {
         // Same punch-floor as the live path — a mapped onset is a full-strength transient.
         val kickIntensityScalar = intensityScalar.coerceAtLeast(0.88f)
         val scale = (kickIntensityScalar * kickGain).coerceIn(0f, 1f)
-        if (BuildConfig.DEBUG) Log.d(TAG, "AOT kick pre-fire: onsetMs=$onsetMs scale=$scale")
+        if (BuildConfig.DEBUG) Log.i(TAG, "AOT kick pre-fire: onsetMs=$onsetMs scale=$scale char=$kickCharacter")
         val dispatchAt = SystemClock.elapsedRealtime()
-        fireKick(vibrator, scale, clickTransient = true)
+        fireKick(vibrator, scale, clickTransient = true, kickCharacter.shift(surfaceCharacterShift()))
         // No capture stage for pre-fires — dispatch→onset is exactly the lead needed.
         latencyTracker?.onKick(0L, dispatchAt, onsetMs, "aot")
         lastKickTime = now
@@ -285,7 +296,11 @@ class HapticMapper {
     // clickTransient shapes the punch character (study: classify by behavior): a drum
     // kick with an audible beater click gets the CLICK snap layered on; a clickless 808
     // attack renders as pure THUD — deeper, no snap, matching what the ear hears.
-    private fun fireKick(vibrator: Vibrator?, scale: Float, clickTransient: Boolean = true) {
+    // character is the hit-longevity axis: longer characters layer extra body strikes at
+    // offset delays (primitives have vendor-baked decay, so one THUD always reads as a
+    // tick; a second/third hit at delay extends the felt tail into a real thump) or use
+    // a decaying multi-strike waveform on motors without composition support.
+    private fun fireKick(vibrator: Vibrator?, scale: Float, clickTransient: Boolean = true, character: KickCharacter = KickCharacter.PUNCH) {
         if (vibrator == null) return
         val s = scale.coerceIn(0f, 1f)
         try {
@@ -296,47 +311,69 @@ class HapticMapper {
                     if (clickTransient) {
                         composition.addPrimitive(VibrationEffect.Composition.PRIMITIVE_CLICK, s, 5)
                     }
+                    var delay = 60
+                    for (i in 1 until character.strikes) {
+                        composition.addPrimitive(
+                            VibrationEffect.Composition.PRIMITIVE_THUD,
+                            s * (1f - 0.15f * i), delay
+                        )
+                        delay += 70
+                    }
                     vibrator.vibrate(composition.compose())
                 }
-                KickPrimitiveMode.THUD_ONLY -> vibrator.vibrate(
-                    VibrationEffect.startComposition()
+                KickPrimitiveMode.THUD_ONLY -> {
+                    val composition = VibrationEffect.startComposition()
                         .addPrimitive(VibrationEffect.Composition.PRIMITIVE_THUD, s)
-                        .compose()
-                )
-                KickPrimitiveMode.CLICK_ONLY -> vibrator.vibrate(
-                    VibrationEffect.startComposition()
+                    var delay = 60
+                    for (i in 1 until character.strikes) {
+                        composition.addPrimitive(
+                            VibrationEffect.Composition.PRIMITIVE_THUD,
+                            s * (1f - 0.15f * i), delay
+                        )
+                        delay += 70
+                    }
+                    vibrator.vibrate(composition.compose())
+                }
+                KickPrimitiveMode.CLICK_ONLY -> {
+                    val composition = VibrationEffect.startComposition()
                         .addPrimitive(VibrationEffect.Composition.PRIMITIVE_CLICK, s)
-                        .addPrimitive(VibrationEffect.Composition.PRIMITIVE_CLICK, s * 0.75f, 15)
-                        .compose()
-                )
+                    var delay = 25
+                    for (i in 1 until character.strikes) {
+                        composition.addPrimitive(
+                            VibrationEffect.Composition.PRIMITIVE_CLICK,
+                            s * (1f - 0.15f * i), delay
+                        )
+                        delay += 40
+                    }
+                    vibrator.vibrate(composition.compose())
+                }
                 KickPrimitiveMode.NONE -> {
-                    if (heavyClickSupported && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    // Heavy-click is a fixed OEM effect that can't be extended — it stays
+                    // the default for the crisp Snap character, longer characters fall
+                    // back to the waveform so the sustain axis still works everywhere.
+                    if (heavyClickSupported && character == KickCharacter.SNAP &&
+                        Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
+                    ) {
                         // The system gesture-nav buzz: OEM-tuned per motor, so it's as
                         // strong and snappy as this exact phone can physically feel.
                         // Fixed strength by design — a kick should always land hard.
                         vibrator.vibrate(VibrationEffect.createPredefined(VibrationEffect.EFFECT_HEAVY_CLICK))
                     } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                         val amplitude = (s * 255f).toInt().coerceIn(210, 255)
-                        if (!hasAmplitudeControl) {
+                        val (times, amps) = if (!hasAmplitudeControl) {
                             // True ERM: motor inertia is slow to start (~30-50ms spin-up), so
-                            // a single 35ms pulse mostly ends before the mass is moving. Two
-                            // pulses with a short gap read as one stronger kick — the motor
-                            // stays spinning through the gap and gets re-energized.
-                            vibrator.vibrate(VibrationEffect.createWaveform(
-                                longArrayOf(0, 35, 8, 35),
-                                intArrayOf(0, amplitude, 0, amplitude),
-                                -1
-                            ))
+                            // a single 35ms pulse mostly ends before the mass is moving.
+                            // The strike-train keeps the motor spinning through short gaps
+                            // and re-energizes it per strike — one long kick, not a train
+                            // of separate ticks.
+                            KickWaveform.strikeTrain(character, amplitude)
                         } else {
-                            vibrator.vibrate(VibrationEffect.createWaveform(
-                                longArrayOf(0, 35, 10),
-                                intArrayOf(0, amplitude, 0),
-                                -1
-                            ))
+                            KickWaveform.pulseWithTail(character, amplitude)
                         }
+                        vibrator.vibrate(VibrationEffect.createWaveform(times, amps, -1))
                     } else {
                         @Suppress("DEPRECATION")
-                        vibrator.vibrate(35L)
+                        vibrator.vibrate(35L * character.strikes)
                     }
                 }
             }
@@ -380,4 +417,52 @@ class HapticMapper {
             }
         } catch (_: Exception) {}
     }
+}
+
+// ── KICK WAVEFORMS ────────────────────────────────────────────────────────────────
+// The decaying strike-train that implements the hit-longevity axis on motors without
+// composition primitives. Kept as a pure object so the waveform math is unit-testable.
+object KickWaveform {
+    private const val STRIKE_MS = 35L
+    private const val GAP_MS = 8L
+
+    /**
+     * ERM/no-amplitude path: repeated full-strength strikes at decaying amplitude,
+     * then a low-amp tail. Each strike re-energizes the still-spinning motor, so the
+     * felt hit lasts as long as the character says instead of ending at motor
+     * spin-up. The tail (and each strike's decay) means it reads as ONE decaying hit,
+     * never a flat hold (a flat hold reads as a buzz).
+     */
+    fun strikeTrain(character: KickCharacter, amplitude: Int): Pair<LongArray, IntArray> {
+        // (delay, strike) pairs, matching the pre-existing waveform convention:
+        // a 0-amp delay segment precedes every strike (timings[0] is the initial
+        // delay in VibrationEffect.createWaveform).
+        val times = ArrayList<Long>()
+        val amps = ArrayList<Int>()
+        repeat(character.strikes) { i ->
+            times.add(if (i == 0) 0L else GAP_MS)
+            amps.add(0)
+            times.add(STRIKE_MS)
+            amps.add((amplitude * (1f - 0.15f * i)).toInt().coerceIn(0, 255))
+        }
+        if (character.tailMs > 0) {
+            times.add(GAP_MS); amps.add(0)
+            times.add(character.tailMs.toLong())
+            amps.add((amplitude * 0.5f).toInt().coerceIn(0, 255))
+        }
+        return times.toLongArray() to amps.toIntArray()
+    }
+
+    /**
+     * Amplitude-control path: one strike plus a decayed tail that extends the felt
+     * decay into a thump without ever holding flat.
+     */
+    fun pulseWithTail(character: KickCharacter, amplitude: Int): Pair<LongArray, IntArray> =
+        if (character.tailMs > 0) {
+            longArrayOf(0, STRIKE_MS, GAP_MS, character.tailMs.toLong()) to
+                intArrayOf(amplitude, amplitude, 0, (amplitude * 0.45f).toInt().coerceIn(0, 255))
+        } else {
+            longArrayOf(0, STRIKE_MS, GAP_MS, 12L) to
+                intArrayOf(amplitude, amplitude, 0, 0)
+        }
 }

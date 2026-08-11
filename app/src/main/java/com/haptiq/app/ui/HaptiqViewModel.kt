@@ -185,6 +185,8 @@ sealed interface HaptiqUiAction {
     data class SetBassFreqRange(val min: Int, val max: Int) : HaptiqUiAction
     data class SetBassGain(val value: Float) : HaptiqUiAction
     data class SetKickGain(val value: Float) : HaptiqUiAction
+    data class SetKickCharacter(val character: com.haptiq.app.audio.KickCharacter) : HaptiqUiAction
+    data class SetSurfaceAdaptiveEnabled(val enabled: Boolean) : HaptiqUiAction
     data class SetAotLookaheadEnabled(val enabled: Boolean) : HaptiqUiAction
     object ResetTuning : HaptiqUiAction
 }
@@ -249,6 +251,14 @@ class HaptiqViewModel @Inject constructor(
         playerManager.hapticActive.collectIntoState { state, active -> state.copy(hapticActive = active) }
         playerManager.currentPresetId.collectIntoState { state, preset -> state.copy(currentPresetId = preset) }
         playerManager.intensity.collectIntoState { state, intensity -> state.copy(intensity = intensity) }
+        // Presets mutate the manager's tuning directly (setPreset), which the Studio's
+        // character chips read via this tuning copy — keep the two in sync. No loop:
+        // StateFlow dedupes, and the chip path writes _hapticTuning before updateTuning.
+        viewModelScope.launch {
+            playerManager.kickCharacter.collect { character ->
+                _hapticTuning.update { it.copy(kickCharacter = character) }
+            }
+        }
         playerManager.batterySaverEnabled.collectIntoState { state, enabled -> state.copy(batterySaverEnabled = enabled) }
         playerManager.sleepTimerMinutes.collectIntoState { state, mins -> state.copy(sleepTimerMinutes = mins) }
         playerManager.queue.collectIntoState { state, q -> state.copy(queue = q) }
@@ -626,6 +636,14 @@ class HaptiqViewModel @Inject constructor(
             }
             is HaptiqUiAction.SetKickGain -> {
                 _hapticTuning.update { it.copy(kickGain = action.value) }
+                playerManager.updateTuning(_hapticTuning.value)
+            }
+            is HaptiqUiAction.SetKickCharacter -> {
+                _hapticTuning.update { it.copy(kickCharacter = action.character) }
+                playerManager.updateTuning(_hapticTuning.value)
+            }
+            is HaptiqUiAction.SetSurfaceAdaptiveEnabled -> {
+                _hapticTuning.update { it.copy(isSurfaceAdaptiveEnabled = action.enabled) }
                 playerManager.updateTuning(_hapticTuning.value)
             }
             is HaptiqUiAction.SetAotLookaheadEnabled -> {

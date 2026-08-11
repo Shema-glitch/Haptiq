@@ -29,6 +29,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.haptiq.app.audio.HapticTuningState
+import com.haptiq.app.audio.KickCharacter
 import com.haptiq.app.ui.theme.*
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -42,11 +43,14 @@ fun HapticStudioScreen(
     onIntensityChanged: (Int) -> Unit,
     onTuningAction: (HaptiqUiAction) -> Unit
 ) {
+    // Preset ids stay stable (they're persisted + used by demos); the labels are the
+    // kick-character names — each preset now sets a hit character + intensity:
+    // THUMP (deep_bass), PUNCH (punch), HEAVY (concert), SNAP (soft_pulse).
     val presets = listOf(
-        PresetChipData("deep_bass", "Deep Bass"),
-        PresetChipData("punch", "Punch"),
-        PresetChipData("concert", "Concert"),
-        PresetChipData("soft_pulse", "Soft Pulse")
+        PresetChipData("deep_bass", "THUMP"),
+        PresetChipData("punch", "PUNCH"),
+        PresetChipData("concert", "HEAVY"),
+        PresetChipData("soft_pulse", "SNAP")
     )
 
     Scaffold(
@@ -475,6 +479,53 @@ private fun TuningDashboardCard(
                     )
                 }
 
+                // ── SURFACE ADAPT (experimental) ─────────────────────────────────────
+                // Gyro-confirmed feedback loop: measures how strongly each kick actually
+                // moves the phone and steps the kick character up on damping surfaces
+                // (mattress, couch, table). Off by default until the sensing bands are
+                // calibrated on-device.
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(Radius.sm))
+                        .background(
+                            if (tuning.isSurfaceAdaptiveEnabled) ColorHapticAccent.copy(alpha = 0.10f)
+                            else ColorSurfaceVariant.copy(alpha = 0.4f)
+                        )
+                        .padding(Spacing.sm),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.sm)
+                ) {
+                    Icon(
+                        Icons.Default.GraphicEq,
+                        contentDescription = null,
+                        tint = if (tuning.isSurfaceAdaptiveEnabled) ColorHapticAccent else ColorOnSurface60,
+                        modifier = Modifier.size(ComponentSize.iconSmall)
+                    )
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            "Surface Adapt",
+                            style = MaterialTheme.typography.titleSmall,
+                            color = ColorOnSurface
+                        )
+                        Text(
+                            "Boosts kick presence on damping surfaces (mattress, couch, table) — experimental",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = ColorOnSurface60
+                        )
+                    }
+                    Switch(
+                        checked = tuning.isSurfaceAdaptiveEnabled,
+                        onCheckedChange = { onAction(HaptiqUiAction.SetSurfaceAdaptiveEnabled(it)) },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = ColorSurface,
+                            checkedTrackColor = ColorPrimary,
+                            uncheckedThumbColor = ColorOnSurface60,
+                            uncheckedTrackColor = ColorSurfaceVariant
+                        )
+                    )
+                }
+
                 // ── AOT LOOKAHEAD ────────────────────────────────────────────────
                 // Pre-fires mapped kicks ~50ms before the audio hit so the motor is
                 // already moving when the bass lands (live FFT detection is late by
@@ -567,6 +618,30 @@ private fun TuningDashboardCard(
                     color = ColorOnSurface60,
                     letterSpacing = 1.5.sp
                 )
+                // Kick character — the hit-longevity axis: how long the motor is driven
+                // as a decaying strike-train. Snap reads as a click in the hand; Heavy
+                // transfers energy through a table or mattress.
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.xs)
+                ) {
+                    KickCharacter.entries.forEach { char ->
+                        FilterChip(
+                            selected = tuning.kickCharacter == char,
+                            onClick = { onAction(HaptiqUiAction.SetKickCharacter(char)) },
+                            label = {
+                                Text("${char.label} · ${char.displayMs}ms")
+                            },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = ColorPrimary.copy(alpha = 0.12f),
+                                selectedLabelColor = ColorPrimary,
+                                containerColor = ColorSurface,
+                                labelColor = ColorOnSurface
+                            ),
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
                 TuningSliderRow(
                     label = "KICK INTENSITY",
                     value = tuning.kickGain,

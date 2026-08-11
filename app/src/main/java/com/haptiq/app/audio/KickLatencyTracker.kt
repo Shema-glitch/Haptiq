@@ -41,14 +41,36 @@ class KickLatencyTracker {
         private const val TAG = "KickLatency"
         // Only listen for onset this long after dispatch — long enough for slow ERM
         // spin-up (~10-60ms) with margin, short enough that unrelated phone motion
-        // after the kick can't false-trigger.
+        // after the kick can't false-trigger. Measured on the SENSOR clock (see
+        // handleGyroEvent): sensor timestamps on some OEM ROMs (MTK/Tecno) are not on
+        // the same base as SystemClock.elapsedRealtime, so any cross-clock comparison
+        // silently breaks onset detection on those devices.
         private const val ONSET_WINDOW_MS = 300L
         // Gyro magnitude (rad/s) that counts as motor onset. Vibration onset reads as
         // a sharp rotation spike (typically several rad/s on a phone gyro); resting
-        // hand-held is well under 0.5.
-        private const val ONSET_GYRO_THRESHOLD = 1.5f
+        // hand-held is well under 0.5. Conservative by design — a too-high threshold
+        // reports nothing (expire line shows the observed max for calibration), never
+        // a wrong number.
+        private const val ONSET_GYRO_THRESHOLD = 1.2f
         private const val MAX_SAMPLES = 200
         private const val SUMMARY_EVERY = 20
+        // Surface feedback needs a few measured onsets before it says anything — a
+        // single sample on an unusual surface (brief phone pick-up mid-song) would
+        // otherwise skew the whole session.
+        private const val MIN_SURFACE_SAMPLES = 8
+    }
+
+    /**
+     * Surface-feedback band mapping: how much to step the kick character based on the
+     * mean gyro magnitude each kick actually moves the phone. The bands are starting
+     * points to be calibrated on-device — the values ship logged on every onset
+     * (`gyro=x.xx rad/s`), so the device test produces the real numbers.
+     */
+    internal fun characterShiftForMagnitude(mag: Float): Int = when {
+        mag < 1.5f -> 2   // heavily damped (mattress/couch): step up two characters
+        mag < 3.0f -> 1   // damped (table/case): step up one
+        mag > 6.0f -> -1  // unusually free motion: one step less presence
+        else -> 0
     }
 
     /** Capped rolling sample collector with the stats a latency report needs. */
@@ -82,6 +104,8 @@ class KickLatencyTracker {
     private val liveCaptureToDispatch = LatencyStats()
     private val liveTotal = LatencyStats()          // capture→onset (live only)
     private val onsetAfterDispatch = LatencyStats() // dispatch→onset (live + AOT)
+    private val onsetMagnitudes = LatencyStats()    // gyro rad/s at onset — surface feedback
+    private var measuredOnsets = 0
     private var aotCount = 0
     private var confirmedOnsets = 0
 
@@ -90,7 +114,13 @@ class KickLatencyTracker {
     private var pendingDispatchAt = 0L
     private var pendingPositionMs = 0L
     private var pendingKind = ""
-    private var armedUntilElapsedMs = 0L
+    // Onset window measured on the SENSOR clock: anchorSensorNanos is the first gyro
+    // event after arming, and the window expires ONSET_WINDOW_MS of sensor time later.
+    // Relative-only — immune to any mismatch between the sensor clock base and
+    // elapsedRealtime (OEMs are not consistent about which base sensor timestamps use).
+    private var anchorSensorNanos = 0L
+    private var maxMagWhileArmed = 0f
+    private val onsetWindowNanos = ONSET_WINDOW_MS * 1_000_000L
 
     @Synchronized
     fun start(context: Context) {
@@ -103,7 +133,7 @@ class KickLatencyTracker {
         } else {
             sensorManager?.registerListener(gyroListener, gyro, SensorManager.SENSOR_DELAY_GAME)
         }
-        Log.d(TAG, "Kick latency tracking started (gyro=${gyro != null})")
+        Log.i(TAG, "Kick latency tracking started (gyro=${gyro != null})")
     }
 
     @Synchronized
@@ -117,11 +147,14 @@ class KickLatencyTracker {
         liveCaptureToDispatch.clear()
         liveTotal.clear()
         onsetAfterDispatch.clear()
+        onsetMagnitudes.clear()
+        measuredOnsets = 0
         aotCount = 0
         confirmedOnsets = 0
         pendingCaptureAt = 0L
         pendingDispatchAt = 0L
-        armedUntilElapsedMs = 0L
+        anchorSensorNanos = 0L
+        maxMagWhileArmed = 0f
     }
 
     /**
@@ -145,52 +178,92 @@ class KickLatencyTracker {
         pendingDispatchAt = dispatchAtElapsedMs
         pendingPositionMs = positionMs
         pendingKind = kind
-        armedUntilElapsedMs = dispatchAtElapsedMs + ONSET_WINDOW_MS
+        // Re-arm the sensor-clock window. The anchor resets on the next gyro event.
+        anchorSensorNanos = 0L
+        maxMagWhileArmed = 0f
     }
 
     private val gyroListener = object : SensorEventListener {
         override fun onSensorChanged(event: SensorEvent) {
             if (event.sensor.type != Sensor.TYPE_GYROSCOPE) return
-            val x = event.values[0]
-            val y = event.values[1]
-            val z = event.values[2]
-            if (sqrt(x * x + y * y + z * z) < ONSET_GYRO_THRESHOLD) return
-            // SensorEvent.timestamp uses the same time base as
-            // SystemClock.elapsedRealtimeNanos(), so ms here is comparable to the
-            // elapsedRealtime() stamps recorded at capture/dispatch.
-            handleOnset(event.timestamp / 1_000_000L)
+            handleGyroEvent(event.timestamp, event.values)
         }
 
         override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
     }
 
     @Synchronized
-    private fun handleOnset(eventElapsedMs: Long) {
+    private fun handleGyroEvent(sensorNanos: Long, values: FloatArray) {
         if (!running || pendingDispatchAt == 0L) return
-        if (eventElapsedMs !in pendingDispatchAt..armedUntilElapsedMs) return
-        val dispatchToOnset = eventElapsedMs - pendingDispatchAt
-        if (dispatchToOnset < 0L) return
+        val mag = sqrt(values[0] * values[0] + values[1] * values[1] + values[2] * values[2])
+        maxMagWhileArmed = maxOf(maxMagWhileArmed, mag)
+        if (anchorSensorNanos == 0L) {
+            // First event after arming anchors the window on the sensor clock — no
+            // cross-clock comparison anywhere, so OEM timestamp base differences
+            // (MTK/Tecno) can't break the measurement.
+            anchorSensorNanos = sensorNanos
+            return
+        }
+        val sinceArmNanos = sensorNanos - anchorSensorNanos
+        if (sinceArmNanos < 0L) return // out-of-order event; ignore
+        if (sinceArmNanos > onsetWindowNanos) {
+            // Window expired with no crossing — log what the motor actually produced
+            // so the threshold can be calibrated per device class.
+            if (BuildConfig.DEBUG) {
+            Log.i(
+                TAG,
+                "no onset [${pendingKind}] — max gyro in window=" +
+                        String.format(Locale.US, "%.2f", maxMagWhileArmed) + " rad/s (threshold " +
+                        String.format(Locale.US, "%.1f", ONSET_GYRO_THRESHOLD) + ") posMs=$pendingPositionMs"
+                )
+            }
+            pendingDispatchAt = 0L
+            anchorSensorNanos = 0L
+            maxMagWhileArmed = 0f
+            return
+        }
+        if (mag < ONSET_GYRO_THRESHOLD) return
 
+        // Onset. Elapsed-time deltas equal the sensor-clock deltas (both monotonic),
+        // so compute dispatch→onset purely from sensor time and only map back to
+        // elapsedRealtime via the recorded dispatch stamp.
+        val dispatchToOnset = sinceArmNanos / 1_000_000L
         onsetAfterDispatch.add(dispatchToOnset.toFloat())
+        onsetMagnitudes.add(mag)
+        measuredOnsets++
+        val onsetElapsedMs = pendingDispatchAt + dispatchToOnset
         if (pendingCaptureAt > 0L) {
-            liveTotal.add((eventElapsedMs - pendingCaptureAt).toFloat())
+            liveTotal.add((onsetElapsedMs - pendingCaptureAt).toFloat())
         } else {
             aotCount++
         }
         confirmedOnsets++
         if (BuildConfig.DEBUG) {
             val total = if (pendingCaptureAt > 0L)
-                String.format(Locale.US, "%.1f", (eventElapsedMs - pendingCaptureAt).toFloat())
+                String.format(Locale.US, "%.1f", (onsetElapsedMs - pendingCaptureAt).toFloat())
             else "-"
-            Log.d(
+            Log.i(
                 TAG,
-                "onset [${pendingKind}] dispatch→onset=${String.format(Locale.US, "%.1f", dispatchToOnset.toFloat())}ms " +
-                    "cap→onset=${total}ms posMs=$pendingPositionMs n=$confirmedOnsets"
+                "onset [${pendingKind}] dispatch→onset=" +
+                    String.format(Locale.US, "%.1f", dispatchToOnset.toFloat()) + "ms gyro=" +
+                    String.format(Locale.US, "%.2f", mag) + " cap→onset=${total}ms posMs=$pendingPositionMs n=$confirmedOnsets"
             )
         }
         pendingDispatchAt = 0L // consumed — further spikes in this window are the same kick
-        armedUntilElapsedMs = 0L
+        anchorSensorNanos = 0L
+        maxMagWhileArmed = 0f
         if (confirmedOnsets % SUMMARY_EVERY == 0) logSummary("rolling")
+    }
+
+    /**
+     * Surface feedback for HapticMapper: how many character steps up (damping
+     * surface) or down (unusually free motion) kicks should be shifted, based on the
+     * mean measured onset magnitude. Returns 0 until enough onsets are measured.
+     */
+    @Synchronized
+    fun surfaceCharacterShift(): Int {
+        if (measuredOnsets < MIN_SURFACE_SAMPLES) return 0
+        return characterShiftForMagnitude(onsetMagnitudes.mean())
     }
 
     private fun logSummary(label: String) {
@@ -222,6 +295,6 @@ class KickLatencyTracker {
         } else {
             "cap→onset n=0"
         }
-        Log.d(TAG, "latency $label: $capToDispatch | $dispToOnset | $totals | aot=$aotCount")
+        Log.i(TAG, "latency $label: $capToDispatch | $dispToOnset | $totals | aot=$aotCount")
     }
 }

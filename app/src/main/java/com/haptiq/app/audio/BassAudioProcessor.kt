@@ -38,9 +38,17 @@ class BassVisualizer(
     // Adaptive gates: rolling peaks with per-frame exponential decay (~10s memory
     // at ~19Hz capture). Gates track the music's own energy envelope, so a quiet
     // ballad and a heavy drop both trigger correctly on any device.
+    //
+    // Two time constants, compressor-style: the FAST peak tracks momentary transients
+    // (kick delta gate); a separate SLOW loudness peak (~50s memory) tracks overall
+    // song level (noise floor). Splitting them means a loud drop doesn't lift the
+    // noise floor for the next quiet verse (fast peaks recover in ~10s anyway), and
+    // the floor reflects the song's real average rather than its latest spike.
     private var rollingKickPeak = 0f
     private var rollingSubPeak = 0f
-    private val peakDecay = 0.994f       // per-frame decay of the rolling peak
+    private var rollingLoudness = 0f
+    private val peakDecay = 0.994f       // per-frame decay of the rolling peak (~10s memory)
+    private val loudnessDecay = 0.998f   // per-frame decay of the slow loudness peak (~50s)
     private val kickGateRatio = 0.62f    // fire kicks above 62% of recent peak
     private val subGateRatio = 0.80f     // sustain drone above 80% of recent peak
     private val minSignal = 0.12f        // absolute floor: silence never triggers
@@ -92,11 +100,15 @@ class BassVisualizer(
             // makes each track transition start from silence and re-converge in a few frames.
             rollingKickPeak = 0f
             rollingSubPeak = 0f
+            rollingLoudness = 0f
             subEnvelopeSmoothed = 0f
             statWindowStart = 0L
             statMaxKick = 0f; statMaxSub = 0f; statMaxDelta = 0f; statMaxClick = 0f
             attachTime = SystemClock.elapsedRealtime()
-            Log.d(TAG, "Visualizer attached to session $audioSessionId with capture size ${visualizer?.captureSize}")
+            // Log.i, not Log.d: several OEM ROMs (Tecno/MTK set log.tag to I) silently
+            // drop D-level lines, which made on-device debugging look like the engine
+            // was dead when it was actually running fine.
+            Log.i(TAG, "Visualizer attached to session $audioSessionId with capture size ${visualizer?.captureSize}")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to attach Visualizer: ${e.message}")
         }
@@ -219,7 +231,8 @@ class BassVisualizer(
         statMaxDelta = maxOf(statMaxDelta, kickDelta)
         statMaxClick = maxOf(statMaxClick, clickDelta)
         if (BuildConfig.DEBUG && now - statWindowStart >= 1000L) {
-            Log.d(TAG, "1s peaks: rawKick=$statMaxKick sub=$statMaxSub delta=$statMaxDelta click=$statMaxClick gates(k=${t.noiseFloorGate} s=${t.subDroneThreshold} d=${t.kickThreshold})")
+            // Log.i — see attach(): Tecno/MTK logd drops D-level by default.
+            Log.i(TAG, "1s peaks: rawKick=$statMaxKick sub=$statMaxSub delta=$statMaxDelta click=$statMaxClick gates(k=${t.noiseFloorGate} s=${t.subDroneThreshold} d=${t.kickThreshold})")
             statWindowStart = now
             statMaxKick = 0f; statMaxSub = 0f; statMaxDelta = 0f; statMaxClick = 0f
         }
@@ -230,8 +243,9 @@ class BassVisualizer(
         // of the fixed slider values — self-calibrating per device and genre.
         rollingKickPeak = maxOf(rawKick, rollingKickPeak * peakDecay)
         rollingSubPeak = maxOf(tunedSubBass, rollingSubPeak * peakDecay)
+        rollingLoudness = maxOf(rawKick, rollingLoudness * loudnessDecay)
         val effNoiseFloor = if (t.isAdaptiveEnabled)
-            (rollingKickPeak * kickGateRatio).coerceAtLeast(kickSilenceFloor) else t.noiseFloorGate
+            (rollingLoudness * kickGateRatio).coerceAtLeast(kickSilenceFloor) else t.noiseFloorGate
         val effSubDrone = if (t.isAdaptiveEnabled)
             (rollingSubPeak * subGateRatio).coerceAtLeast(minSignal) else t.subDroneThreshold
         val effKickDelta = if (t.isAdaptiveEnabled)

@@ -1,6 +1,33 @@
 package com.haptiq.app.audio
 
 /**
+ * Kick hit character — the "longevity" of a single kick: how long the motor is
+ * driven, as a decaying strike-train instead of a fixed 35ms tick. This is the
+ * axis that decides whether a kick reads as a click (hand-held) or a real thump
+ * that transfers energy through a table or mattress. Snapshot of the whole
+ * spectrum: SNAP (one strike, crisp) → PUNCH (two strikes) → THUMP (three +
+ * tail) → HEAVY (four + long tail).
+ */
+enum class KickCharacter(
+    val label: String,
+    val displayMs: Int,
+    val strikes: Int,
+    val tailMs: Int
+) {
+    SNAP("Snap", 35, 1, 0),
+    PUNCH("Punch", 80, 2, 12),
+    THUMP("Thump", 140, 3, 60),
+    HEAVY("Heavy", 240, 4, 120);
+
+    /** Shift up/down by surface-feedback steps, clamped to the range. */
+    fun shift(steps: Int): KickCharacter {
+        if (steps == 0) return this
+        val idx = (ordinal + steps).coerceIn(0, values().lastIndex)
+        return values()[idx]
+    }
+}
+
+/**
  * Real-time tunable DSP parameters for the haptic engine.
  * Replaces all hardcoded constants in HapticMapper and BassAudioProcessor.
  * Updated via the Haptic Tuning Dashboard without recompilation.
@@ -34,6 +61,18 @@ data class HapticTuningState(
     val kickThreshold: Float = 0.15f,
     /** Output gain multiplier for the kick punch engine. Range: 0.5–2.0 */
     val kickGain: Float = 1.0f,
+    /**
+     * Kick hit character — the "longevity" of each kick (decaying strike-train).
+     * See [KickCharacter]. The preset chips also set this.
+     */
+    val kickCharacter: KickCharacter = KickCharacter.PUNCH,
+    /**
+     * Surface-adaptive kick boost (experimental): the gyro measures how strongly
+     * each kick actually moves the phone, and on damping surfaces (mattress,
+     * couch, table) the kick character steps UP to compensate. Off by default
+     * until the sensing bands are calibrated on-device.
+     */
+    val isSurfaceAdaptiveEnabled: Boolean = false,
     /** Absolute raw energy floor gate — filters out silence/noise. Range: 0.30–0.95 */
     val noiseFloorGate: Float = 0.70f,
     /** Low FFT bin index for kick/bass detection (inclusive). Range: 1–15 */

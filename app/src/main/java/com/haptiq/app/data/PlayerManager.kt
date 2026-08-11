@@ -1,6 +1,7 @@
 package com.haptiq.app.data
 
 import com.haptiq.app.audio.HapticTuningState
+import com.haptiq.app.audio.KickCharacter
 import androidx.media3.exoplayer.ExoPlayer
 import kotlinx.coroutines.flow.StateFlow
 
@@ -15,6 +16,8 @@ interface PlayerManager {
     val hapticActive: StateFlow<Boolean>
     val currentPresetId: StateFlow<String>
     val intensity: StateFlow<Int>
+    /** The active kick hit-character — set by presets and the Studio chip, in sync with tuning. */
+    val kickCharacter: StateFlow<KickCharacter>
     val batterySaverEnabled: StateFlow<Boolean>
     val visualizerBands: StateFlow<FloatArray>
     /** Remaining sleep-timer allocation in minutes; 0 = off. */

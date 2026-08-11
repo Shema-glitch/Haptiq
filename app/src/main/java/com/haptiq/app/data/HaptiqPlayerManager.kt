@@ -16,6 +16,7 @@ import com.haptiq.app.audio.BassVisualizer
 import com.haptiq.app.audio.BassEnergy
 import com.haptiq.app.audio.HapticMapper
 import com.haptiq.app.audio.HapticTuningState
+import com.haptiq.app.audio.KickCharacter
 import com.haptiq.app.audio.KickLatencyTracker
 import com.haptiq.app.playback.HaptiqPlaybackService
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -97,6 +98,9 @@ class HaptiqPlayerManager @Inject constructor(
     private val _intensity = MutableStateFlow(75) // 0 - 100
     override val intensity: StateFlow<Int> = _intensity.asStateFlow()
 
+    private val _kickCharacter = MutableStateFlow(KickCharacter.PUNCH)
+    override val kickCharacter: StateFlow<KickCharacter> = _kickCharacter.asStateFlow()
+
     private val _batterySaverEnabled = MutableStateFlow(false)
     override val batterySaverEnabled: StateFlow<Boolean> = _batterySaverEnabled.asStateFlow()
 
@@ -149,6 +153,12 @@ class HaptiqPlayerManager @Inject constructor(
         initExoPlayer()
         registerVolumeObserver()
         hapticMapper.latencyTracker = kickLatencyTracker
+        // Surface-adaptive kick boost — reads the gyro-confirmed onset magnitude and
+        // steps the kick character up on damping surfaces. Gated off by default until
+        // the sensing bands are calibrated on-device (HapticTuningState).
+        hapticMapper.surfaceCharacterShift = {
+            if (tuningState.isSurfaceAdaptiveEnabled) kickLatencyTracker.surfaceCharacterShift() else 0
+        }
         kickLatencyTracker.start(context)
     }
 
@@ -304,7 +314,9 @@ class HaptiqPlayerManager @Inject constructor(
                 playbackPositionMs = runCatching { exoPlayer?.currentPosition ?: 0L }.getOrDefault(0L),
                 // DEBUG instrumentation: FFT frame arrival, the "capture" endpoint of the
                 // kick-latency measurement (KickLatencyTracker).
-                captureAtElapsedMs = bassEnergy.captureAtElapsedMs
+                captureAtElapsedMs = bassEnergy.captureAtElapsedMs,
+                // Kick hit character (Snap/Punch/Thump/Heavy) — the hit-longevity axis.
+                kickCharacter = tuningState.kickCharacter
             )
         }
     }
@@ -361,7 +373,8 @@ class HaptiqPlayerManager @Inject constructor(
                         calibrationMultiplier = 1.0f,
                         batterySaverEnabled = _batterySaverEnabled.value,
                         kickGain = tuningState.kickGain,
-                        onsetMs = onset.toLong()
+                        onsetMs = onset.toLong(),
+                        kickCharacter = tuningState.kickCharacter
                     )
                 }
                 lookaheadIdx++
@@ -442,13 +455,25 @@ class HaptiqPlayerManager @Inject constructor(
 
     override fun setPreset(presetId: String) {
         _currentPresetId.value = presetId
-        // Update intensity based on default mapping for preset
-        when (presetId) {
-            "deep_bass" -> _intensity.value = 75
-            "punch" -> _intensity.value = 90
-            "concert" -> _intensity.value = 80
-            "soft_pulse" -> _intensity.value = 50
+        // Each preset is now a kick CHARACTER + intensity pairing — the hit-longevity
+        // axis renamed from the old names (Deep Bass/Punch/Concert/Soft Pulse):
+        //   THUMP  (deep_bass)   — sustained, low-end hits at moderate intensity
+        //   PUNCH  (punch)       — the classic two-strike punch, strongest intensity
+        //   HEAVY  (concert)     — maximum presence, longest hit
+        //   SNAP   (soft_pulse)  — short, crisp, gentle
+        val (intensity, character) = when (presetId) {
+            "deep_bass" -> 75 to KickCharacter.THUMP
+            "punch" -> 90 to KickCharacter.PUNCH
+            "concert" -> 80 to KickCharacter.HEAVY
+            "soft_pulse" -> 50 to KickCharacter.SNAP
+            else -> 75 to KickCharacter.THUMP
         }
+        _intensity.value = intensity
+        _kickCharacter.value = character
+        // Keep the DSP tuning in sync with the preset so the engine uses the character
+        // immediately (the Studio chip and preset chips then agree on one value).
+        tuningState = tuningState.copy(kickCharacter = character)
+        bassVisualizer.tuning = tuningState
     }
 
     override fun updateIntensity(value: Int) {
@@ -490,6 +515,7 @@ class HaptiqPlayerManager @Inject constructor(
     override fun updateTuning(state: HapticTuningState) {
         val wasAotEnabled = tuningState.isAotLookaheadEnabled
         tuningState = state
+        _kickCharacter.value = state.kickCharacter
         bassVisualizer.tuning = state
         // The AOT lookahead toggle can flip at runtime from the Studio — start or stop
         // the scheduler on the transition (not on every slider move).
