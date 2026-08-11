@@ -82,13 +82,22 @@ fun AlbumsScreen(
                     subtitle = "Scan your device to find music"
                 ) {
                     Spacer(Modifier.height(Spacing.lg))
+                    val scanInteraction = remember { MutableInteractionSource() }
+                    val isScanPressed by scanInteraction.collectIsPressedAsState()
+                    val scanScale by animateFloatAsState(
+                        targetValue = if (isScanPressed) 0.97f else 1f,
+                        animationSpec = HaptiqMotion.fastSpring(),
+                        label = "albums_scan_press_scale"
+                    )
                     Button(
                         onClick = onScanDevice,
+                        interactionSource = scanInteraction,
                         colors = ButtonDefaults.buttonColors(
                             containerColor = ColorPrimary,
                             contentColor = ColorOnPrimary
                         ),
-                        contentPadding = PaddingValues(horizontal = Spacing.xl, vertical = Spacing.sm)
+                        contentPadding = PaddingValues(horizontal = Spacing.xl, vertical = Spacing.sm),
+                        modifier = Modifier.graphicsLayer { scaleX = scanScale; scaleY = scanScale }
                     ) {
                         Icon(Icons.Default.Search, null, Modifier.size(ComponentSize.iconSmall))
                         Spacer(Modifier.width(Spacing.xs))

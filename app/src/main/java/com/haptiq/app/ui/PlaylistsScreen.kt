@@ -1,7 +1,10 @@
 package com.haptiq.app.ui
 
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -20,6 +23,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.haptiq.app.data.PlaylistWithCount
@@ -49,11 +53,21 @@ fun PlaylistsScreen(
                     subtitle = "Group the songs you love — tap New Playlist to start"
                 ) {
                     Spacer(Modifier.height(Spacing.lg))
+                    val createInteraction = remember { MutableInteractionSource() }
+                    val isCreatePressed by createInteraction.collectIsPressedAsState()
+                    val createScale by animateFloatAsState(
+                        targetValue = if (isCreatePressed) 0.97f else 1f,
+                        animationSpec = HaptiqMotion.fastSpring(),
+                        label = "create_press_scale"
+                    )
                     Button(
                         onClick = { showCreateDialog = true },
+                        interactionSource = createInteraction,
                         colors = ButtonDefaults.buttonColors(containerColor = ColorPrimary, contentColor = ColorOnPrimary),
                         shape = ExpressiveShapes.navPill,
-                        modifier = Modifier.height(ComponentSize.buttonHeight)
+                        modifier = Modifier
+                            .height(ComponentSize.buttonHeight)
+                            .graphicsLayer { scaleX = createScale; scaleY = createScale }
                     ) {
                         Icon(Icons.Default.Add, null)
                         Spacer(Modifier.width(Spacing.xs))

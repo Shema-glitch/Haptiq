@@ -95,13 +95,22 @@ fun FavoritesScreen(
                     subtitle = "Tap the heart icon on any track to add it here"
                 ) {
                     Spacer(Modifier.height(Spacing.lg))
+                    val browseInteraction = remember { MutableInteractionSource() }
+                    val isBrowsePressed by browseInteraction.collectIsPressedAsState()
+                    val browseScale by animateFloatAsState(
+                        targetValue = if (isBrowsePressed) 0.97f else 1f,
+                        animationSpec = HaptiqMotion.fastSpring(),
+                        label = "browse_press_scale"
+                    )
                     Button(
                         onClick = onBrowseLibrary,
+                        interactionSource = browseInteraction,
                         colors = ButtonDefaults.buttonColors(
                             containerColor = ColorPrimary,
                             contentColor = ColorOnPrimary
                         ),
-                        contentPadding = PaddingValues(horizontal = Spacing.xl, vertical = Spacing.sm)
+                        contentPadding = PaddingValues(horizontal = Spacing.xl, vertical = Spacing.sm),
+                        modifier = Modifier.graphicsLayer { scaleX = browseScale; scaleY = browseScale }
                     ) {
                         Icon(Icons.Default.LibraryMusic, null, Modifier.size(ComponentSize.iconSmall))
                         Spacer(Modifier.width(Spacing.xs))
