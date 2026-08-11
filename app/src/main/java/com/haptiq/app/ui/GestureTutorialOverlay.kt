@@ -48,6 +48,7 @@ fun GestureTutorialOverlay(
 ) {
     var step by remember { mutableIntStateOf(0) }
     val lastStep = 2
+    val reduced = isReducedMotionEnabled()
 
     // A full-screen Dialog, not an inline Box: rendered inside the library's
     // content area, an inline scrim only darkened the list region and read as a
@@ -109,12 +110,17 @@ fun GestureTutorialOverlay(
                     AnimatedContent(
                         targetState = step,
                         transitionSpec = {
-                            // Unhurried so each card has room to land — the incoming
-                            // slide+fade is slower than the outgoing, so steps feel
-                            // like they settle rather than snap.
-                            (slideInHorizontally(tween(520, easing = FastOutSlowInEasing)) { it / 3 } +
-                                fadeIn(tween(520))) togetherWith
-                                (slideOutHorizontally(tween(360)) { -it / 4 } + fadeOut(tween(280)))
+                            if (reduced) {
+                                // Reduced motion: fade-only, no positional slide.
+                                fadeIn(tween(150)) togetherWith fadeOut(tween(120))
+                            } else {
+                                // Unhurried so each card has room to land — the incoming
+                                // slide+fade is slower than the outgoing, so steps feel
+                                // like they settle rather than snap.
+                                (slideInHorizontally(tween(520, easing = FastOutSlowInEasing)) { it / 3 } +
+                                    fadeIn(tween(520))) togetherWith
+                                    (slideOutHorizontally(tween(360)) { -it / 4 } + fadeOut(tween(280)))
+                            }
                         },
                         label = "tutorial_demo"
                     ) { s ->
@@ -198,15 +204,18 @@ fun GestureTutorialOverlay(
 private fun CelebrationDemo(songCount: Int) {
     val count by animateIntAsState(
         targetValue = songCount,
-        animationSpec = tween(900, easing = FastOutSlowInEasing),
+        animationSpec = if (isReducedMotionEnabled()) tween(0) else tween(900, easing = FastOutSlowInEasing),
         label = "count_up"
     )
-    val pulse = rememberInfiniteTransition(label = "celebrate_pulse")
-    val scale by pulse.animateFloat(
-        initialValue = 0.94f, targetValue = 1.06f,
-        animationSpec = infiniteRepeatable(tween(1400, easing = EaseInOutSine), RepeatMode.Reverse),
-        label = "scale"
-    )
+    val scale = if (isReducedMotionEnabled()) 1f else {
+        val pulse = rememberInfiniteTransition(label = "celebrate_pulse")
+        val s by pulse.animateFloat(
+            initialValue = 0.94f, targetValue = 1.06f,
+            animationSpec = infiniteRepeatable(tween(1400, easing = EaseInOutSine), RepeatMode.Reverse),
+            label = "scale"
+        )
+        s
+    }
     Box(contentAlignment = Alignment.Center) {
         Box(
             Modifier
@@ -234,22 +243,27 @@ private fun CelebrationDemo(songCount: Int) {
 /** Step 1: a mock row slides right on a loop, revealing the amber "Play next" layer. */
 @Composable
 private fun SwipeToQueueDemo() {
-    val transition = rememberInfiniteTransition(label = "swipe_demo")
-    // 0 → 1 → 0 sweep with a hold at the top, so it reads as a deliberate swipe.
-    val t by transition.animateFloat(
-        initialValue = 0f, targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = keyframes {
-                durationMillis = 2200
-                0f at 0
-                0f at 300
-                1f at 1100
-                1f at 1500
-                0f at 2200
-            }
-        ),
-        label = "swipe_t"
-    )
+    // Reduced motion: frozen mid-swipe — the amber layer stays revealed so the
+    // lesson reads without the loop.
+    val t = if (isReducedMotionEnabled()) 0.6f else {
+        val transition = rememberInfiniteTransition(label = "swipe_demo")
+        // 0 → 1 → 0 sweep with a hold at the top, so it reads as a deliberate swipe.
+        val tv by transition.animateFloat(
+            initialValue = 0f, targetValue = 1f,
+            animationSpec = infiniteRepeatable(
+                animation = keyframes {
+                    durationMillis = 2200
+                    0f at 0
+                    0f at 300
+                    1f at 1100
+                    1f at 1500
+                    0f at 2200
+                }
+            ),
+            label = "swipe_t"
+        )
+        tv
+    }
     val maxShift = 96.dp
     Box(
         modifier = Modifier
@@ -304,35 +318,43 @@ private fun SwipeToQueueDemo() {
 /** Step 2: a mock mini-player nudges side to side (skip) then dips down (dismiss). */
 @Composable
 private fun MiniPlayerDemo() {
-    val transition = rememberInfiniteTransition(label = "mini_demo")
-    val shiftX by transition.animateFloat(
-        initialValue = 0f, targetValue = 0f,
-        animationSpec = infiniteRepeatable(
-            animation = keyframes {
-                durationMillis = 3000
-                0f at 0
-                -1f at 500      // swipe left (skip next)
-                0f at 1000
-                1f at 1500      // swipe right (previous)
-                0f at 2000
-                0f at 3000
-            }
-        ),
-        label = "mini_x"
-    )
-    val shiftY by transition.animateFloat(
-        initialValue = 0f, targetValue = 0f,
-        animationSpec = infiniteRepeatable(
-            animation = keyframes {
-                durationMillis = 3000
-                0f at 0
-                0f at 2000
-                1f at 2600      // pull down (dismiss)
-                0f at 3000
-            }
-        ),
-        label = "mini_y"
-    )
+    // Reduced motion: a static mock — the transport buttons still read.
+    val shiftX = if (isReducedMotionEnabled()) 0f else {
+        val transition = rememberInfiniteTransition(label = "mini_demo")
+        val x by transition.animateFloat(
+            initialValue = 0f, targetValue = 0f,
+            animationSpec = infiniteRepeatable(
+                animation = keyframes {
+                    durationMillis = 3000
+                    0f at 0
+                    -1f at 500      // swipe left (skip next)
+                    0f at 1000
+                    1f at 1500      // swipe right (previous)
+                    0f at 2000
+                    0f at 3000
+                }
+            ),
+            label = "mini_x"
+        )
+        x
+    }
+    val shiftY = if (isReducedMotionEnabled()) 0f else {
+        val transition = rememberInfiniteTransition(label = "mini_demo")
+        val y by transition.animateFloat(
+            initialValue = 0f, targetValue = 0f,
+            animationSpec = infiniteRepeatable(
+                animation = keyframes {
+                    durationMillis = 3000
+                    0f at 0
+                    0f at 2000
+                    1f at 2600      // pull down (dismiss)
+                    0f at 3000
+                }
+            ),
+            label = "mini_y"
+        )
+        y
+    }
     Box(
         modifier = Modifier.fillMaxWidth().height(96.dp),
         contentAlignment = Alignment.Center

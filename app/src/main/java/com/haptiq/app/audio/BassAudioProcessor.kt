@@ -2,7 +2,9 @@ package com.haptiq.app.audio
 
 import android.media.audiofx.Visualizer
 import android.os.Process
+import android.os.SystemClock
 import android.util.Log
+import com.haptiq.app.BuildConfig
 import com.haptiq.app.audio.HapticTuningState
 
 class BassVisualizer(
@@ -21,6 +23,11 @@ class BassVisualizer(
     private var prevClickEnergy = 0f
     private var attachTime = 0L
 
+    // The Visualizer capture listener runs on a system callback (binder) thread, NOT the
+    // thread that called attach() — so its priority can only be set from inside the
+    // callback itself. Set once on the first frame; see processFft().
+    private var callbackPrioritySet = false
+
     // Rolling 1s window stats, logged for on-device threshold calibration
     private var statWindowStart = 0L
     private var statMaxKick = 0f
@@ -37,6 +44,14 @@ class BassVisualizer(
     private val kickGateRatio = 0.62f    // fire kicks above 62% of recent peak
     private val subGateRatio = 0.80f     // sustain drone above 80% of recent peak
     private val minSignal = 0.12f        // absolute floor: silence never triggers
+    // Kick's own absolute floor, higher than the shared minSignal. With bass off,
+    // kick is the only engine — a loud intro/chorus followed by a quiet bridge left
+    // rollingKickPeak elevated for ~10s (peakDecay's memory), so 62% of that stale
+    // peak could still sit above minSignal and let room noise/breath-quiet passages
+    // false-trigger. This is checked ADDITIONALLY to the ratio gate, never replacing
+    // it, so genuinely quiet songs still get a low, adaptive threshold — it just
+    // can't go arbitrarily low.
+    private val kickSilenceFloor = 0.18f
 
     // Smoothed continuous bass envelope (0..1) — see the "CONTINUOUS BASS ENVELOPE"
     // block in processFft() for how it's derived and why.
@@ -64,11 +79,23 @@ class BassVisualizer(
 
                 enabled = true
             }
-            // Set thread priority once here — the Visualizer callback runs on a dedicated
-            // HandlerThread, so this call applies to that thread for the lifetime of the session.
-            try { Process.setThreadPriority(Process.THREAD_PRIORITY_URGENT_AUDIO) } catch (_: Exception) {}
+            // NOTE: thread priority is deliberately NOT set here — attach() runs on the
+            // main thread, and the Visualizer callback runs on a separate system thread, so
+            // setThreadPriority here would promote the wrong thread. It's set once on the
+            // first callback frame in processFft() instead.
             prevRawKick = 0f
-            attachTime = System.currentTimeMillis()
+            prevClickEnergy = 0f
+            // Self-calibration restarts per track. The rolling peaks decay with ~10s memory
+            // (peakDecay), so without this a loud song leaves rollingKickPeak/rollingSubPeak
+            // elevated and the ADAPTIVE gates stay too high for the first ~10s of the next,
+            // quieter song — kicks that should fire get swallowed. Resetting on every attach
+            // makes each track transition start from silence and re-converge in a few frames.
+            rollingKickPeak = 0f
+            rollingSubPeak = 0f
+            subEnvelopeSmoothed = 0f
+            statWindowStart = 0L
+            statMaxKick = 0f; statMaxSub = 0f; statMaxDelta = 0f; statMaxClick = 0f
+            attachTime = SystemClock.elapsedRealtime()
             Log.d(TAG, "Visualizer attached to session $audioSessionId with capture size ${visualizer?.captureSize}")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to attach Visualizer: ${e.message}")
@@ -77,6 +104,14 @@ class BassVisualizer(
 
     private fun processFft(fft: ByteArray) {
         if (fft.size < 4) return
+
+        // First frame: this IS the timing-critical capture-to-vibrate thread (a system
+        // binder thread the framework uses for Visualizer capture callbacks). Promote it
+        // once so kick/drone dispatch stays snappy when the device is under load.
+        if (!callbackPrioritySet) {
+            callbackPrioritySet = true
+            try { Process.setThreadPriority(Process.THREAD_PRIORITY_URGENT_AUDIO) } catch (_: Exception) {}
+        }
 
         val halfN = minOf(fft.size / 2, magnitudeBuffer.size)
         magnitudeBuffer[0] = kotlin.math.abs(fft[0].toFloat())
@@ -104,7 +139,7 @@ class BassVisualizer(
 
         // ── KICK DELTA ────────────────────────────────────────────────────────────────
         // Gated by kick engine toggle and 500ms warm-up lockout
-        val kickDelta = if (!t.isKickEnabled || System.currentTimeMillis() - attachTime < 500L) {
+        val kickDelta = if (!t.isKickEnabled || SystemClock.elapsedRealtime() - attachTime < 500L) {
             0f
         } else {
             (rawKick - prevRawKick).coerceAtLeast(0f)
@@ -170,12 +205,15 @@ class BassVisualizer(
 
         // 1s-window peak stats — cheap (3 compares/frame + 1 log line/sec) and the only
         // way to calibrate gate thresholds against a real device's FFT magnitude range.
-        val now = System.currentTimeMillis()
+        // Debug-gated: the per-second line is fine, but release builds ship with minify
+        // OFF, so unstripped Log.d at ~1 line/sec still churns logd and the callback
+        // thread can stall when the log buffer fills — exactly when kick timing matters.
+        val now = SystemClock.elapsedRealtime()
         statMaxKick = maxOf(statMaxKick, rawKick)
         statMaxSub = maxOf(statMaxSub, tunedSubBass)
         statMaxDelta = maxOf(statMaxDelta, kickDelta)
         statMaxClick = maxOf(statMaxClick, clickDelta)
-        if (now - statWindowStart >= 1000L) {
+        if (BuildConfig.DEBUG && now - statWindowStart >= 1000L) {
             Log.d(TAG, "1s peaks: rawKick=$statMaxKick sub=$statMaxSub delta=$statMaxDelta click=$statMaxClick gates(k=${t.noiseFloorGate} s=${t.subDroneThreshold} d=${t.kickThreshold})")
             statWindowStart = now
             statMaxKick = 0f; statMaxSub = 0f; statMaxDelta = 0f; statMaxClick = 0f
@@ -188,7 +226,7 @@ class BassVisualizer(
         rollingKickPeak = maxOf(rawKick, rollingKickPeak * peakDecay)
         rollingSubPeak = maxOf(tunedSubBass, rollingSubPeak * peakDecay)
         val effNoiseFloor = if (t.isAdaptiveEnabled)
-            (rollingKickPeak * kickGateRatio).coerceAtLeast(minSignal) else t.noiseFloorGate
+            (rollingKickPeak * kickGateRatio).coerceAtLeast(kickSilenceFloor) else t.noiseFloorGate
         val effSubDrone = if (t.isAdaptiveEnabled)
             (rollingSubPeak * subGateRatio).coerceAtLeast(minSignal) else t.subDroneThreshold
         val effKickDelta = if (t.isAdaptiveEnabled)

@@ -33,25 +33,34 @@ fun PermissionsScreen(
     onAllowClicked: () -> Unit,
     onLaterClicked: () -> Unit
 ) {
-    val infiniteTransition = rememberInfiniteTransition(label = "pulse_ring")
-    val pingScale by infiniteTransition.animateFloat(
-        initialValue = 1.0f,
-        targetValue = 1.4f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1500, easing = LinearOutSlowInEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "ping_scale"
-    )
-    val pingAlpha by infiniteTransition.animateFloat(
-        initialValue = 0.6f,
-        targetValue = 0.0f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1500, easing = LinearOutSlowInEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "ping_alpha"
-    )
+    // Reduced motion: the ping ring freezes at a fixed mid-pulse frame — the
+    // "feel your music" promise still gets its glowing ring, just no motion.
+    val reduced = isReducedMotionEnabled()
+    val infiniteTransition = if (reduced) null else rememberInfiniteTransition(label = "pulse_ring")
+    val pingScale = if (reduced) 1.18f else {
+        val s by infiniteTransition!!.animateFloat(
+            initialValue = 1.0f,
+            targetValue = 1.4f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(1500, easing = LinearOutSlowInEasing),
+                repeatMode = RepeatMode.Restart
+            ),
+            label = "ping_scale"
+        )
+        s
+    }
+    val pingAlpha = if (reduced) 0.25f else {
+        val a by infiniteTransition!!.animateFloat(
+            initialValue = 0.6f,
+            targetValue = 0.0f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(1500, easing = LinearOutSlowInEasing),
+                repeatMode = RepeatMode.Restart
+            ),
+            label = "ping_alpha"
+        )
+        a
+    }
 
     Box(
         modifier = Modifier

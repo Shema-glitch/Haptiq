@@ -133,8 +133,11 @@ private fun PlaylistRow(
         ArtworkImage(
             model = null,
             contentDescription = null,
-            modifier = Modifier.size(56.dp),
-            cornerRadius = Radius.md,
+            // Matches TrackRow's artwork size (ComponentSize.artworkSmall) so Playlists
+            // rows sit at the same height/rhythm as every other track-list screen instead
+            // of reading as a visually heavier, unrelated list type.
+            modifier = Modifier.size(ComponentSize.artworkSmall),
+            cornerRadius = Radius.sm,
             fallbackLabel = playlist.name
         )
         Spacer(Modifier.width(Spacing.md))
@@ -226,7 +229,9 @@ fun AddToPlaylistDialog(
                 item {
                     Row(
                         Modifier.fillMaxWidth().clip(RoundedCornerShape(Radius.sm))
-                            .clickable { creatingNew = true }.padding(Spacing.sm),
+                            .clickable { creatingNew = true }
+                            .heightIn(min = ComponentSize.touchTarget)
+                            .padding(horizontal = Spacing.sm),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(Icons.Default.Add, null, tint = ColorPrimary)
@@ -241,7 +246,10 @@ fun AddToPlaylistDialog(
                                 onAction(HaptiqUiAction.AddToPlaylist(playlist.id, song.id))
                                 onDismiss()
                             }
-                            .padding(Spacing.sm),
+                            // Text-only rows were ~44dp tall (12dp padding + line height) —
+                            // just under the 48dp touch-target minimum.
+                            .heightIn(min = ComponentSize.touchTarget)
+                            .padding(horizontal = Spacing.sm),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(playlist.name, color = ColorOnSurface, modifier = Modifier.weight(1f))

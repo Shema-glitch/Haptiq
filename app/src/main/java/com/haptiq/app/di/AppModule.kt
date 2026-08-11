@@ -12,21 +12,26 @@ import javax.inject.Singleton
 
 @Module
 @InstallIn(SingletonComponent::class)
-object AppModule {
+abstract class AppModule {
 
-    @Provides
+    // Plain interface-to-implementation binding — @Binds, not @Provides: no
+    // instantiation logic is needed, Hilt just needs to know which impl satisfies
+    // the PlayerManager type. Also lets Hilt skip generating a factory method body.
+    @Binds
     @Singleton
-    fun provideAppDatabase(@ApplicationContext context: Context): AppDatabase {
-        return AppDatabase.getDatabase(context)
+    abstract fun providePlayerManager(playerManager: HaptiqPlayerManager): PlayerManager
+
+    companion object {
+        @Provides
+        @Singleton
+        fun provideAppDatabase(@ApplicationContext context: Context): AppDatabase {
+            return AppDatabase.getDatabase(context)
+        }
+
+        @Provides
+        @Singleton
+        fun provideHaptiqDao(database: AppDatabase): HaptiqDao {
+            return database.haptiqDao()
+        }
     }
-
-    @Provides
-    @Singleton
-    fun provideHaptiqDao(database: AppDatabase): HaptiqDao {
-        return database.haptiqDao()
-    }
-
-    @Provides
-    @Singleton
-    fun providePlayerManager(playerManager: HaptiqPlayerManager): PlayerManager = playerManager
 }

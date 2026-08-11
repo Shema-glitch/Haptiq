@@ -1,12 +1,14 @@
 package com.haptiq.app.ui
 
-import androidx.compose.animation.Crossfade
+import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.border
 import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -26,10 +28,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -37,11 +36,9 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import com.haptiq.app.data.Song
 import com.haptiq.app.ui.theme.*
-import kotlinx.coroutines.launch
 
 private val SPEED_STEPS = listOf(0.5f, 1f, 1.25f, 1.5f, 2f)
 
@@ -57,11 +54,19 @@ private fun formatSpeed(speed: Float): String {
     return "${s}×"
 }
 
+/**
+ * Pure Now Playing content — no drag/dismiss physics of its own. It's hosted inside
+ * [NowPlayingSheet], which owns the single drag gesture that morphs between this and
+ * the docked mini-player bar; this composable just renders "the expanded state" and
+ * calls [onCollapse] when the user taps the chevron (the sheet then animates itself
+ * back down to the bar, with real content — the screen underneath — visible through
+ * the drag the whole way, instead of this screen managing its own fake dismiss).
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PlayerScreen(
     state: HaptiqUiState,
-    onBackClicked: () -> Unit,
+    onCollapse: () -> Unit,
     onTogglePlayPause: () -> Unit,
     onNextClicked: () -> Unit,
     onPrevClicked: () -> Unit,
@@ -106,68 +111,9 @@ fun PlayerScreen(
         }
     }
 
-    // Sheet physics: the whole screen tracks a downward drag and either commits
-    // to dismissing (past the threshold OR on a fast flick) or springs back. On
-    // dismiss the sheet slides fully off-screen under its own animation before the
-    // nav pop, so the exit reads as one continuous motion — not an instant cut.
-    val density = LocalDensity.current
-    val dragOffset = remember { Animatable(0f) }
-    val dragScope = rememberCoroutineScope()
-    val dismissThresholdPx = with(density) { 110.dp.toPx() }
-    val offScreenPx = with(density) {
-        (androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp.dp).toPx()
-    }
-    // A quick downward flick dismisses even before the distance threshold.
-    val flingVelocityThreshold = with(density) { 900.dp.toPx() }
-    var isDismissing by remember { mutableStateOf(false) }
-    val animatedDismiss: () -> Unit = {
-        if (!isDismissing) {
-            isDismissing = true
-            dragScope.launch {
-                dragOffset.animateTo(offScreenPx, tween(260, easing = FastOutLinearInEasing))
-                onBackClicked()
-            }
-        }
-    }
-
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
-            .graphicsLayer {
-                translationY = dragOffset.value
-                alpha = 1f - (dragOffset.value / (dismissThresholdPx * 4f)).coerceIn(0f, 0.25f)
-            }
-            .pointerInput(Unit) {
-                val velocityTracker = androidx.compose.ui.input.pointer.util.VelocityTracker()
-                detectVerticalDragGestures(
-                    onDragStart = { velocityTracker.resetTracking() },
-                    onVerticalDrag = { change, dragAmount ->
-                        velocityTracker.addPosition(change.uptimeMillis, change.position)
-                        val next = (dragOffset.value + dragAmount).coerceAtLeast(0f)
-                        if (next > 0f) change.consume()
-                        dragScope.launch { dragOffset.snapTo(next) }
-                    },
-                    onDragEnd = {
-                        val velocityY = velocityTracker.calculateVelocity().y
-                        if (dragOffset.value > dismissThresholdPx || velocityY > flingVelocityThreshold) {
-                            animatedDismiss()
-                        } else {
-                            dragScope.launch {
-                                dragOffset.animateTo(0f, spring(dampingRatio = 0.8f, stiffness = 400f))
-                            }
-                        }
-                    },
-                    onDragCancel = {
-                        dragScope.launch { dragOffset.animateTo(0f) }
-                    }
-                )
-            }
-            .background(
-                Brush.radialGradient(
-                    colors = listOf(ColorSurface, ColorBackground),
-                    radius = 1200f
-                )
-            )
             .systemBarsPadding()
             .testTag("player_screen")
     ) {
@@ -216,7 +162,7 @@ fun PlayerScreen(
             ) {
                 // Back button in a circular outline capsule
                 IconButton(
-                    onClick = animatedDismiss,
+                    onClick = onCollapse,
                     modifier = Modifier
                         .size(ComponentSize.touchTarget)
                         .shadow(Elevation.low, CircleShape)
@@ -426,6 +372,24 @@ fun PlayerScreen(
                                         cornerRadius = CornerRadius(barW / 2f)
                                     )
                                 }
+                                // Kick-onset overlay: one vertical tick per AOT-map kick.
+                                // Amber = the beat grid will let lookahead pre-fire it there;
+                                // faint = off-beat, rejected by the double-check. Visible
+                                // whether or not the toggle is on — it's the preview of
+                                // exactly where the AOT map would pre-fire.
+                                val totalMs = (state.currentSong?.durationSeconds ?: 0) * 1000L
+                                if (totalMs > 0 && state.seekKickMarkers.isNotEmpty()) {
+                                    state.seekKickMarkers.forEach { marker ->
+                                        val x = (marker.positionMs.toFloat() / totalMs) * size.width
+                                        drawLine(
+                                            color = if (marker.onBeat) ColorHapticAccent.copy(alpha = 0.85f)
+                                            else ColorOnSurface60.copy(alpha = 0.35f),
+                                            start = Offset(x, 0f),
+                                            end = Offset(x, size.height),
+                                            strokeWidth = if (marker.onBeat) 2.dp.toPx() else 1.dp.toPx()
+                                        )
+                                    }
+                                }
                             }
                         } else if (state.seekEnergyLoading) {
                             // "Rendering waveform" — a travelling shimmer over placeholder
@@ -484,24 +448,48 @@ fun PlayerScreen(
                     )
                 }
 
-                // Play/Pause circular FAB with premium shadow
+                // Play/Pause circular FAB with premium shadow. A plain Icon swap here
+                // read as jarring — an instant vector cut with no motion at all — so
+                // the press gets a spring squash and the icon itself cross-fades
+                // in/out with a small scale pop instead of just replacing.
+                val fabInteraction = remember { MutableInteractionSource() }
+                val isFabPressed by fabInteraction.collectIsPressedAsState()
+                val fabScale by animateFloatAsState(
+                    targetValue = if (isFabPressed) 0.90f else 1f,
+                    animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
+                    label = "fab_scale"
+                )
                 Box(
                     modifier = Modifier
                         .size(if (isShortScreen) 60.dp else 68.dp)
+                        .graphicsLayer { scaleX = fabScale; scaleY = fabScale }
                         .shadow(Elevation.high, CircleShape, ambientColor = ColorPrimary, spotColor = ColorPrimary)
                         .background(ColorPrimary, CircleShape)
-                        .clickable(onClick = {
-                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                            onTogglePlayPause()
-                        }),
+                        .clickable(
+                            interactionSource = fabInteraction,
+                            indication = null,
+                            onClick = {
+                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                onTogglePlayPause()
+                            }
+                        ),
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(
-                        imageVector = if (state.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                        contentDescription = "Play or Pause",
-                        tint = ColorOnPrimary,
-                        modifier = Modifier.size(if (isShortScreen) 30.dp else 34.dp)
-                    )
+                    AnimatedContent(
+                        targetState = state.isPlaying,
+                        transitionSpec = {
+                            (scaleIn(initialScale = 0.6f, animationSpec = tween(180)) + fadeIn(tween(140)))
+                                .togetherWith(scaleOut(targetScale = 0.6f, animationSpec = tween(140)) + fadeOut(tween(100)))
+                        },
+                        label = "play_pause_icon"
+                    ) { isPlaying ->
+                        Icon(
+                            imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                            contentDescription = "Play or Pause",
+                            tint = ColorOnPrimary,
+                            modifier = Modifier.size(if (isShortScreen) 30.dp else 34.dp)
+                        )
+                    }
                 }
 
                 // Next
@@ -622,7 +610,7 @@ fun PlayerScreen(
                         onCheckedChange = onToggleHaptics,
                         colors = SwitchDefaults.colors(
                             checkedThumbColor = ColorSurface,
-                            checkedTrackColor = ColorHapticAccent,
+                            checkedTrackColor = ColorPrimary,
                             uncheckedThumbColor = ColorOnSurface60,
                             uncheckedTrackColor = ColorBackground
                         )
@@ -677,16 +665,21 @@ fun PlayerScreen(
  */
 @Composable
 private fun WaveformRenderingShimmer() {
-    val transition = rememberInfiniteTransition(label = "waveform_shimmer")
-    val sweep by transition.animateFloat(
-        initialValue = -0.3f,
-        targetValue = 1.3f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1100, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "sweep"
-    )
+    // Reduced motion: a static mid-sweep frame — still reads as "computing",
+    // just without the travelling band.
+    val sweep = if (isReducedMotionEnabled()) 0.5f else {
+        val transition = rememberInfiniteTransition(label = "waveform_shimmer")
+        val s by transition.animateFloat(
+            initialValue = -0.3f,
+            targetValue = 1.3f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(1100, easing = FastOutSlowInEasing),
+                repeatMode = RepeatMode.Restart
+            ),
+            label = "sweep"
+        )
+        s
+    }
     val base = ColorOutlineVariant
     val highlight = ColorHapticAccent
     Canvas(Modifier.fillMaxWidth().height(28.dp)) {

@@ -1,7 +1,10 @@
 package com.haptiq.app.ui
 
+import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
@@ -193,7 +196,9 @@ fun LibraryScreen(
                 visible = searchExpanded || state.searchQuery.isNotEmpty(),
                 enter = androidx.compose.animation.expandVertically(animationSpec = HaptiqMotion.standardSpring()) +
                     androidx.compose.animation.fadeIn(),
-                exit = androidx.compose.animation.shrinkVertically() +
+                // Exit uses the same spring as the enter — a closing panel retraces its
+                // opening curve instead of cutting to a default tween.
+                exit = androidx.compose.animation.shrinkVertically(animationSpec = HaptiqMotion.standardSpring()) +
                     androidx.compose.animation.fadeOut()
             ) {
             OutlinedTextField(
@@ -216,9 +221,9 @@ fun LibraryScreen(
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedContainerColor = ColorSurfaceVariant,
                     unfocusedContainerColor = ColorSurfaceVariant.copy(alpha = 0.5f),
-                    focusedBorderColor = ColorHapticAccent,
+                    focusedBorderColor = ColorPrimary,
                     unfocusedBorderColor = ColorOutlineVariant.copy(alpha = 0.3f),
-                    cursorColor = ColorHapticAccent,
+                    cursorColor = ColorPrimary,
                     focusedTextColor = ColorOnSurface,
                     unfocusedTextColor = ColorOnSurface
                 ),
@@ -458,12 +463,22 @@ fun LibraryEmptyState(
                 Text(scanError, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error, textAlign = TextAlign.Center)
             }
             Spacer(Modifier.height(Spacing.huge))
+            val scanInteraction = remember { MutableInteractionSource() }
+            val isScanPressed by scanInteraction.collectIsPressedAsState()
+            val scanScale by animateFloatAsState(
+                targetValue = if (isScanPressed) 0.97f else 1f,
+                animationSpec = HaptiqMotion.fastSpring(),
+                label = "scan_press_scale"
+            )
             Button(
                 onClick = onScanDevice,
                 enabled = !isScanning,
+                interactionSource = scanInteraction,
                 colors = ButtonDefaults.buttonColors(containerColor = ColorPrimary, contentColor = ColorOnPrimary),
                 shape = RoundedCornerShape(Radius.pill),
-                modifier = Modifier.height(ComponentSize.buttonHeight)
+                modifier = Modifier
+                    .height(ComponentSize.buttonHeight)
+                    .graphicsLayer { scaleX = scanScale; scaleY = scanScale }
             ) {
                 if (isScanning) {
                     CircularProgressIndicator(Modifier.size(ComponentSize.iconMedium), color = ColorOnPrimary, strokeWidth = 2.dp)
@@ -488,12 +503,19 @@ fun MediaCard(
     onClick: () -> Unit,
     onToggleFavorite: () -> Unit
 ) {
-    val infiniteTransition = rememberInfiniteTransition(label = "haptic_pulse")
-    val pulseBorderWidthFactor by infiniteTransition.animateFloat(
-        initialValue = 1.0f, targetValue = 2.0f,
-        animationSpec = infiniteRepeatable(tween(1000, easing = EaseInOut), RepeatMode.Reverse),
-        label = "pulse_border_width"
-    )
+    // The border only breathes on the card that is actually playing haptics — an
+    // idle row must not run an infinite animation for every card on screen.
+    val pulseBorderWidthFactor = if (isActiveHaptic) {
+        val t = rememberInfiniteTransition(label = "haptic_pulse")
+        val f by t.animateFloat(
+            initialValue = 1.0f, targetValue = 2.0f,
+            animationSpec = infiniteRepeatable(tween(1000, easing = EaseInOut), RepeatMode.Reverse),
+            label = "pulse_border_width"
+        )
+        f
+    } else {
+        1f
+    }
 
     Column(
         modifier = Modifier
@@ -572,12 +594,12 @@ fun TrackRow(
     onToggleFavorite: () -> Unit,
     onAddToPlaylist: (() -> Unit)? = null
 ) {
-    val infiniteTransition = rememberInfiniteTransition(label = "bouncing_bars")
-
     // Flat list rows: only the playing track gets a container. A card+shadow on
     // every row made the list read as a stack of competing surfaces instead of
     // a scannable list, and left the real signal (what's playing) with nothing
-    // visually distinct to say it with.
+    // visually distinct to say it with. The equalizer transition is created only
+    // on the playing row — an idle list of hundreds of rows must not run N
+    // ticking (if empty) infinite transitions.
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -589,9 +611,10 @@ fun TrackRow(
             .padding(horizontal = Spacing.sm, vertical = Spacing.xs),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(Modifier.size(44.dp).clip(RoundedCornerShape(Radius.sm)), contentAlignment = Alignment.Center) {
+        Box(Modifier.size(ComponentSize.artworkSmall).clip(RoundedCornerShape(Radius.sm)), contentAlignment = Alignment.Center) {
             ArtworkImage(song.artworkUrl, null, Modifier.fillMaxSize(), iconSize = ComponentSize.iconSmall, cornerRadius = Radius.sm, fallbackLabel = song.title)
             if (isCurrentPlaying && isPlaying) {
+                val infiniteTransition = rememberInfiniteTransition(label = "bouncing_bars")
                 Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.5f)), contentAlignment = Alignment.Center) {
                     Row(horizontalArrangement = Arrangement.spacedBy(3.dp), verticalAlignment = Alignment.Bottom, modifier = Modifier.height(18.dp)) {
                         BouncingEqualizerBar(infiniteTransition, 0, 14)
@@ -666,41 +689,81 @@ private fun AlphabetRail(
         }
     }
 
-    Column(
-        modifier = modifier
-            .fillMaxHeight(0.85f)
-            .width(24.dp)
-            .clip(RoundedCornerShape(Radius.pill))
-            .background(ColorSurface.copy(alpha = 0.6f))
-            .onSizeChanged { railHeightPx = it.height }
-            .pointerInput(letters) {
-                detectVerticalDragGestures(
-                    onDragStart = { selectAt(it.y) },
-                    onVerticalDrag = { change, _ -> selectAt(change.position.y) },
-                    onDragEnd = { activeLetter = null },
-                    onDragCancel = { activeLetter = null }
-                )
-            }
-            .pointerInput(letters) {
-                detectTapGestures(
-                    onPress = { offset ->
-                        selectAt(offset.y)
-                        tryAwaitRelease()
-                        activeLetter = null
-                    }
-                )
-            }
-            .padding(vertical = Spacing.xs),
-        verticalArrangement = Arrangement.SpaceEvenly,
-        horizontalAlignment = Alignment.CenterHorizontally
+    BoxWithConstraints(
+        modifier = modifier.padding(end = Spacing.xs),
+        contentAlignment = Alignment.CenterEnd
     ) {
-        letters.forEach { letter ->
-            Text(
-                text = letter.toString(),
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Bold,
-                color = if (letter == activeLetter) ColorHapticAccent else ColorOnSurface60
-            )
+        // Size the rail to how many letters it actually has instead of always
+        // stretching to 85% of the screen — a 9-letter list doesn't need the
+        // same span as a full A-Z, and stretching it made the gaps between
+        // letters look random and unbalanced.
+        val idealHeight = 22.dp * letters.size
+        val railHeight = idealHeight.coerceAtMost(maxHeight * 0.85f).coerceAtLeast(120.dp)
+
+        // Floating preview bubble — pops out to the left of the rail while
+        // dragging so the target letter is readable without the finger
+        // covering the rail itself (mirrors iOS/YT Music's index scrubber).
+        androidx.compose.animation.AnimatedVisibility(
+            visible = activeLetter != null,
+            enter = androidx.compose.animation.scaleIn(initialScale = 0.6f) + androidx.compose.animation.fadeIn(),
+            exit = androidx.compose.animation.scaleOut(targetScale = 0.6f) + androidx.compose.animation.fadeOut(),
+            modifier = Modifier.offset(x = (-52).dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .shadow(Elevation.medium, CircleShape)
+                    .clip(CircleShape)
+                    .background(ColorHapticAccent),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = (activeLetter ?: ' ').toString(),
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = ColorOnPrimary
+                )
+            }
+        }
+
+        Column(
+            modifier = Modifier
+                .height(railHeight)
+                .width(22.dp)
+                .clip(RoundedCornerShape(Radius.pill))
+                .background(ColorSurface.copy(alpha = 0.6f))
+                .onSizeChanged { railHeightPx = it.height }
+                .pointerInput(letters) {
+                    detectVerticalDragGestures(
+                        onDragStart = { selectAt(it.y) },
+                        onVerticalDrag = { change, _ -> selectAt(change.position.y) },
+                        onDragEnd = { activeLetter = null },
+                        onDragCancel = { activeLetter = null }
+                    )
+                }
+                .pointerInput(letters) {
+                    detectTapGestures(
+                        onPress = { offset ->
+                            selectAt(offset.y)
+                            tryAwaitRelease()
+                            activeLetter = null
+                        }
+                    )
+                }
+                .padding(vertical = Spacing.xs),
+            verticalArrangement = Arrangement.SpaceEvenly,
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            letters.forEach { letter ->
+                Text(
+                    text = letter.toString(),
+                    // 11sp is the app's stated legibility floor (Typography.labelSmall);
+                    // this was 10sp, one notch under it.
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (letter == activeLetter) ColorHapticAccent else ColorOnSurface60
+                )
+            }
         }
     }
 }
@@ -826,208 +889,3 @@ fun BouncingEqualizerBar(transition: InfiniteTransition, delayMillis: Int, targe
     Box(Modifier.width(3.dp).height(barHeight.dp).background(ColorHapticAccent, RoundedCornerShape(topStart = 1.dp, topEnd = 1.dp)))
 }
 
-// ─── Mini Player ────────────────────────────────────────────
-@Composable
-fun MiniPlayer(
-    currentSong: Song?,
-    isPlaying: Boolean,
-    progress: Float,
-    hapticActive: Boolean,
-    onTogglePlayPause: () -> Unit,
-    onNext: () -> Unit,
-    onPrev: () -> Unit,
-    onExpand: () -> Unit,
-    onDismiss: () -> Unit = {}
-) {
-    if (currentSong == null) return
-
-    val scope = rememberCoroutineScope()
-    val haptics = LocalHapticFeedback.current
-    // Horizontal swipe = skip track; the strip follows the finger with resistance
-    val swipeOffsetX = remember { Animatable(0f) }
-
-    val infinitePulse = rememberInfiniteTransition(label = "glow_pulse")
-    val dotAlpha by infinitePulse.animateFloat(
-        initialValue = 0.4f, targetValue = 1.0f,
-        animationSpec = infiniteRepeatable(tween(1000, easing = EaseInOut), RepeatMode.Reverse),
-        label = "dot_alpha"
-    )
-
-    Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(start = Spacing.md, end = Spacing.md, bottom = 4.dp)
-            .shadow(elevation = 4.dp, shape = RoundedCornerShape(Radius.lg))
-            .clip(RoundedCornerShape(Radius.lg))
-            .border(width = 1.dp, color = ColorOutlineVariant.copy(alpha = 0.1f), shape = RoundedCornerShape(Radius.lg))
-            .clickable(onClick = onExpand)
-            // ONE gesture, axis LOCKED on first movement and never switched. A prior
-            // version decided the axis at drag-end from total displacement, which could
-            // still resolve a curved downward swipe as horizontal → firing onNext while
-            // dismiss also ran, so the strip vanished but audio kept playing (the
-            // "swipe down skips to next song" bug). Locking the axis the moment the
-            // finger clears a small slop means a downward dismiss can NEVER become a skip.
-            //   vertical: up = open full player, down = dismiss playback
-            //   horizontal: left = next, right = previous
-            .pointerInput(Unit) {
-                val skipThreshold = 88.dp.toPx()
-                val dismissThreshold = 56.dp.toPx()
-                val expandThreshold = 40.dp.toPx()
-                val axisSlop = 14.dp.toPx()
-                var totalX = 0f
-                var totalY = 0f
-                var axis = 0 // 0 = undecided, 1 = horizontal, 2 = vertical
-                detectDragGestures(
-                    onDragStart = { totalX = 0f; totalY = 0f; axis = 0 },
-                    onDrag = { change, dragAmount ->
-                        totalX += dragAmount.x
-                        totalY += dragAmount.y
-                        if (axis == 0 && (abs(totalX) > axisSlop || abs(totalY) > axisSlop)) {
-                            axis = if (abs(totalX) > abs(totalY)) 1 else 2
-                        }
-                        // Only a horizontally-locked gesture moves the strip sideways.
-                        if (axis == 1) {
-                            scope.launch { swipeOffsetX.snapTo(swipeOffsetX.value + dragAmount.x * 0.6f) }
-                        }
-                        change.consume()
-                    },
-                    onDragCancel = {
-                        scope.launch { swipeOffsetX.animateTo(0f, spring(stiffness = Spring.StiffnessMedium)) }
-                    },
-                    onDragEnd = {
-                        when (axis) {
-                            2 -> { // vertical only
-                                if (totalY < -expandThreshold) {
-                                    onExpand()
-                                } else if (totalY > dismissThreshold) {
-                                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    onDismiss()
-                                }
-                            }
-                            1 -> { // horizontal only
-                                val settled = swipeOffsetX.value
-                                if (settled < -skipThreshold) {
-                                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    onNext()
-                                } else if (settled > skipThreshold) {
-                                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    onPrev()
-                                }
-                            }
-                        }
-                        scope.launch {
-                            swipeOffsetX.animateTo(0f, spring(dampingRatio = 0.7f, stiffness = Spring.StiffnessMedium))
-                        }
-                    }
-                )
-            }
-            .testTag("mini_player"),
-        color = ColorSurface,
-        tonalElevation = 0.dp
-    ) {
-        Column {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(ComponentSize.miniPlayerHeight)
-                    // Content follows the horizontal swipe; the progress bar below stays put
-                    .graphicsLayer { translationX = swipeOffsetX.value }
-                    .padding(horizontal = Spacing.md),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                ArtworkImage(
-                    currentSong.artworkUrl,
-                    null,
-                    Modifier.size(ComponentSize.artworkMedium),
-                    iconSize = ComponentSize.iconMedium,
-                    cornerRadius = Radius.sm,
-                    fallbackLabel = currentSong.title
-                )
-                Spacer(Modifier.width(Spacing.md))
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        currentSong.title,
-                        style = MaterialTheme.typography.labelLarge,
-                        color = ColorOnSurface,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        if (hapticActive) {
-                            Box(
-                                Modifier
-                                    .size(6.dp)
-                                    .clip(CircleShape)
-                                    .background(ColorHapticAccent.copy(alpha = dotAlpha))
-                            )
-                            Spacer(Modifier.width(Spacing.xxs))
-                            Text(
-                                "Haptic Active",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = ColorHapticAccent,
-                                maxLines = 1
-                            )
-                        } else {
-                            Text(
-                                currentSong.artist,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = ColorOnSurface60,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-                    }
-                }
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(Spacing.xxs)
-                ) {
-                    IconButton(
-                        onClick = onPrev,
-                        modifier = Modifier.size(ComponentSize.touchTarget)
-                    ) {
-                        Icon(
-                            Icons.Default.SkipPrevious,
-                            "Previous",
-                            tint = ColorOnSurface,
-                            modifier = Modifier.size(ComponentSize.iconLarge)
-                        )
-                    }
-                    IconButton(
-                        onClick = onTogglePlayPause,
-                        modifier = Modifier
-                            .size(ComponentSize.touchTarget)
-                            .clip(CircleShape)
-                            .background(ColorSurfaceVariant.copy(alpha = 0.5f))
-                    ) {
-                        Icon(
-                            if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                            if (isPlaying) "Pause" else "Play",
-                            tint = ColorOnSurface,
-                            modifier = Modifier.size(ComponentSize.iconMedium)
-                        )
-                    }
-                    IconButton(
-                        onClick = onNext,
-                        modifier = Modifier.size(ComponentSize.touchTarget)
-                    ) {
-                        Icon(
-                            Icons.Default.SkipNext,
-                            "Next",
-                            tint = ColorOnSurface,
-                            modifier = Modifier.size(ComponentSize.iconLarge)
-                        )
-                    }
-                }
-            }
-            LinearProgressIndicator(
-                progress = { progress },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(2.dp),
-                color = ColorHapticAccent.copy(alpha = 0.8f),
-                trackColor = ColorSurfaceVariant.copy(alpha = 0.3f),
-            )
-        }
-    }
-}

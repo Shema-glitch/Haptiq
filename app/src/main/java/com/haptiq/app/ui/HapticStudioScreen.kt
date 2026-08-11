@@ -117,16 +117,22 @@ fun HapticStudioScreen(
                         animationSpec = HaptiqMotion.standardSpring(),
                         label = "studio_glow_scale"
                     )
-                    val glowDrift = rememberInfiniteTransition(label = "studio_glow_drift")
-                    val driftX by glowDrift.animateFloat(
-                        initialValue = -32f,
-                        targetValue = 32f,
-                        animationSpec = infiniteRepeatable(
-                            tween(5200, easing = FastOutSlowInEasing),
-                            RepeatMode.Reverse
-                        ),
-                        label = "studio_glow_drift_x"
-                    )
+                    // Slow lateral drift — the hero reads as breathing. Frozen under
+                    // reduced motion; the energy-driven glowScale swell still runs
+                    // (it's tied to the music, not ambient decoration).
+                    val driftX = if (isReducedMotionEnabled()) 0f else {
+                        val glowDrift = rememberInfiniteTransition(label = "studio_glow_drift")
+                        val dx by glowDrift.animateFloat(
+                            initialValue = -32f,
+                            targetValue = 32f,
+                            animationSpec = infiniteRepeatable(
+                                tween(5200, easing = FastOutSlowInEasing),
+                                RepeatMode.Reverse
+                            ),
+                            label = "studio_glow_drift_x"
+                        )
+                        dx
+                    }
                     Box(
                         modifier = Modifier
                             .size(220.dp)
@@ -204,7 +210,7 @@ fun HapticStudioScreen(
                         onCheckedChange = onToggleHaptics,
                         colors = SwitchDefaults.colors(
                             checkedThumbColor = ColorSurface,
-                            checkedTrackColor = ColorHapticAccent,
+                            checkedTrackColor = ColorPrimary,
                             uncheckedThumbColor = ColorOnSurface60,
                             uncheckedTrackColor = ColorSurfaceVariant
                         )
@@ -246,9 +252,9 @@ fun HapticStudioScreen(
                                 )
                             },
                             colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = ColorHapticAccent.copy(alpha = 0.12f),
-                                selectedLabelColor = ColorHapticAccent,
-                                selectedLeadingIconColor = ColorHapticAccent,
+                                selectedContainerColor = ColorPrimary.copy(alpha = 0.12f),
+                                selectedLabelColor = ColorPrimary,
+                                selectedLeadingIconColor = ColorPrimary,
                                 containerColor = ColorSurface,
                                 labelColor = ColorOnSurface
                             )
@@ -307,8 +313,8 @@ fun HapticStudioScreen(
                             onValueChange = { onIntensityChanged(it.toInt()) },
                             valueRange = 0f..100f,
                             colors = SliderDefaults.colors(
-                                thumbColor = ColorHapticAccent,
-                                activeTrackColor = ColorHapticAccent,
+                                thumbColor = ColorPrimary,
+                                activeTrackColor = ColorPrimary,
                                 inactiveTrackColor = ColorOutlineVariant
                             ),
                             modifier = Modifier.weight(1f)
@@ -326,7 +332,11 @@ fun HapticStudioScreen(
             }
 
             // Section 5: Haptic Tuning Dashboard
-            TuningDashboardCard(tuning = tuning, onAction = onTuningAction)
+            TuningDashboardCard(
+                tuning = tuning,
+                aotMapInfo = state.aotMapInfo,
+                onAction = onTuningAction
+            )
 
             Spacer(modifier = Modifier.height(Spacing.md))
         }
@@ -337,6 +347,7 @@ fun HapticStudioScreen(
 @Composable
 private fun TuningDashboardCard(
     tuning: HapticTuningState,
+    aotMapInfo: AotMapInfo,
     onAction: (HaptiqUiAction) -> Unit
 ) {
     var expanded by remember { mutableStateOf(false) }
@@ -358,7 +369,8 @@ private fun TuningDashboardCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .clickable { expanded = !expanded }
-                .padding(horizontal = Spacing.md, vertical = 14.dp),
+                .heightIn(min = ComponentSize.touchTarget)
+                .padding(horizontal = Spacing.md),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -383,15 +395,16 @@ private fun TuningDashboardCard(
 
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (expanded) {
+                    // Was a fixed 32dp height, well under the 48dp touch-target minimum —
+                    // let the default TextButton min-height apply instead of overriding it.
                     TextButton(
                         onClick = { onAction(HaptiqUiAction.ResetTuning) },
-                        contentPadding = PaddingValues(horizontal = Spacing.sm),
-                        modifier = Modifier.height(32.dp)
+                        contentPadding = PaddingValues(horizontal = Spacing.sm)
                     ) {
                         Text(
                             "RESET",
                             style = MaterialTheme.typography.labelSmall,
-                            color = ColorHapticAccent
+                            color = ColorPrimary
                         )
                     }
                 }
@@ -455,7 +468,64 @@ private fun TuningDashboardCard(
                         onCheckedChange = { onAction(HaptiqUiAction.SetAdaptiveEnabled(it)) },
                         colors = SwitchDefaults.colors(
                             checkedThumbColor = ColorSurface,
-                            checkedTrackColor = ColorHapticAccent,
+                            checkedTrackColor = ColorPrimary,
+                            uncheckedThumbColor = ColorOnSurface60,
+                            uncheckedTrackColor = ColorSurfaceVariant
+                        )
+                    )
+                }
+
+                // ── AOT LOOKAHEAD ────────────────────────────────────────────────
+                // Pre-fires mapped kicks ~50ms before the audio hit so the motor is
+                // already moving when the bass lands (live FFT detection is late by
+                // about that much). The per-song status line doubles as the on-device
+                // sanity check for the onset detector: a heavy track should show a
+                // healthy kick count, a ballad should show "No map".
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(Radius.sm))
+                        .background(
+                            if (tuning.isAotLookaheadEnabled) ColorHapticAccent.copy(alpha = 0.10f)
+                            else ColorSurfaceVariant.copy(alpha = 0.4f)
+                        )
+                        .padding(Spacing.sm),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.sm)
+                ) {
+                    Icon(
+                        Icons.Default.Schedule,
+                        contentDescription = null,
+                        tint = if (tuning.isAotLookaheadEnabled) ColorHapticAccent else ColorOnSurface60,
+                        modifier = Modifier.size(ComponentSize.iconSmall)
+                    )
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            "AOT Lookahead",
+                            style = MaterialTheme.typography.titleSmall,
+                            color = ColorOnSurface
+                        )
+                        Text(
+                            text = when (aotMapInfo.state) {
+                                AotMapState.NOT_ENABLED ->
+                                    "Off - kicks fire from live detection (~50ms late)"
+                                AotMapState.ANALYZING ->
+                                    "Analyzing this song's kicks..."
+                                AotMapState.READY ->
+                                    "Ready - ${aotMapInfo.onBeatCount} of ${aotMapInfo.onsetCount} kicks on-beat, pre-firing early"
+                                AotMapState.NO_MAP ->
+                                    "No kick map for this song - live detection only"
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = ColorOnSurface60
+                        )
+                    }
+                    Switch(
+                        checked = tuning.isAotLookaheadEnabled,
+                        onCheckedChange = { onAction(HaptiqUiAction.SetAotLookaheadEnabled(it)) },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = ColorSurface,
+                            checkedTrackColor = ColorPrimary,
                             uncheckedThumbColor = ColorOnSurface60,
                             uncheckedTrackColor = ColorSurfaceVariant
                         )
@@ -483,9 +553,10 @@ private fun TuningDashboardCard(
                     EngineToggleChip(
                         label = "BASS",
                         icon = Icons.Default.GraphicEq,
-                        enabled = tuning.isBassEnabled,
+                        enabled = false,
+                        locked = true,
                         modifier = Modifier.weight(1f),
-                        onToggle = { onAction(HaptiqUiAction.SetBassEnabled(it)) }
+                        onToggle = {}
                     )
                 }
 
@@ -540,54 +611,51 @@ private fun TuningDashboardCard(
                 )
 
                 // ── BASS TUNING ────────────────────────────────────────────────
+                // The drone engine is disabled app-wide while it's reworked (it caused
+                // the v1.11 stuck-buzz regression) — sliders that tune a dead engine
+                // are worse than no sliders, so this section is a placeholder, not a
+                // disabled copy of the old controls. Kick is the one supported engine
+                // for now.
                 Text(
                     text = "BASS DRONE",
                     style = MaterialTheme.typography.labelSmall,
                     color = ColorOnSurface60,
                     letterSpacing = 1.5.sp
                 )
-                TuningSliderRow(
-                    label = "SUB DRONE THRESHOLD",
-                    value = tuning.subDroneThreshold,
-                    range = 0.50f..0.99f,
-                    displayValue = String.format("%.2f", tuning.subDroneThreshold),
-                    description = "Energy level required to sustain the deep bass vibration.",
-                    onValueChange = { onAction(HaptiqUiAction.SetSubDroneThreshold(it)) }
-                )
-                TuningSliderRow(
-                    label = "BASS INTENSITY",
-                    value = tuning.bassGain,
-                    range = 0.5f..2.0f,
-                    displayValue = String.format("%.1fx", tuning.bassGain),
-                    description = "Strength of the sustained bass rumble. Works in both adaptive and manual mode.",
-                    onValueChange = { onAction(HaptiqUiAction.SetBassGain(it)) }
-                )
-                TuningSliderRow(
-                    label = "BASS FREQ MIN BIN",
-                    value = tuning.bassFreqMinBin.toFloat(),
-                    range = 1f..20f,
-                    displayValue = "Bin ${tuning.bassFreqMinBin} (~${tuning.bassFreqMinBin * 43}Hz)",
-                    description = "Start frequency for the deep bass drone engine.",
-                    onValueChange = {
-                        onAction(HaptiqUiAction.SetBassFreqRange(
-                            it.toInt().coerceIn(1, tuning.bassFreqMaxBin),
-                            tuning.bassFreqMaxBin
-                        ))
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(Radius.md))
+                        .background(ColorSurface)
+                        .padding(Spacing.md),
+                    verticalArrangement = Arrangement.spacedBy(Spacing.xxs)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(Spacing.xs)
+                    ) {
+                        Icon(
+                            Icons.Default.Construction,
+                            contentDescription = null,
+                            tint = ColorOnSurface60,
+                            modifier = Modifier.size(ComponentSize.iconSmall)
+                        )
+                        Text(
+                            "Coming back soon",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = ColorOnSurface,
+                            fontWeight = FontWeight.Bold
+                        )
                     }
-                )
-                TuningSliderRow(
-                    label = "BASS FREQ MAX BIN",
-                    value = tuning.bassFreqMaxBin.toFloat(),
-                    range = 1f..20f,
-                    displayValue = "Bin ${tuning.bassFreqMaxBin} (~${tuning.bassFreqMaxBin * 43}Hz)",
-                    description = "End frequency for the deep bass drone engine.",
-                    onValueChange = {
-                        onAction(HaptiqUiAction.SetBassFreqRange(
-                            tuning.bassFreqMinBin,
-                            it.toInt().coerceAtLeast(tuning.bassFreqMinBin)
-                        ))
-                    }
-                )
+                    Text(
+                        "The sustained bass rumble is off while we rebuild it to feel " +
+                            "like a real speaker wave instead of a buzz. Kick is carrying " +
+                            "the full haptic feel for now.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = ColorOnSurface60,
+                        lineHeight = 16.sp
+                    )
+                }
 
                 // ── GLOBAL ────────────────────────────────────────────────
                 Text(
@@ -615,34 +683,56 @@ private fun EngineToggleChip(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     enabled: Boolean,
     modifier: Modifier = Modifier,
+    // Locked engines (bass, mid-rework) show a "SOON" badge instead of a live switch
+    // and ignore taps — the toggle exists in code but isn't a real control from here.
+    locked: Boolean = false,
     onToggle: (Boolean) -> Unit
 ) {
     val bgColor = if (enabled) ColorHapticAccent else ColorSurface
-    val contentColor = if (enabled) ColorOnPrimary else ColorOnSurface60
+    val contentColor = if (locked) ColorOnSurface60.copy(alpha = 0.6f) else if (enabled) ColorOnPrimary else ColorOnSurface60
 
     Row(
         modifier = modifier
             .clip(RoundedCornerShape(Radius.sm))
             .background(bgColor)
-            .clickable { onToggle(!enabled) }
-            .padding(horizontal = Spacing.sm, vertical = 10.dp),
+            .then(if (locked) Modifier else Modifier.clickable { onToggle(!enabled) })
+            // Was ~40dp tall (icon + 10dp*2 padding) — under the 48dp touch-target
+            // minimum for an interactive toggle row.
+            .heightIn(min = ComponentSize.touchTarget)
+            .padding(horizontal = Spacing.sm),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Spacing.xs)
     ) {
         Icon(imageVector = icon, contentDescription = null, tint = contentColor, modifier = Modifier.size(ComponentSize.iconSmall))
         Text(text = label, style = MaterialTheme.typography.labelMedium, color = contentColor, fontWeight = FontWeight.Bold)
         Spacer(modifier = Modifier.weight(1f))
-        Switch(
-            checked = enabled,
-            onCheckedChange = onToggle,
-            modifier = Modifier.height(Spacing.xl),
-            colors = SwitchDefaults.colors(
-                checkedThumbColor = ColorSurface,
-                checkedTrackColor = ColorOnPrimary,
-                uncheckedThumbColor = ColorOnSurface60,
-                uncheckedTrackColor = ColorSurfaceVariant
+        if (locked) {
+            Surface(
+                shape = RoundedCornerShape(percent = 50),
+                color = ColorSurfaceVariant
+            ) {
+                Text(
+                    text = "SOON",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = ColorOnSurface60,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.sp,
+                    modifier = Modifier.padding(horizontal = Spacing.xs, vertical = 2.dp)
+                )
+            }
+        } else {
+            Switch(
+                checked = enabled,
+                onCheckedChange = onToggle,
+                modifier = Modifier.height(Spacing.xl),
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = ColorSurface,
+                    checkedTrackColor = ColorOnPrimary,
+                    uncheckedThumbColor = ColorOnSurface60,
+                    uncheckedTrackColor = ColorSurfaceVariant
+                )
             )
-        )
+        }
     }
 }
 
@@ -691,8 +781,8 @@ private fun TuningSliderRow(
             onValueChange = onValueChange,
             valueRange = range,
             colors = SliderDefaults.colors(
-                thumbColor = ColorHapticAccent,
-                activeTrackColor = ColorHapticAccent,
+                thumbColor = ColorPrimary,
+                activeTrackColor = ColorPrimary,
                 inactiveTrackColor = ColorOutlineVariant
             ),
             modifier = Modifier.fillMaxWidth()

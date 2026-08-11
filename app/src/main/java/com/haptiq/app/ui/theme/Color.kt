@@ -39,7 +39,9 @@ val ColorHapticAccentDim     = Color(0xFF8C6A3E)  // Dimmed amber (off state)
 val ColorOnBackground        = Color(0xFFF4ECE3)  // Warm off-white text
 val ColorOnSurface           = Color(0xFFF4ECE3)  // Primary text
 val ColorOnSurfaceVariant    = Color(0xFFB7ACA0)  // Secondary text
-val ColorOnSurface60         = Color(0xFF857A6D)  // Muted/tertiary text
+val ColorOnSurface60         = Color(0xFF988D7E)  // Muted/tertiary text — #857A6D sat at 3.6–4.0:1
+                                                     // on surface/background, under the 4.5:1 AA floor;
+                                                     // #988D7E lands 4.6:1 on Surface and 5.1:1 on Background
 
 // ─── Outline / Borders ──────────────────────────────────────
 val ColorOutline             = Color(0xFF4A4038)  // Visible borders

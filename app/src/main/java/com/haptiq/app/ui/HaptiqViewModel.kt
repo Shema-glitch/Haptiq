@@ -26,6 +26,28 @@ enum class SortMode(val label: String) {
 /** An installed app able to handle the system audio-effect (equalizer) intent. */
 data class EqualizerApp(val label: String, val packageName: String, val activityName: String)
 
+/**
+ * Per-song AOT kick-map status, shown in the Studio's lookahead row. Mirrors what the
+ * scheduler will actually do: READY songs pre-fire kicks early, NO_MAP songs fall back
+ * to live detection, ANALYZING is the transient decode state.
+ */
+enum class AotMapState { NOT_ENABLED, ANALYZING, READY, NO_MAP }
+
+/** Map state + kick counts — the counts are the on-device sanity check for the onset
+ * detector and the beat grid (a heavy track should show most kicks on-beat). */
+data class AotMapInfo(
+    val state: AotMapState = AotMapState.NOT_ENABLED,
+    val onsetCount: Int = 0,
+    val onBeatCount: Int = 0
+)
+
+/** One kick marker on the seek-preview scrubber: where the AOT map detected a kick,
+ * and whether the beat grid says lookahead will actually pre-fire it there. */
+data class KickMarker(
+    val positionMs: Int,
+    val onBeat: Boolean
+)
+
 data class HaptiqUiState(
     val songs: List<Song> = emptyList(),
     val sortMode: SortMode = SortMode.TITLE,
@@ -57,11 +79,20 @@ data class HaptiqUiState(
     val scanError: String? = null,
     val scanProgress: Int = 0,
     val scanStatus: String = "",
+    // Settings → Clear Cache: brief in-progress flag so the row can show "Clearing…"
+    val isClearingCache: Boolean = false,
     // DND detection — haptics are suppressed when DND is active
     val isDndActive: Boolean = false,
     // Equalizer picker: null = hidden; non-null shows the dialog listing installed
     // EQ apps (empty = none installed — dialog explains, instead of a blank screen)
     val equalizerChoices: List<EqualizerApp>? = null,
+    // AOT lookahead: whether the current song has a kick map (and how many kicks).
+    // NOT_ENABLED when the lookahead toggle is off; resolved per-song otherwise.
+    val aotMapInfo: AotMapInfo = AotMapInfo(),
+    // Kick-onset overlay for the seek-preview scrubber — where the AOT map detected
+    // kicks (and which the beat grid will let pre-fire). Shown whether or not the
+    // lookahead toggle is on, so you can preview the map before enabling it.
+    val seekKickMarkers: List<KickMarker> = emptyList(),
     // Transport state
     val isShuffle: Boolean = false,
     val repeatMode: RepeatMode = RepeatMode.OFF,
@@ -77,7 +108,12 @@ data class HaptiqUiState(
     val activePlaylistSongs: List<Song> = emptyList(),
     // Settings
     val minDurationSec: Int = 30,
-    val seekPreviewEnabled: Boolean = true
+    val seekPreviewEnabled: Boolean = true,
+    // Now Playing sheet: true = full screen, false = docked mini-player bar. The
+    // sheet itself owns the live drag progress between the two (an Animatable, not
+    // state — recomposing on every drag pixel would be wasteful); this bool is just
+    // where it settles, so other consumers (system back button) agree on the state.
+    val isPlayerExpanded: Boolean = false
 )
 
 sealed interface HaptiqUiAction {
@@ -92,6 +128,8 @@ sealed interface HaptiqUiAction {
     object PlayPrevious : HaptiqUiAction
     /** Mini-player swipe-down: stop and hide playback entirely. */
     object DismissPlayback : HaptiqUiAction
+    /** Now Playing sheet settled expanded (true) or collapsed (false). */
+    data class SetPlayerExpanded(val expanded: Boolean) : HaptiqUiAction
     object ToggleShuffle : HaptiqUiAction
     object ToggleRepeat : HaptiqUiAction
     // Queue editing
@@ -112,6 +150,7 @@ sealed interface HaptiqUiAction {
     data class SetMinDuration(val seconds: Int) : HaptiqUiAction
     data class SetSeekPreviewEnabled(val enabled: Boolean) : HaptiqUiAction
     object ClearRecents : HaptiqUiAction
+    object ClearCache : HaptiqUiAction
     object OpenEqualizer : HaptiqUiAction
     data class SelectEqualizer(val app: EqualizerApp) : HaptiqUiAction
     object DismissEqualizerPicker : HaptiqUiAction
@@ -146,9 +185,15 @@ sealed interface HaptiqUiAction {
     data class SetBassFreqRange(val min: Int, val max: Int) : HaptiqUiAction
     data class SetBassGain(val value: Float) : HaptiqUiAction
     data class SetKickGain(val value: Float) : HaptiqUiAction
+    data class SetAotLookaheadEnabled(val enabled: Boolean) : HaptiqUiAction
     object ResetTuning : HaptiqUiAction
 }
 
+// flatMapLatest (used below for activePlaylistId and currentPresetId switching) is
+// still @ExperimentalCoroutinesApi in kotlinx-coroutines 1.10.2. Both usages are the
+// textbook case it exists for — swap to a new inner flow and cancel the previous one
+// when the key changes — so this is a deliberate, permanent opt-in, not a workaround.
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class HaptiqViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
@@ -172,6 +217,10 @@ class HaptiqViewModel @Inject constructor(
     /** Separate StateFlow for live DSP tuning — not part of HaptiqUiState to avoid snapshot churn. */
     private val _hapticTuning = MutableStateFlow(HapticTuningState())
     val hapticTuning: StateFlow<HapticTuningState> = _hapticTuning.asStateFlow()
+
+    /** Per-song AOT kick-map status — resolved alongside the seek-energy analysis. */
+    private val _aotMapInfo = MutableStateFlow(AotMapInfo())
+    val aotMapInfo: StateFlow<AotMapInfo> = _aotMapInfo.asStateFlow()
 
     private val vibrator: Vibrator? = com.haptiq.app.audio.DeviceVibrator.get(context)
 
@@ -209,6 +258,7 @@ class HaptiqViewModel @Inject constructor(
         playerManager.volume.collectIntoState { state, v -> state.copy(volume = v) }
         playlistRepository.allPlaylists.collectIntoState { state, lists -> state.copy(playlists = lists) }
         favoritesRepository.allFavoriteIds.collectIntoState { state, ids -> state.copy(favoriteIds = ids) }
+        _aotMapInfo.collectIntoState { state, info -> state.copy(aotMapInfo = info) }
 
         // Songs of whichever playlist is open — swaps subscriptions when it changes.
         viewModelScope.launch {
@@ -229,12 +279,15 @@ class HaptiqViewModel @Inject constructor(
                     it.copy(
                         currentSong = song,
                         seekEnergy = if (songChanged) null else it.seekEnergy,
-                        seekEnergyLoading = if (songChanged) song != null else it.seekEnergyLoading
+                        seekEnergyLoading = if (songChanged) song != null else it.seekEnergyLoading,
+                        seekKickMarkers = if (songChanged) emptyList() else it.seekKickMarkers
                     )
                 }
                 if (song != null) {
                     recentSongRepository.addRecentSong(song.id)
                     if (songChanged) loadSeekEnergy(song)
+                } else {
+                    _aotMapInfo.value = AotMapInfo() // nothing playing → no map
                 }
             }
         }
@@ -348,6 +401,10 @@ class HaptiqViewModel @Inject constructor(
             }
             is HaptiqUiAction.DismissPlayback -> {
                 playerManager.dismissPlayback()
+                _uiState.update { it.copy(isPlayerExpanded = false) }
+            }
+            is HaptiqUiAction.SetPlayerExpanded -> {
+                _uiState.update { it.copy(isPlayerExpanded = action.expanded) }
             }
             is HaptiqUiAction.PlayPrevious -> {
                 playerManager.playPrevious()
@@ -420,6 +477,18 @@ class HaptiqViewModel @Inject constructor(
             }
             is HaptiqUiAction.ClearRecents -> {
                 viewModelScope.launch { recentSongRepository.clearAll() }
+            }
+            is HaptiqUiAction.ClearCache -> {
+                if (!_uiState.value.isClearingCache) {
+                    viewModelScope.launch {
+                        _uiState.update { it.copy(isClearingCache = true) }
+                        songRepository.clearCache()
+                        // clearCache() already marks the repo for a fresh load;
+                        // performScan republishes _uiState.songs via allSongs collection.
+                        performScan(initialStatus = "Rebuilding artwork cache…")
+                        _uiState.update { it.copy(isClearingCache = false) }
+                    }
+                }
             }
             is HaptiqUiAction.OpenEqualizer -> {
                 // Never fire the EQ intent blind: some ROMs (Tecno) resolve it to a
@@ -559,11 +628,40 @@ class HaptiqViewModel @Inject constructor(
                 _hapticTuning.update { it.copy(kickGain = action.value) }
                 playerManager.updateTuning(_hapticTuning.value)
             }
+            is HaptiqUiAction.SetAotLookaheadEnabled -> {
+                _hapticTuning.update { it.copy(isAotLookaheadEnabled = action.enabled) }
+                playerManager.updateTuning(_hapticTuning.value)
+                val song = _uiState.value.currentSong
+                if (action.enabled && song != null) {
+                    // Resolve the current song's map immediately (cheap Room read when the
+                    // seek-preview analysis already wrote it; a one-time decode otherwise).
+                    viewModelScope.launch {
+                        _aotMapInfo.value = AotMapInfo(AotMapState.ANALYZING)
+                        val map = energyMapRepository.aotMapFor(song)
+                        if (_uiState.value.currentSong?.id == song.id) {
+                            _aotMapInfo.value = resolveAotMapInfo(map)
+                        }
+                    }
+                } else if (!action.enabled) {
+                    _aotMapInfo.value = AotMapInfo()
+                }
+            }
             is HaptiqUiAction.ResetTuning -> {
                 _hapticTuning.update { HapticTuningState() }
                 playerManager.updateTuning(_hapticTuning.value)
+                _aotMapInfo.value = AotMapInfo() // lookahead resets to OFF with everything else
             }
         }
+    }
+
+    /** Fold the onset/beat map into the Studio's displayed status. */
+    private fun resolveAotMapInfo(map: AotMapData?): AotMapInfo {
+        if (!_hapticTuning.value.isAotLookaheadEnabled) return AotMapInfo()
+        if (map == null || map.onsets.isEmpty()) return AotMapInfo(AotMapState.NO_MAP)
+        val onBeat = map.onsets.count {
+            com.haptiq.app.audio.TrackEnergyAnalyzer.isOnBeat(it, map.beats)
+        }
+        return AotMapInfo(AotMapState.READY, map.onsets.size, onBeat)
     }
 
     /** Kept per-song so a slow analysis of the previous track can't clobber the new one. */
@@ -587,10 +685,29 @@ class HaptiqViewModel @Inject constructor(
 
     private fun loadSeekEnergy(song: Song) {
         seekEnergyJob?.cancel()
+        // The single decode pass computes both the seek-preview envelope and the kick-onset
+        // map, so the map status resolves right after the envelope is ready.
+        if (_hapticTuning.value.isAotLookaheadEnabled) {
+            _aotMapInfo.value = AotMapInfo(AotMapState.ANALYZING)
+        }
         seekEnergyJob = viewModelScope.launch {
             val energy = energyMapRepository.energyFor(song)
+            // Row now exists (with onsets + beats) — a cheap read, no second decode.
+            val map = if (energy != null) energyMapRepository.aotMapFor(song) else null
             if (_uiState.value.currentSong?.id == song.id) {
-                _uiState.update { it.copy(seekEnergy = energy, seekEnergyLoading = false) }
+                // Marker overlay rides the same map: one tick per detected kick, flagged by
+                // whether the beat grid will let lookahead pre-fire it there. Shown even
+                // with the toggle off — it's the preview of what enabling it will do.
+                val markers = map?.onsets?.map {
+                    KickMarker(
+                        positionMs = it,
+                        onBeat = com.haptiq.app.audio.TrackEnergyAnalyzer.isOnBeat(it, map.beats)
+                    )
+                } ?: emptyList()
+                _uiState.update {
+                    it.copy(seekEnergy = energy, seekEnergyLoading = false, seekKickMarkers = markers)
+                }
+                _aotMapInfo.value = resolveAotMapInfo(map)
             }
         }
     }

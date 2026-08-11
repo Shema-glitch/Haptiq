@@ -17,7 +17,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         TrackEnergyMap::class,
         FavoriteSong::class
     ],
-    version = 6,
+    version = 8,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -55,6 +55,21 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        // v7: AOT kick-onset list on the energy map. Nullable BLOB — existing rows keep
+        // NULL and are re-analyzed on demand by EnergyMapRepository.aotMapFor().
+        private val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `track_energy_maps` ADD COLUMN `onsets` BLOB")
+            }
+        }
+
+        // v8: beat grid for beat-validated onset rejection (lookahead double-check).
+        private val MIGRATION_7_8 = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `track_energy_maps` ADD COLUMN `beats` BLOB")
+            }
+        }
+
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -62,7 +77,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "haptiq_database"
                 )
-                .addMigrations(MIGRATION_4_5, MIGRATION_5_6)
+                .addMigrations(MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
                 .fallbackToDestructiveMigration()
                 .build()
                 INSTANCE = instance

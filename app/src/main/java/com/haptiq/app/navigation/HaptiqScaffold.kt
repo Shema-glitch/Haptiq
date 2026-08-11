@@ -28,8 +28,6 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
-import com.haptiq.app.data.Song
-import com.haptiq.app.ui.MiniPlayer
 import com.haptiq.app.ui.theme.*
 
 /**
@@ -41,15 +39,6 @@ import com.haptiq.app.ui.theme.*
 fun HaptiqScaffold(
     navController: NavHostController,
     currentRoute: String?,
-    currentSong: Song?,
-    isPlaying: Boolean,
-    playbackProgress: Float,
-    hapticActive: Boolean,
-    onTogglePlayPause: () -> Unit,
-    onNextClicked: () -> Unit,
-    onPrevClicked: () -> Unit,
-    onMiniPlayerExpanded: () -> Unit,
-    onMiniPlayerDismissed: () -> Unit = {},
     topBar: @Composable () -> Unit = {},
     content: @Composable (PaddingValues) -> Unit
 ) {
@@ -70,8 +59,10 @@ fun HaptiqScaffold(
             )
         }
     ) { innerPadding ->
-        // The app's three-part anatomy, owned in ONE place: top bar / main / bottom
-        // chrome (mini player + nav). Screens supply only their main content.
+        // The app's anatomy, owned in ONE place: top bar / main / bottom nav. Now
+        // Playing is no longer chrome owned per-route here — it's a single persistent
+        // overlay above the whole NavHost (see HaptiqNavHost), so it can morph over
+        // real content instead of being torn down and recomposed on every route swap.
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -81,17 +72,6 @@ fun HaptiqScaffold(
             Box(modifier = Modifier.weight(1f)) {
                 content(innerPadding)
             }
-            MiniPlayer(
-                currentSong = currentSong,
-                isPlaying = isPlaying,
-                progress = playbackProgress,
-                hapticActive = hapticActive,
-                onTogglePlayPause = onTogglePlayPause,
-                onNext = onNextClicked,
-                onPrev = onPrevClicked,
-                onExpand = onMiniPlayerExpanded,
-                onDismiss = onMiniPlayerDismissed
-            )
         }
     }
 }

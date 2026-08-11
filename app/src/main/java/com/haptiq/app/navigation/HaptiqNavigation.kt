@@ -8,7 +8,9 @@ import androidx.compose.runtime.getValue
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.navigation.compose.currentBackStackEntryAsState
 import com.haptiq.app.ui.*
@@ -63,15 +65,6 @@ fun HaptiqNavHost(
         HaptiqScaffold(
             navController = navController,
             currentRoute = currentRoute,
-            currentSong = haptiqState.currentSong,
-            isPlaying = haptiqState.isPlaying,
-            playbackProgress = haptiqState.playbackProgress,
-            hapticActive = haptiqState.hapticActive,
-            onTogglePlayPause = { haptiqViewModel.handleAction(HaptiqUiAction.TogglePlayPause) },
-            onNextClicked = { haptiqViewModel.handleAction(HaptiqUiAction.PlayNext) },
-            onPrevClicked = { haptiqViewModel.handleAction(HaptiqUiAction.PlayPrevious) },
-            onMiniPlayerExpanded = { navController.navigate(Routes.PLAYER) },
-            onMiniPlayerDismissed = { haptiqViewModel.handleAction(HaptiqUiAction.DismissPlayback) },
             topBar = {
                 // The scaffold owns the app bar: screens with a plain header pass
                 // a subtitle; Library passes null because its header carries live
@@ -89,6 +82,7 @@ fun HaptiqNavHost(
         )
     }
 
+    Box(modifier = androidx.compose.ui.Modifier.fillMaxSize()) {
     NavHost(
         navController = navController,
         startDestination = startDestination,
@@ -139,7 +133,7 @@ fun HaptiqNavHost(
                     innerPadding = innerPadding,
                     onSongSelected = { list, index ->
                         haptiqViewModel.handleAction(HaptiqUiAction.SelectSong(list, index))
-                        navController.navigate(Routes.PLAYER)
+                        haptiqViewModel.handleAction(HaptiqUiAction.SetPlayerExpanded(true))
                     },
                     onSearchQueryChanged = { query ->
                         haptiqViewModel.handleAction(HaptiqUiAction.Search(query))
@@ -148,7 +142,9 @@ fun HaptiqNavHost(
                         haptiqViewModel.handleAction(HaptiqUiAction.ScanDevice)
                     },
                     onHapticStudioClicked = {
-                        navController.navigate(Routes.HAPTIC_STUDIO)
+                        if (currentRoute != Routes.HAPTIC_STUDIO) {
+                            navController.navigate(Routes.HAPTIC_STUDIO) { launchSingleTop = true }
+                        }
                     },
                     onToggleFavorite = { songId ->
                         haptiqViewModel.handleAction(HaptiqUiAction.ToggleFavorite(songId))
@@ -188,76 +184,9 @@ fun HaptiqNavHost(
                 onBack = { navController.popBackStack() },
                 onSongSelected = { list, index ->
                     haptiqViewModel.handleAction(HaptiqUiAction.SelectSong(list, index))
-                    navController.navigate(Routes.PLAYER)
+                    haptiqViewModel.handleAction(HaptiqUiAction.SetPlayerExpanded(true))
                 },
                 onAction = { haptiqViewModel.handleAction(it) }
-            )
-        }
-
-        composable(
-            Routes.PLAYER,
-            // Now Playing behaves like a sheet: rises from the bottom edge over the
-            // list it was launched from, and sinks back down on dismiss.
-            enterTransition = {
-                slideInVertically(animationSpec = tween(340)) { it } + fadeIn(tween(340))
-            },
-            exitTransition = { fadeOut(tween(180)) },
-            popEnterTransition = { fadeIn(tween(220)) },
-            // The screen animates itself fully off-screen (drag or chevron) BEFORE
-            // popping, so the nav pop only needs to fade — a second slide here would
-            // double up and cause the jarring snap the sheet used to have.
-            popExitTransition = { fadeOut(tween(160)) }
-        ) {
-            PlayerScreen(
-                state = haptiqState,
-                onBackClicked = {
-                    navController.popBackStack()
-                },
-                onTogglePlayPause = {
-                    haptiqViewModel.handleAction(HaptiqUiAction.TogglePlayPause)
-                },
-                onNextClicked = {
-                    haptiqViewModel.handleAction(HaptiqUiAction.PlayNext)
-                },
-                onPrevClicked = {
-                    haptiqViewModel.handleAction(HaptiqUiAction.PlayPrevious)
-                },
-                onSeek = { progress ->
-                    haptiqViewModel.handleAction(HaptiqUiAction.Seek(progress))
-                },
-                onSeekPreview = { progress ->
-                    haptiqViewModel.handleAction(HaptiqUiAction.SeekPreview(progress))
-                },
-                onToggleHaptics = { active ->
-                    haptiqViewModel.handleAction(HaptiqUiAction.ToggleHaptics(active))
-                },
-                onHapticStudioClicked = {
-                    navController.navigate(Routes.HAPTIC_STUDIO)
-                },
-                onSongSelected = { list, index ->
-                    haptiqViewModel.handleAction(HaptiqUiAction.SelectSong(list, index))
-                },
-                onQueueAction = { action ->
-                    haptiqViewModel.handleAction(action)
-                },
-                onRefreshDndStatus = {
-                    haptiqViewModel.handleAction(HaptiqUiAction.RefreshDndStatus)
-                },
-                onToggleShuffle = {
-                    haptiqViewModel.handleAction(HaptiqUiAction.ToggleShuffle)
-                },
-                onToggleRepeat = {
-                    haptiqViewModel.handleAction(HaptiqUiAction.ToggleRepeat)
-                },
-                onToggleFavorite = { songId ->
-                    haptiqViewModel.handleAction(HaptiqUiAction.ToggleFavorite(songId))
-                },
-                onSetSpeed = { speed ->
-                    haptiqViewModel.handleAction(HaptiqUiAction.SetPlaybackSpeed(speed))
-                },
-                onSetVolume = { fraction ->
-                    haptiqViewModel.handleAction(HaptiqUiAction.SetVolume(fraction))
-                }
             )
         }
 
@@ -301,7 +230,7 @@ fun HaptiqNavHost(
                     state = haptiqState,
                     onSongSelected = { list, index ->
                         haptiqViewModel.handleAction(HaptiqUiAction.SelectSong(list, index))
-                        navController.navigate(Routes.PLAYER)
+                        haptiqViewModel.handleAction(HaptiqUiAction.SetPlayerExpanded(true))
                     },
                     onScanDevice = { haptiqViewModel.handleAction(HaptiqUiAction.ScanDevice) }
                 )
@@ -314,7 +243,7 @@ fun HaptiqNavHost(
                     state = haptiqState,
                     onSongSelected = { list, index ->
                         haptiqViewModel.handleAction(HaptiqUiAction.SelectSong(list, index))
-                        navController.navigate(Routes.PLAYER)
+                        haptiqViewModel.handleAction(HaptiqUiAction.SetPlayerExpanded(true))
                     },
                     onToggleFavorite = { songId ->
                         haptiqViewModel.handleAction(HaptiqUiAction.ToggleFavorite(songId))
@@ -367,5 +296,76 @@ fun HaptiqNavHost(
                 )
             }
         }
+    }
+
+        val hasBottomNav = currentRoute in setOf(
+            Routes.LIBRARY, Routes.ALBUMS, Routes.FAVORITES,
+            Routes.PLAYLISTS, Routes.SETTINGS, Routes.CALIBRATION
+        )
+
+        NowPlayingSheet(
+            state = haptiqState,
+            isExpanded = haptiqState.isPlayerExpanded,
+            onExpandedChange = { expanded ->
+                haptiqViewModel.handleAction(HaptiqUiAction.SetPlayerExpanded(expanded))
+            },
+            hasBottomNav = hasBottomNav,
+            onTogglePlayPause = {
+                haptiqViewModel.handleAction(HaptiqUiAction.TogglePlayPause)
+            },
+            onNextClicked = {
+                haptiqViewModel.handleAction(HaptiqUiAction.PlayNext)
+            },
+            onPrevClicked = {
+                haptiqViewModel.handleAction(HaptiqUiAction.PlayPrevious)
+            },
+            onDismissPlayback = {
+                haptiqViewModel.handleAction(HaptiqUiAction.DismissPlayback)
+            },
+            onSeek = { progress ->
+                haptiqViewModel.handleAction(HaptiqUiAction.Seek(progress))
+            },
+            onSeekPreview = { progress ->
+                haptiqViewModel.handleAction(HaptiqUiAction.SeekPreview(progress))
+            },
+            onToggleHaptics = { active ->
+                haptiqViewModel.handleAction(HaptiqUiAction.ToggleHaptics(active))
+            },
+            onHapticStudioClicked = {
+                // The sheet is a persistent overlay drawn ON TOP of the NavHost, so it
+                // must collapse before navigating — otherwise it keeps covering Haptic
+                // Studio's own route underneath instead of getting out of the way.
+                // launchSingleTop guards against duplicate back-stack entries from a
+                // burst of taps before the first navigation lands.
+                if (currentRoute != Routes.HAPTIC_STUDIO) {
+                    haptiqViewModel.handleAction(HaptiqUiAction.SetPlayerExpanded(false))
+                    navController.navigate(Routes.HAPTIC_STUDIO) { launchSingleTop = true }
+                }
+            },
+            onSongSelected = { list, index ->
+                haptiqViewModel.handleAction(HaptiqUiAction.SelectSong(list, index))
+            },
+            onQueueAction = { action ->
+                haptiqViewModel.handleAction(action)
+            },
+            onRefreshDndStatus = {
+                haptiqViewModel.handleAction(HaptiqUiAction.RefreshDndStatus)
+            },
+            onToggleShuffle = {
+                haptiqViewModel.handleAction(HaptiqUiAction.ToggleShuffle)
+            },
+            onToggleRepeat = {
+                haptiqViewModel.handleAction(HaptiqUiAction.ToggleRepeat)
+            },
+            onToggleFavorite = { songId ->
+                haptiqViewModel.handleAction(HaptiqUiAction.ToggleFavorite(songId))
+            },
+            onSetSpeed = { speed ->
+                haptiqViewModel.handleAction(HaptiqUiAction.SetPlaybackSpeed(speed))
+            },
+            onSetVolume = { fraction ->
+                haptiqViewModel.handleAction(HaptiqUiAction.SetVolume(fraction))
+            }
+        )
     }
 }

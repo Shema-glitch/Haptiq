@@ -55,7 +55,7 @@ fun SettingsScreen(
                 color = ColorOnSurface60,
                 letterSpacing = 1.5.sp,
                 fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(horizontal = 4.dp)
+                modifier = Modifier.padding(horizontal = Spacing.xxs)
             )
 
             Column(
@@ -67,7 +67,7 @@ fun SettingsScreen(
                 // Battery Saver mapping
                 SettingsRowWithSwitch(
                     icon = Icons.Default.BatterySaver,
-                    iconColor = ColorHapticAccent,
+                    iconColor = ColorPrimary,
                     title = "Haptic Battery Saver",
                     subtitle = if (state.batterySaverEnabled) "Saves 30% haptic energy" else "Standard mode",
                     checked = state.batterySaverEnabled,
@@ -79,7 +79,7 @@ fun SettingsScreen(
                 // Sleep timer — tap cycles Off → 15 → 30 → 60 → Off
                 SettingsRow(
                     icon = Icons.Default.Bedtime,
-                    iconColor = ColorHapticAccent,
+                    iconColor = ColorPrimary,
                     title = "Sleep Timer",
                     subtitle = if (state.sleepTimerMinutes > 0) "Stops in ${state.sleepTimerMinutes} min" else "Off",
                     onClick = {
@@ -95,7 +95,7 @@ fun SettingsScreen(
                 // D4: Calibration row — navigates to Routes.CALIBRATION
                 SettingsRow(
                     icon = Icons.Default.Vibration,
-                    iconColor = ColorHapticAccent,
+                    iconColor = ColorPrimary,
                     title = "Haptic Calibration",
                     subtitle = "Multiplier: ${state.calibrationMultiplier}x",
                     onClick = onCalibrationClicked
@@ -113,7 +113,7 @@ fun SettingsScreen(
                 color = ColorOnSurface60,
                 letterSpacing = 1.5.sp,
                 fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(horizontal = 4.dp)
+                modifier = Modifier.padding(horizontal = Spacing.xxs)
             )
             Column(
                 modifier = Modifier
@@ -123,7 +123,7 @@ fun SettingsScreen(
             ) {
                 SettingsRowWithSwitch(
                     icon = Icons.Default.TouchApp,
-                    iconColor = ColorHapticAccent,
+                    iconColor = ColorPrimary,
                     title = "Haptic Seek Preview",
                     subtitle = "Feel the bass under your finger while scrubbing",
                     checked = state.seekPreviewEnabled,
@@ -152,7 +152,7 @@ fun SettingsScreen(
                 color = ColorOnSurface60,
                 letterSpacing = 1.5.sp,
                 fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(horizontal = 4.dp)
+                modifier = Modifier.padding(horizontal = Spacing.xxs)
             )
             Column(
                 modifier = Modifier
@@ -196,6 +196,20 @@ fun SettingsScreen(
                     subtitle = "Empties the history row on the Library tab",
                     onClick = { onAction(HaptiqUiAction.ClearRecents) }
                 )
+
+                HorizontalDivider(color = ColorOutlineVariant.copy(alpha = 0.2f), thickness = 1.dp)
+
+                SettingsRow(
+                    icon = Icons.Default.CleaningServices,
+                    iconColor = ColorOnSurface60,
+                    title = "Clear Cache",
+                    subtitle = if (state.isClearingCache) {
+                        state.scanStatus.ifBlank { "Clearing…" }
+                    } else {
+                        "Frees up space and rebuilds artwork if the library feels slow"
+                    },
+                    onClick = { if (!state.isClearingCache) onAction(HaptiqUiAction.ClearCache) }
+                )
             }
         }
 
@@ -211,7 +225,7 @@ fun SettingsScreen(
                 color = ColorOnSurface60,
                 letterSpacing = 1.5.sp,
                 fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(horizontal = 4.dp)
+                modifier = Modifier.padding(horizontal = Spacing.xxs)
             )
 
             Column(
@@ -274,7 +288,7 @@ fun SettingsScreen(
                             line,
                             style = MaterialTheme.typography.bodyMedium,
                             color = ColorOnSurfaceVariant,
-                            modifier = Modifier.padding(vertical = 4.dp)
+                            modifier = Modifier.padding(vertical = Spacing.xxs)
                         )
                     }
                 }
@@ -311,7 +325,7 @@ fun SettingsScreen(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clickable { onAction(HaptiqUiAction.SelectEqualizer(app)) }
-                                    .padding(vertical = 12.dp)
+                                    .padding(vertical = Spacing.sm)
                             )
                         }
                     }
@@ -429,7 +443,7 @@ fun SettingsRowWithSwitch(
             onCheckedChange = onCheckedChange,
             colors = SwitchDefaults.colors(
                 checkedThumbColor = ColorSurface,
-                checkedTrackColor = ColorHapticAccent,
+                checkedTrackColor = ColorPrimary,
                 uncheckedThumbColor = ColorOnSurface60,
                 uncheckedTrackColor = ColorSurfaceVariant
             )

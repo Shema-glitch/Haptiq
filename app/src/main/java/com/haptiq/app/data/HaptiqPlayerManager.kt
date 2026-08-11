@@ -29,8 +29,24 @@ import kotlin.math.roundToInt
 @Singleton
 class HaptiqPlayerManager @Inject constructor(
     @ApplicationContext private val context: Context,
-    private val playbackStateStore: PlaybackStateStore
+    private val playbackStateStore: PlaybackStateStore,
+    private val energyMapRepository: EnergyMapRepository
 ) : PlayerManager {
+
+    companion object {
+        // ── AOT lookahead kick scheduling ──────────────────────────────────────────
+        // Live FFT detection (Visualizer at ~20Hz) inherently fires kicks 50-70ms after the
+        // transient. When enabled (HapticTuningState.isAotLookaheadEnabled, toggled from the
+        // Studio), kicks are ALSO pre-fired from a per-track onset map (see
+        // TrackEnergyAnalyzer.onsetsMs) LOOKAHEAD_LEAD_MS before the audio hit, so the motor
+        // is already moving when the bass lands.
+        // How early (ms) a mapped kick fires before its audio position.
+        private const val LOOKAHEAD_LEAD_MS = 50L
+        // Poll granularity while inside the lead window.
+        private const val LOOKAHEAD_POLL_MS = 8L
+        // Sleep cap between onsets — keeps the loop idle-friendly on sparse maps.
+        private const val LOOKAHEAD_QUIET_SLEEP_MS = 250L
+    }
 
     private val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
     private var exoPlayer: ExoPlayer? = null
@@ -41,6 +57,15 @@ class HaptiqPlayerManager @Inject constructor(
     private val bassVisualizer = BassVisualizer { bassEnergy ->
         onBassEnergyDetected(bassEnergy)
     }
+
+    // ── AOT lookahead scheduler state (active only while isAotLookaheadEnabled) ──
+    private var lookaheadJob: Job? = null
+    private var lookaheadOnsets = IntArray(0)
+    // Beat grid for the current song — onsets not near a beat are map false positives
+    // (snare thumps, vocal artifacts) and are skipped instead of pre-fired. Empty grid
+    // (no steady beat) rejects nothing.
+    private var lookaheadBeats = IntArray(0)
+    private var lookaheadIdx = 0
 
     // State flows
     private val _currentSong = MutableStateFlow<Song?>(null)
@@ -106,6 +131,11 @@ class HaptiqPlayerManager @Inject constructor(
 
     private var lastPositionSaveAt = 0L
 
+    // Kept so destroy() can unregister it — an unregistered ContentObserver leaks the
+    // registering Context (here the application Context, so harmless in practice, but
+    // destroy() is the designated full-teardown path and should leave nothing dangling).
+    private var volumeObserver: android.database.ContentObserver? = null
+
     // Live DSP tuning state — written from UI thread, read from Visualizer callback thread
     @Volatile private var tuningState = HapticTuningState()
 
@@ -121,13 +151,14 @@ class HaptiqPlayerManager @Inject constructor(
     }
 
     private fun registerVolumeObserver() {
-        context.contentResolver.registerContentObserver(
-            android.provider.Settings.System.CONTENT_URI, true,
-            object : android.database.ContentObserver(android.os.Handler(android.os.Looper.getMainLooper())) {
-                override fun onChange(selfChange: Boolean) {
-                    _volume.value = currentVolumeFraction()
-                }
+        val observer = object : android.database.ContentObserver(android.os.Handler(android.os.Looper.getMainLooper())) {
+            override fun onChange(selfChange: Boolean) {
+                _volume.value = currentVolumeFraction()
             }
+        }
+        volumeObserver = observer
+        context.contentResolver.registerContentObserver(
+            android.provider.Settings.System.CONTENT_URI, true, observer
         )
     }
 
@@ -136,6 +167,10 @@ class HaptiqPlayerManager @Inject constructor(
         // unvalidated VibratorManager path made song haptics silently dead on those
         // devices while the calibration test pulse (which had the fallback) worked.
         vibrator = com.haptiq.app.audio.DeviceVibrator.get(context)
+        // Pre-warm the capability cache (composition primitives / amplitude / heavy-click
+        // support) off the hot path — those are synchronous Binder round-trips that would
+        // otherwise be paid by the very first kick of the session, on the Visualizer thread.
+        hapticMapper.prepare(vibrator)
     }
 
     private fun initExoPlayer() {
@@ -156,10 +191,23 @@ class HaptiqPlayerManager @Inject constructor(
                     _isPlaying.value = isPlaying
                     if (isPlaying) {
                         startProgressUpdate()
+                        restartLookahead()
                     } else {
                         stopProgressUpdate()
+                        stopLookahead()
                         vibrator?.cancel() // Kill haptics immediately when playback is paused
                     }
+                }
+
+                override fun onPositionDiscontinuity(
+                    oldPosition: Player.PositionInfo,
+                    newPosition: Player.PositionInfo,
+                    reason: Int
+                ) {
+                    Log.d("HaptiqPlayer", "Position discontinuity: reason=$reason")
+                    // Seeks jump the playback clock instantly — the lookahead scheduler must
+                    // re-base on the new position or it would pre-fire for onsets already past.
+                    restartLookahead()
                 }
 
                 override fun onPlaybackStateChanged(playbackState: Int) {
@@ -197,6 +245,7 @@ class HaptiqPlayerManager @Inject constructor(
                     // the audio renderer, silently killing the old attachment. Without this,
                     // the studio bars and the haptic motor go dead after the first song change.
                     reattachVisualizer("mediaItemTransition")
+                    restartLookahead()
                     updateProgressFlows()
                 }
             })
@@ -241,9 +290,88 @@ class HaptiqPlayerManager @Inject constructor(
                 bassGain = bassEnergy.bassGain,
                 kickGain = bassEnergy.kickGain,
                 subEnvelope = bassEnergy.subEnvelope,
-                clickTransient = bassEnergy.clickTransient
+                clickTransient = bassEnergy.clickTransient,
+                // DEBUG instrumentation: playback position at detection, for correlating fire
+                // timestamps with the music when tuning kick timing on-device. Best-effort
+                // read from the callback thread (position may lag by a frame — fine for logs).
+                playbackPositionMs = runCatching { exoPlayer?.currentPosition ?: 0L }.getOrDefault(0L)
             )
         }
+    }
+
+    // ── AOT lookahead kick scheduling ────────────────────────────────────────────────
+    // Pre-fires mapped kicks LOOKAHEAD_LEAD_MS before their audio position so the motor is
+    // already spinning when the transient lands (the live FFT engine is inherently late).
+    // Safe by construction: it only fires when 0 <= onset - position <= LOOKAHEAD_LEAD_MS at
+    // check time, so a stalled position (buffering/pause) can never fire into the void — if
+    // an onset passes unmapped, the live engine catches it as usual. Only runs for songs
+    // with a stored onset map; everything else keeps the live engine alone.
+    private fun restartLookahead() {
+        lookaheadJob?.cancel()
+        if (!tuningState.isAotLookaheadEnabled) return
+        val song = _currentSong.value ?: return
+        if (!_isPlaying.value || !_hapticActive.value) return
+        lookaheadJob = playerScope.launch {
+            val map = withContext(Dispatchers.IO) { energyMapRepository.aotMapFor(song) }
+                ?: return@launch
+            // The song may have changed while the (potentially seconds-long) analysis ran.
+            if (_currentSong.value?.id != song.id || !_isPlaying.value) return@launch
+            if (map.onsets.isEmpty()) return@launch
+            lookaheadOnsets = map.onsets
+            lookaheadBeats = map.beats
+            lookaheadIdx = 0
+            lookaheadLoop()
+        }
+    }
+
+    // Extension on CoroutineScope so isActive() works — called from playerScope.launch.
+    private suspend fun CoroutineScope.lookaheadLoop() {
+        while (isActive) {
+            val player = exoPlayer ?: return
+            if (!_isPlaying.value || !_hapticActive.value) {
+                delay(LOOKAHEAD_QUIET_SLEEP_MS)
+                continue
+            }
+            val posMs = runCatching { player.currentPosition }.getOrDefault(0L)
+            // Advance past onsets already behind us (the live engine's job now).
+            while (lookaheadIdx < lookaheadOnsets.size && lookaheadOnsets[lookaheadIdx] < posMs) {
+                lookaheadIdx++
+            }
+            if (lookaheadIdx >= lookaheadOnsets.size) return
+            val onset = lookaheadOnsets[lookaheadIdx]
+            val lead = onset - posMs
+            if (lead <= LOOKAHEAD_LEAD_MS) {
+                // Beat double-check: skip map false positives (onsets not on the beat
+                // grid) — they don't get pre-fired. Live detection is untouched, so a
+                // genuinely musical off-beat transient is still felt normally.
+                if (com.haptiq.app.audio.TrackEnergyAnalyzer.isOnBeat(onset, lookaheadBeats)) {
+                    hapticMapper.scheduleKick(
+                        vibrator = vibrator,
+                        intensity = _intensity.value,
+                        calibrationMultiplier = 1.0f,
+                        batterySaverEnabled = _batterySaverEnabled.value,
+                        kickGain = tuningState.kickGain,
+                        onsetMs = onset.toLong()
+                    )
+                }
+                lookaheadIdx++
+            }
+            // Sleep until just before the lead window opens (or poll within it). Wall-clock
+            // sleep vs media time drifts at playback speeds != 1.0, but that only shifts the
+            // fire a little early/late within the window — the fire condition is re-checked
+            // against position, so it can never fire before the audio actually reaches it.
+            val sleep = if (lead > LOOKAHEAD_LEAD_MS)
+                minOf(lead - LOOKAHEAD_LEAD_MS, LOOKAHEAD_QUIET_SLEEP_MS) else LOOKAHEAD_POLL_MS
+            delay(sleep)
+        }
+    }
+
+    private fun stopLookahead() {
+        lookaheadJob?.cancel()
+        lookaheadJob = null
+        lookaheadOnsets = IntArray(0)
+        lookaheadBeats = IntArray(0)
+        lookaheadIdx = 0
     }
 
     override fun setSongs(songs: List<Song>, startIndex: Int) {
@@ -350,8 +478,14 @@ class HaptiqPlayerManager @Inject constructor(
     }
 
     override fun updateTuning(state: HapticTuningState) {
+        val wasAotEnabled = tuningState.isAotLookaheadEnabled
         tuningState = state
         bassVisualizer.tuning = state
+        // The AOT lookahead toggle can flip at runtime from the Studio — start or stop
+        // the scheduler on the transition (not on every slider move).
+        if (state.isAotLookaheadEnabled != wasAotEnabled) {
+            if (state.isAotLookaheadEnabled) restartLookahead() else stopLookahead()
+        }
     }
 
     /**
@@ -615,6 +749,7 @@ class HaptiqPlayerManager @Inject constructor(
 
     override fun stopPlayback() {
         pauseMedia()
+        stopLookahead()
         vibrator?.cancel() // Kill haptics immediately when playback is stopped
         // Do not release the player here — it is reused across song changes.
         // Full teardown happens in destroy() called when the singleton is no longer needed.
@@ -638,9 +773,15 @@ class HaptiqPlayerManager @Inject constructor(
      */
     fun destroy() {
         pauseMedia()
+        stopLookahead()
         bassVisualizer.release()
         exoPlayer?.release()
         exoPlayer = null
+        volumeObserver?.let { context.contentResolver.unregisterContentObserver(it) }
+        volumeObserver = null
+        // Cancels progressJob/sleepJob too — without this the SupervisorJob (and any
+        // coroutine still parked in a delay()) outlives the player it was driving.
+        playerScope.cancel()
     }
 
     override fun getPlayer(): ExoPlayer? = exoPlayer

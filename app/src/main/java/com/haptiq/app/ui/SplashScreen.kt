@@ -34,35 +34,45 @@ fun SplashScreen(onTimeout: () -> Unit) {
         onTimeout()
     }
 
+    // Reduced motion: the 2s letter choreography and the breathing glow collapse
+    // to a static frame — the wordmark still lands, nothing moves.
+    val reduced = isReducedMotionEnabled()
+
     // Text reveal animation — each letter appears sequentially
-    val transition = rememberInfiniteTransition(label = "splash")
+    val transition = if (reduced) null else rememberInfiniteTransition(label = "splash")
 
     // Overall fade in
     val overallAlpha by animateFloatAsState(
         targetValue = 1f,
-        animationSpec = tween(600, easing = FastOutSlowInEasing),
+        animationSpec = tweenUnlessReduced(600),
         label = "overall_alpha"
     )
 
     // Pulse glow behind text
-    val pulseScale by transition.animateFloat(
-        initialValue = 0.8f,
-        targetValue = 1.2f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(2000, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "pulse_scale"
-    )
-    val pulseAlpha by transition.animateFloat(
-        initialValue = 0.15f,
-        targetValue = 0.03f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(2000, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "pulse_alpha"
-    )
+    val pulseScale = if (reduced) 1f else {
+        val s by transition!!.animateFloat(
+            initialValue = 0.8f,
+            targetValue = 1.2f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(2000, easing = FastOutSlowInEasing),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "pulse_scale"
+        )
+        s
+    }
+    val pulseAlpha = if (reduced) 0.08f else {
+        val a by transition!!.animateFloat(
+            initialValue = 0.15f,
+            targetValue = 0.03f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(2000, easing = FastOutSlowInEasing),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "pulse_alpha"
+        )
+        a
+    }
 
     // Letter reveal animation
     val letters = "HAPTIQ"
@@ -70,7 +80,7 @@ fun SplashScreen(onTimeout: () -> Unit) {
         val delay = index * 150 // 150ms stagger per letter
         val alpha by animateFloatAsState(
             targetValue = 1f,
-            animationSpec = tween(400, delayMillis = delay, easing = FastOutSlowInEasing),
+            animationSpec = tweenUnlessReduced(400, delayMillis = delay),
             label = "letter_$index"
         )
         alpha
@@ -79,14 +89,14 @@ fun SplashScreen(onTimeout: () -> Unit) {
     // Subtitle fade in (appears after all letters)
     val subtitleAlpha by animateFloatAsState(
         targetValue = 1f,
-        animationSpec = tween(600, delayMillis = 1200, easing = FastOutSlowInEasing),
+        animationSpec = tweenUnlessReduced(600, delayMillis = 1200),
         label = "subtitle_alpha"
     )
 
     // Scan status fade in
     val scanAlpha by animateFloatAsState(
         targetValue = 1f,
-        animationSpec = tween(400, delayMillis = 1800, easing = FastOutSlowInEasing),
+        animationSpec = tweenUnlessReduced(400, delayMillis = 1800),
         label = "scan_alpha"
     )
 

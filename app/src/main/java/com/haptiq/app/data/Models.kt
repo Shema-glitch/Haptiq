@@ -59,12 +59,22 @@ data class FavoriteSong(
  * Precomputed bass-energy envelope for one track (the revived AOT haptic-map concept):
  * one unsigned byte (0–255) per TrackEnergyAnalyzer.FRAME_MS of audio. Consumed by the
  * seek-preview scrubber, which needs energy at arbitrary positions ahead of playback.
+ *
+ * [onsets] is the AOT kick-onset list (see TrackEnergyAnalyzer): kick-attack times in
+ * ms into the track, encoded as 4-byte big-endian ints. Null = never analyzed for
+ * onsets (pre-AOT rows / rows written before the field existed); empty = analyzed and
+ * genuinely no onsets (a ballad). The lookahead scheduler treats null as "re-analyze".
+ * [beats] is the beat-grid list (same encoding): per-beat times in ms. Null = never
+ * analyzed for beats; empty = no steady beat detected. Lookahead double-checks each
+ * onset against the grid and skips off-beat false positives.
  */
 @Entity(tableName = "track_energy_maps")
 data class TrackEnergyMap(
     @PrimaryKey val songId: String,
     val durationMs: Long,
     val frames: ByteArray,
+    val onsets: ByteArray? = null,
+    val beats: ByteArray? = null,
     val analyzedAt: Long
 ) {
     override fun equals(other: Any?): Boolean =

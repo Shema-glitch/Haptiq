@@ -103,13 +103,22 @@ fun OnboardingScreen(
     // Ambient glow — a radial gradient that fades to transparent (NOT Modifier.blur:
     // blur clips to rectangular bounds and rendered as a visible box on-device).
     // A slow breathing scale keeps the background alive without stealing attention.
-    val ambient = rememberInfiniteTransition(label = "onboarding_ambient")
-    val glowScale by ambient.animateFloat(
-        initialValue = 0.9f,
-        targetValue = 1.15f,
-        animationSpec = infiniteRepeatable(tween(4000), RepeatMode.Reverse),
-        label = "glow_scale"
-    )
+    // Reduced motion: frozen at a mid-breathe frame instead of moving.
+    val reduced = isReducedMotionEnabled()
+    val ambient = if (reduced) null else rememberInfiniteTransition(label = "onboarding_ambient")
+    val glowScale = if (reduced) 1f else {
+        val s by ambient!!.animateFloat(
+            initialValue = 0.9f,
+            targetValue = 1.15f,
+            animationSpec = infiniteRepeatable(tween(4000), RepeatMode.Reverse),
+            label = "glow_scale"
+        )
+        s
+    }
+    // Page glide + dot spring: instant under reduced motion. The pager animates
+    // scroll position as a Float, so the spec must be AnimationSpec<Float>.
+    val pageGlide: AnimationSpec<Float> =
+        if (reduced) tween(0) else tween(620, easing = FastOutSlowInEasing)
 
     Box(
         modifier = Modifier
@@ -188,7 +197,7 @@ fun OnboardingScreen(
                     val selected = pagerState.currentPage == i
                     val dotWidth by animateDpAsState(
                         targetValue = if (selected) 24.dp else 8.dp,
-                        animationSpec = HaptiqMotion.expressiveSpring(),
+                        animationSpec = if (reduced) tween(durationMillis = 0) else HaptiqMotion.expressiveSpring(),
                         label = "dot_width"
                     )
                     val dotColor by animateColorAsState(
@@ -203,7 +212,7 @@ fun OnboardingScreen(
                             .clickable(
                                 interactionSource = remember { MutableInteractionSource() },
                                 indication = null
-                            ) { scope.launch { pagerState.animateScrollToPage(i, animationSpec = tween(620, easing = FastOutSlowInEasing)) } }
+                            ) { scope.launch { pagerState.animateScrollToPage(i, animationSpec = pageGlide) } }
                     )
                 }
             }
@@ -219,7 +228,7 @@ fun OnboardingScreen(
                         scope.launch {
                             pagerState.animateScrollToPage(
                                 pagerState.currentPage + 1,
-                                animationSpec = tween(620, easing = FastOutSlowInEasing)
+                                animationSpec = pageGlide
                             )
                         }
                     }
@@ -368,20 +377,30 @@ private fun OnboardingPageContent(
 /** Page 1 — the brand icon with two staggered breathing haptic rings. */
 @Composable
 private fun PulseVisual(icon: ImageVector) {
-    val transition = rememberInfiniteTransition(label = "pulse_visual")
-    val ringA by transition.animateFloat(
-        initialValue = 0f, targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(1800, easing = LinearOutSlowInEasing)),
-        label = "ring_a"
-    )
-    val ringB by transition.animateFloat(
-        initialValue = 0f, targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            tween(1800, easing = LinearOutSlowInEasing),
-            initialStartOffset = StartOffset(900)
-        ),
-        label = "ring_b"
-    )
+    val reduced = isReducedMotionEnabled()
+    // Reduced motion: two static rings at mid-pulse frames — the icon still reads
+    // as "haptic", it just doesn't breathe.
+    val ringA = if (reduced) 0.4f else {
+        val t = rememberInfiniteTransition(label = "pulse_visual")
+        val r by t.animateFloat(
+            initialValue = 0f, targetValue = 1f,
+            animationSpec = infiniteRepeatable(tween(1800, easing = LinearOutSlowInEasing)),
+            label = "ring_a"
+        )
+        r
+    }
+    val ringB = if (reduced) 0.75f else {
+        val t = rememberInfiniteTransition(label = "pulse_visual")
+        val r by t.animateFloat(
+            initialValue = 0f, targetValue = 1f,
+            animationSpec = infiniteRepeatable(
+                tween(1800, easing = LinearOutSlowInEasing),
+                initialStartOffset = StartOffset(900)
+            ),
+            label = "ring_b"
+        )
+        r
+    }
 
     Box(contentAlignment = Alignment.Center) {
         listOf(ringA, ringB).forEach { t ->
@@ -418,24 +437,35 @@ private fun PulseVisual(icon: ImageVector) {
 /** Page 2 — three tuning sliders whose thumbs drift on their own, like a live studio. */
 @Composable
 private fun StudioVisual() {
-    val transition = rememberInfiniteTransition(label = "studio_visual")
-    val phases = listOf(
-        transition.animateFloat(
-            0.25f, 0.85f,
-            infiniteRepeatable(tween(2400, easing = FastOutSlowInEasing), RepeatMode.Reverse),
-            label = "slider_0"
-        ),
-        transition.animateFloat(
-            0.75f, 0.2f,
-            infiniteRepeatable(tween(3100, easing = FastOutSlowInEasing), RepeatMode.Reverse),
-            label = "slider_1"
-        ),
-        transition.animateFloat(
-            0.4f, 0.95f,
-            infiniteRepeatable(tween(2800, easing = FastOutSlowInEasing), RepeatMode.Reverse),
-            label = "slider_2"
+    val reduced = isReducedMotionEnabled()
+    // Reduced motion: thumbs frozen at varied positions — still reads as a studio
+    // control panel, just not a live one.
+    val phases: List<State<Float>> = if (reduced) {
+        listOf(
+            remember { mutableFloatStateOf(0.55f) },
+            remember { mutableFloatStateOf(0.48f) },
+            remember { mutableFloatStateOf(0.68f) }
         )
-    )
+    } else {
+        val transition = rememberInfiniteTransition(label = "studio_visual")
+        listOf(
+            transition.animateFloat(
+                0.25f, 0.85f,
+                infiniteRepeatable(tween(2400, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+                label = "slider_0"
+            ),
+            transition.animateFloat(
+                0.75f, 0.2f,
+                infiniteRepeatable(tween(3100, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+                label = "slider_1"
+            ),
+            transition.animateFloat(
+                0.4f, 0.95f,
+                infiniteRepeatable(tween(2800, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+                label = "slider_2"
+            )
+        )
+    }
 
     Column(
         modifier = Modifier
@@ -480,12 +510,16 @@ private fun StudioVisual() {
 /** Page 3 — a bass waveform with a playhead sweeping across it, previewing seek-by-feel. */
 @Composable
 private fun WaveformScrubVisual() {
-    val transition = rememberInfiniteTransition(label = "scrub_visual")
-    val playhead by transition.animateFloat(
-        initialValue = 0.05f, targetValue = 0.95f,
-        animationSpec = infiniteRepeatable(tween(3600, easing = FastOutSlowInEasing), RepeatMode.Reverse),
-        label = "playhead"
-    )
+    // Reduced motion: playhead parked mid-track — the waveform still reads.
+    val playhead = if (isReducedMotionEnabled()) 0.5f else {
+        val transition = rememberInfiniteTransition(label = "scrub_visual")
+        val p by transition.animateFloat(
+            initialValue = 0.05f, targetValue = 0.95f,
+            animationSpec = infiniteRepeatable(tween(3600, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+            label = "playhead"
+        )
+        p
+    }
     // Deterministic pseudo-waveform — peaks toward the end so the "drop" reads visually
     val bars = remember {
         List(26) { i ->

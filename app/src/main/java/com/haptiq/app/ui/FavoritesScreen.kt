@@ -179,9 +179,9 @@ fun FavoritesScreen(
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedContainerColor = ColorSurfaceVariant,
                                 unfocusedContainerColor = ColorSurfaceVariant.copy(alpha = 0.5f),
-                                focusedBorderColor = ColorHapticAccent,
+                                focusedBorderColor = ColorPrimary,
                                 unfocusedBorderColor = ColorOutlineVariant.copy(alpha = 0.3f),
-                                cursorColor = ColorHapticAccent,
+                                cursorColor = ColorPrimary,
                                 focusedTextColor = ColorOnSurface,
                                 unfocusedTextColor = ColorOnSurface
                             ),

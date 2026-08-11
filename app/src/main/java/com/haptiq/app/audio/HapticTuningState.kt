@@ -14,8 +14,22 @@ data class HapticTuningState(
     val isAdaptiveEnabled: Boolean = true,
     /** Enable/disable the kick transient engine entirely. */
     val isKickEnabled: Boolean = true,
-    /** Enable/disable the sub-bass drone engine entirely. */
-    val isBassEnabled: Boolean = true,
+    /**
+     * Enable/disable the sub-bass drone engine entirely. Defaults OFF — the drone
+     * engine caused a real regression (v1.11 stuck-buzz bug) and is being reworked;
+     * kick is the one supported engine while bass is retuned. See HapticStudioScreen's
+     * "Coming Soon" bass section — the Studio doesn't currently expose a way to turn
+     * this back on from the UI, so this default is effectively the only value in play.
+     */
+    val isBassEnabled: Boolean = false,
+    /**
+     * AOT lookahead: pre-fire kicks from the per-track onset map (see
+     * TrackEnergyAnalyzer.onsetsMs) LOOKAHEAD_LEAD_MS before the audio hit, so the motor
+     * is already moving when the bass lands — live FFT detection is inherently ~50-70ms
+     * late. Only active while playing songs that have a kick map; everything else keeps
+     * live detection. Off by default until the scheduler is validated on-device.
+     */
+    val isAotLookaheadEnabled: Boolean = false,
     /** Kick delta threshold — how sharp a transient must be to trigger. Range: 0.01–0.50 */
     val kickThreshold: Float = 0.15f,
     /** Output gain multiplier for the kick punch engine. Range: 0.5–2.0 */

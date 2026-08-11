@@ -30,6 +30,7 @@ class MediaStoreScanner @Inject constructor(
         private val AUDIO_EXTENSIONS = setOf(
             "mp3", "m4a", "aac", "ogg", "opus", "flac", "wav", "wma", "amr", "aiff"
         )
+        private const val ARTWORK_MAX_DIM = 512
     }
 
     /**
@@ -295,6 +296,15 @@ class MediaStoreScanner @Inject constructor(
         File(artworkCacheDir, "${songId.hashCode()}.jpg")
 
     /**
+     * Wipe every extracted-artwork file. Used by Settings → Clear Cache. Safe to call
+     * any time — a missing file just re-extracts (and re-downscales) on the next scan,
+     * same as if the OS reclaimed cacheDir under storage pressure.
+     */
+    fun clearArtworkCache() {
+        artworkCacheDir.listFiles()?.forEach { runCatching { it.delete() } }
+    }
+
+    /**
      * Extract a single song's OWN embedded cover, cache it to disk, and return a
      * file:// URI Coil can load. Cached by songId so rescans are free. Returns ""
      * when the track has no embedded art (caller then falls back to a letter tile).
@@ -318,17 +328,51 @@ class MediaStoreScanner @Inject constructor(
         }
     }
 
-    /** Write already-extracted picture bytes to the cache and return their file URI. */
+    /**
+     * Write already-extracted picture bytes to the cache and return their file URI.
+     * Downscales to [ARTWORK_MAX_DIM] first — embedded covers come straight off the
+     * original file and can be several MB at full album-art resolution (3000×3000+).
+     * Caching that raw meant every scan wrote megabytes per song to disk, and every
+     * scroll through the library made Coil decode a full-size bitmap into memory just
+     * to draw it at ~56dp — with a large library that's the actual cause of the app
+     * "going slow": not the scan itself, but sustained memory pressure/GC from
+     * oversized art on every list recompose. A 512px JPEG is visually identical at
+     * any on-screen tile size and is roughly 1/10th the bytes.
+     */
     private fun cacheEmbeddedPicture(songId: String, picture: ByteArray?): String {
         if (picture == null || picture.isEmpty()) return ""
         val out = artworkFileFor(songId)
         if (out.exists() && out.length() > 0) return Uri.fromFile(out).toString()
         return try {
-            out.writeBytes(picture)
+            out.writeBytes(downscaleArtwork(picture))
             Uri.fromFile(out).toString()
         } catch (e: Exception) {
             Log.w(TAG, "Caching embedded art failed for $songId: ${e.message}")
             ""
+        }
+    }
+
+    /** Decode with an inSampleSize that lands near [ARTWORK_MAX_DIM] on the long
+     *  edge, then re-encode as JPEG. Falls back to the original bytes if decoding
+     *  fails for any reason — a slightly-too-large cache file beats no artwork. */
+    private fun downscaleArtwork(picture: ByteArray): ByteArray {
+        return try {
+            val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            android.graphics.BitmapFactory.decodeByteArray(picture, 0, picture.size, bounds)
+            val longEdge = maxOf(bounds.outWidth, bounds.outHeight)
+            if (longEdge <= 0) return picture
+            var sampleSize = 1
+            while (longEdge / (sampleSize * 2) >= ARTWORK_MAX_DIM) sampleSize *= 2
+            val opts = android.graphics.BitmapFactory.Options().apply { inSampleSize = sampleSize }
+            val bitmap = android.graphics.BitmapFactory.decodeByteArray(picture, 0, picture.size, opts)
+                ?: return picture
+            val out = java.io.ByteArrayOutputStream()
+            bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 85, out)
+            bitmap.recycle()
+            out.toByteArray()
+        } catch (e: Exception) {
+            Log.w(TAG, "Artwork downscale failed, caching original: ${e.message}")
+            picture
         }
     }
 }

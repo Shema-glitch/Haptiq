@@ -1,5 +1,7 @@
 package com.haptiq.app.data
 
+import android.content.Context
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -12,6 +14,7 @@ import javax.inject.Singleton
 
 @Singleton
 class SongRepository @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val mediaStoreScanner: MediaStoreScanner,
     private val userSettings: UserSettingsStore
 ) {
@@ -43,6 +46,22 @@ class SongRepository @Inject constructor(
         _songs.value = songs
         hasLoaded = true
         songs
+    }
+
+    /**
+     * Wipes every disk cache the library depends on — extracted artwork, Coil's
+     * image cache — and forces a fresh scan. Coil's own disk+memory caches are
+     * cleared too, not just the artwork source files: Coil keys entries by the
+     * file:// URI, so a stale in-memory bitmap would otherwise keep showing until
+     * evicted even after the source file was deleted and re-extracted.
+     */
+    @OptIn(coil.annotation.ExperimentalCoilApi::class)
+    suspend fun clearCache() = withContext(Dispatchers.IO) {
+        mediaStoreScanner.clearArtworkCache()
+        val loader = coil.Coil.imageLoader(context)
+        loader.memoryCache?.clear()
+        loader.diskCache?.clear()
+        rescan()
     }
 }
 
@@ -134,6 +153,12 @@ class FavoritesRepository @Inject constructor(private val haptiqDao: HaptiqDao) 
     }
 }
 
+/** Kick-onset + beat-grid data for AOT lookahead — both come from the same decode pass. */
+data class AotMapData(
+    val onsets: IntArray,
+    val beats: IntArray
+)
+
 @Singleton
 class EnergyMapRepository @Inject constructor(
     private val haptiqDao: HaptiqDao,
@@ -145,15 +170,50 @@ class EnergyMapRepository @Inject constructor(
      * the file can't be decoded — callers treat that as "no seek-preview".
      */
     suspend fun energyFor(song: Song): FloatArray? {
-        val frames = haptiqDao.getEnergyMap(song.id)?.frames ?: run {
+        val row = haptiqDao.getEnergyMap(song.id)
+        val frames = row?.frames ?: run {
             val result = analyzer.analyze(song.audioUrl) ?: return null
+            // analyze() computes frames, kick onsets AND the beat grid in one pass — store
+            // all three so neither the AOT scheduler nor the seek preview needs a second decode.
             haptiqDao.insertEnergyMap(
-                TrackEnergyMap(song.id, result.durationMs, result.frames, System.currentTimeMillis())
+                TrackEnergyMap(
+                    song.id, result.durationMs, result.frames,
+                    com.haptiq.app.audio.TrackEnergyAnalyzer.encodeOnsets(result.onsetsMs),
+                    com.haptiq.app.audio.TrackEnergyAnalyzer.encodeOnsets(result.beatsMs),
+                    System.currentTimeMillis()
+                )
             )
             result.frames
         }
         if (frames.isEmpty()) return null
         return FloatArray(frames.size) { (frames[it].toInt() and 0xFF) / 255f }
+    }
+
+    /**
+     * Kick onsets + beat grid for AOT lookahead, in one read. Null only when the file
+     * can't be decoded at all. A row missing either field (written by an older build)
+     * is re-analyzed once and re-stored with both.
+     */
+    suspend fun aotMapFor(song: Song): AotMapData? {
+        val row = haptiqDao.getEnergyMap(song.id)
+        val storedOnsets = row?.onsets
+        val storedBeats = row?.beats
+        if (storedOnsets != null && storedBeats != null) {
+            return AotMapData(
+                com.haptiq.app.audio.TrackEnergyAnalyzer.decodeOnsets(storedOnsets),
+                com.haptiq.app.audio.TrackEnergyAnalyzer.decodeOnsets(storedBeats)
+            )
+        }
+        val result = analyzer.analyze(song.audioUrl) ?: return null
+        haptiqDao.insertEnergyMap(
+            TrackEnergyMap(
+                song.id, result.durationMs, result.frames,
+                com.haptiq.app.audio.TrackEnergyAnalyzer.encodeOnsets(result.onsetsMs),
+                com.haptiq.app.audio.TrackEnergyAnalyzer.encodeOnsets(result.beatsMs),
+                System.currentTimeMillis()
+            )
+        )
+        return AotMapData(result.onsetsMs, result.beatsMs)
     }
 }
 

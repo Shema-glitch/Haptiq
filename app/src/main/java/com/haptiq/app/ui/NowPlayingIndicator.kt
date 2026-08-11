@@ -17,6 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.haptiq.app.ui.theme.ColorHapticAccent
+import com.haptiq.app.ui.theme.isReducedMotionEnabled
 
 @Composable
 fun NowPlayingIndicator(
@@ -24,16 +25,20 @@ fun NowPlayingIndicator(
     height: Dp = 14.dp,
     width: Dp = 3.dp
 ) {
-    val transition = rememberInfiniteTransition(label = "now_playing_pulse")
-    val pulseAlpha by transition.animateFloat(
-        initialValue = 0.5f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(700, easing = EaseInOut),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "now_playing_alpha"
-    )
+    // Reduced motion: solid amber bar — "this track is playing" reads without the pulse.
+    val pulseAlpha = if (isReducedMotionEnabled()) 1f else {
+        val transition = rememberInfiniteTransition(label = "now_playing_pulse")
+        val a by transition.animateFloat(
+            initialValue = 0.5f,
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(700, easing = EaseInOut),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "now_playing_alpha"
+        )
+        a
+    }
 
     Box(
         modifier = Modifier

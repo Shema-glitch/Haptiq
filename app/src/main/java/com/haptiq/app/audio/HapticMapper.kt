@@ -1,56 +1,94 @@
 package com.haptiq.app.audio
 
 import android.os.Build
+import android.os.SystemClock
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.util.Log
+import com.haptiq.app.BuildConfig
 
 class HapticMapper {
 
     private var lastKickTime = 0L
     private var lastDroneTime = 0L
 
+    // AOT lookahead sets this after each scheduled kick; the live gate stays silent
+    // until it passes so one mapped onset isn't felt twice (once pre-fired, once when
+    // the live FFT detector catches it ~50ms later). 0L = never suppressing.
+    private var suppressLiveKickUntil = 0L
+
     // Tracks whether a drone was dispatched — used to gate the sidechain cancel
     private var isDronePlaying = false
 
-    // Re-arm gate: a real kick's energy FALLS back down between hits; a sustained
-    // FX swell / riser stays loud and just fluctuates, and each fluctuation is a
-    // fresh delta over the (loose) adaptive gate — which fired the kick engine over
-    // and over ("twitching"). After a fire the engine disarms until raw energy drops
-    // below REARM_RATIO of the gate, so a swell fires at most once while real kicks
-    // re-arm naturally in the silence between hits.
+    // Re-arm gate: a real kick's energy FALLS back down after the hit; a sustained
+    // FX swell / riser keeps climbing or holds. After a fire the engine disarms and
+    // tracks the peak since the fire — it re-arms when energy drops a real step below
+    // that peak, or after a short timeout as a liveness guarantee. (v1.11 compared
+    // against a fraction of the noise gate instead; on the dB-compressed normalize
+    // scale inter-kick energy never fell that low, so the kick fired once per song
+    // and then stayed disarmed forever.)
     private var kickArmed = true
+    private var rearmPeak = 0f
 
     // ── Cached vibrator capabilities ───────────────────────────────────────────────
-    // areAllPrimitivesSupported() is a synchronous Binder call into the system vibrator
-    // service. Querying it on every single kick/drone fire added a real-world latency
-    // hit (and jitter) to the timing-critical path — this is now queried once per
-    // Vibrator instance and reused, keeping mapAndFire → vibrate() a pure local call.
+    // areAllPrimitivesSupported()/areEffectsSupported() are synchronous Binder calls
+    // into the system vibrator service. Querying them on the timing-critical path added
+    // real latency + jitter to the first fire of a session — they're now queried once
+    // per Vibrator instance via prepare() (off the hot path, at player init) and reused,
+    // keeping mapAndFire → vibrate() a pure local call.
     private var cachedVibrator: Vibrator? = null
     private var kickPrimitiveMode: KickPrimitiveMode = KickPrimitiveMode.NONE
     // ERM / no-amplitude motors ignore the amplitude byte and render everything at
     // full strength — the drone must fall back to duty-cycle modulation there.
     private var hasAmplitudeControl = false
+    // EFFECT_HEAVY_CLICK is the OEM-tuned buzz system UI uses for gesture nav — on
+    // budget phones without composition primitives it's the strongest, snappiest
+    // effect the motor has, far better than a hand-rolled waveform.
+    private var heavyClickSupported = false
 
     private enum class KickPrimitiveMode { THUD_CLICK, THUD_ONLY, CLICK_ONLY, NONE }
+
+    /**
+     * Pre-warm the capability cache off the timing-critical path (player init). The
+     * binder queries below cost real ms the first time they run — doing them at startup
+     * means the very first kick of a session doesn't pay for them.
+     */
+    fun prepare(vibrator: Vibrator?) {
+        if (vibrator != null) ensureCapabilitiesCached(vibrator)
+    }
 
     private fun ensureCapabilitiesCached(vibrator: Vibrator) {
         if (cachedVibrator === vibrator) return
         cachedVibrator = vibrator
-        hasAmplitudeControl = vibrator.hasAmplitudeControl()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            val hasThud = vibrator.areAllPrimitivesSupported(VibrationEffect.Composition.PRIMITIVE_THUD)
-            val hasClick = vibrator.areAllPrimitivesSupported(VibrationEffect.Composition.PRIMITIVE_CLICK)
-            kickPrimitiveMode = when {
-                hasThud && hasClick -> KickPrimitiveMode.THUD_CLICK
-                hasThud -> KickPrimitiveMode.THUD_ONLY
-                hasClick -> KickPrimitiveMode.CLICK_ONLY
-                else -> KickPrimitiveMode.NONE
+        // Some OEM vibrator services are flaky — never let a query failure take down the
+        // callback thread mid-song. Fall back to NONE (waveform/heavy-click rendering).
+        try {
+            hasAmplitudeControl = vibrator.hasAmplitudeControl()
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                val hasThud = vibrator.areAllPrimitivesSupported(VibrationEffect.Composition.PRIMITIVE_THUD)
+                val hasClick = vibrator.areAllPrimitivesSupported(VibrationEffect.Composition.PRIMITIVE_CLICK)
+                kickPrimitiveMode = when {
+                    hasThud && hasClick -> KickPrimitiveMode.THUD_CLICK
+                    hasThud -> KickPrimitiveMode.THUD_ONLY
+                    hasClick -> KickPrimitiveMode.CLICK_ONLY
+                    else -> KickPrimitiveMode.NONE
+                }
+            } else {
+                kickPrimitiveMode = KickPrimitiveMode.NONE
             }
-        } else {
+            heavyClickSupported = when {
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.R ->
+                    vibrator.areEffectsSupported(VibrationEffect.EFFECT_HEAVY_CLICK)[0] !=
+                        Vibrator.VIBRATION_EFFECT_SUPPORT_NO
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q -> true // no query API; system falls back safely
+                else -> false
+            }
+            Log.d(TAG, "Vibrator capabilities cached: kickMode=$kickPrimitiveMode amplitudeControl=$hasAmplitudeControl heavyClick=$heavyClickSupported")
+        } catch (e: Exception) {
             kickPrimitiveMode = KickPrimitiveMode.NONE
+            heavyClickSupported = false
+            Log.w(TAG, "Vibrator capability query failed, falling back to NONE: ${e.message}")
         }
-        Log.d(TAG, "Vibrator capabilities cached: kickMode=$kickPrimitiveMode amplitudeControl=$hasAmplitudeControl")
     }
 
     companion object {
@@ -72,8 +110,16 @@ class HapticMapper {
         const val TAIL_808_MIN_ENV   = 0.55f
         const val TAIL_808_DAMP      = 0.65f
 
-        // Energy must fall below gate * REARM_RATIO before the kick engine can fire again
-        const val KICK_REARM_RATIO   = 0.70f
+        // Re-arm when energy falls below this fraction of its post-fire peak (a kick
+        // tail drops this much within a frame or two; a monotonic riser never does)…
+        const val KICK_REARM_DROP    = 0.88f
+        // …or after this long regardless — the engine can never be locked out.
+        const val KICK_REARM_TIMEOUT_MS = 450L
+
+        // How long a lookahead-scheduled kick silences the live engine. Pre-fire happens
+        // ~LEAD (50ms) early; live detection of the same onset lands up to ~50ms after the
+        // hit. 150ms covers both with margin, and stays well under real-world kick spacing.
+        const val SCHEDULED_KICK_SUPPRESS_MS = 150L
 
         // Bass amplitude ceiling — always softer than kick so kick wins perceptually.
         // Kick now floors near-max scale regardless of the intensity slider (see kick
@@ -102,22 +148,32 @@ class HapticMapper {
         // Smoothed 0..1 bass envelope, song-relative — see BassAudioProcessor.subEnvelope
         subEnvelope: Float = 0f,
         // Frame carried a beater "click" (1.3–5.5kHz burst) — drum kick vs 808 attack
-        clickTransient: Boolean = false
+        clickTransient: Boolean = false,
+        // Playback position at detection time (ms) — DEBUG instrumentation only, used to
+        // correlate fire timestamps with the music when tuning kick timing on-device.
+        playbackPositionMs: Long = 0L
     ) {
         if (vibrator != null) ensureCapabilitiesCached(vibrator)
 
-        val now = System.currentTimeMillis()
+        // Monotonic clock: kick cooldown / re-arm / drone refresh are interval gates —
+        // wall-clock jumps (NTP, user time change) must never shorten or extend them.
+        val now = SystemClock.elapsedRealtime()
         var intensityScalar = (intensity / 100f) * calibrationMultiplier
         if (batterySaverEnabled) intensityScalar *= 0.70f
 
         // ── ENGINE 1: KICK ────────────────────────────────────────────────────────────
-        // Re-arm: only after the raw energy has genuinely fallen (real kicks do between
-        // hits; sustained FX swells don't) may the engine fire again.
-        if (!kickArmed && rawKick < noiseFloorGate * KICK_REARM_RATIO) {
-            kickArmed = true
+        // Re-arm: the energy fell a real step off its post-fire peak (kicks always do,
+        // risers don't), or the timeout passed — whichever comes first.
+        if (!kickArmed) {
+            rearmPeak = maxOf(rearmPeak, rawKick)
+            if (rawKick < rearmPeak * KICK_REARM_DROP ||
+                now - lastKickTime > KICK_REARM_TIMEOUT_MS
+            ) {
+                kickArmed = true
+            }
         }
         if (kickArmed && kickDelta > kickThreshold && rawKick > noiseFloorGate &&
-            (now - lastKickTime > KICK_COOLDOWN_MS)
+            (now - lastKickTime > KICK_COOLDOWN_MS) && now >= suppressLiveKickUntil
         ) {
 
             // SIDECHAIN: cancel the drone only on the transition from drone→kick
@@ -138,10 +194,14 @@ class HapticMapper {
             val kickIntensityScalar = intensityScalar.coerceAtLeast(0.88f)
             val kickScale = ((0.92f + kickDelta * 0.08f).coerceIn(0.92f, 1.00f) *
                 kickIntensityScalar * kickGain).coerceIn(0f, 1f)
-            Log.d(TAG, "KICK fire: delta=$kickDelta raw=$rawKick scale=$kickScale click=$clickTransient vib=${vibrator != null}")
+            // Debug-gated: release builds ship with minify OFF, and unstripped Log.d with
+            // string formatting on the timing-critical thread stalls kick dispatch when
+            // logd throttles or the buffer fills.
+            if (BuildConfig.DEBUG) Log.d(TAG, "KICK fire: delta=$kickDelta raw=$rawKick scale=$kickScale click=$clickTransient posMs=$playbackPositionMs vib=${vibrator != null}")
             fireKick(vibrator, kickScale, clickTransient)
             lastKickTime = now
             kickArmed = false
+            rearmPeak = rawKick
             return
         }
 
@@ -168,7 +228,7 @@ class HapticMapper {
                 val tailDamp = if (is808Tail) TAIL_808_DAMP else 1f
                 val droneScale = (droneAmplitude / 255f) * intensityScalar * bassGain * tailDamp
 
-                Log.d(TAG, "DRONE fire: env=$subEnvelope level=$level tail808=$is808Tail scale=$droneScale vib=${vibrator != null}")
+                if (BuildConfig.DEBUG) Log.d(TAG, "DRONE fire: env=$subEnvelope level=$level tail808=$is808Tail scale=$droneScale posMs=$playbackPositionMs vib=${vibrator != null}")
                 fireDrone(vibrator, droneScale)
                 isDronePlaying = true
                 lastDroneTime = now
@@ -176,6 +236,34 @@ class HapticMapper {
         } else {
             isDronePlaying = false
         }
+    }
+
+    // ── AOT LOOKAHEAD: scheduled kicks ─────────────────────────────────────────────
+    // Precomputed-map kicks (see HaptiqPlayerManager's lookahead scheduler) fire EARLY —
+    // before the audio hit lands — so the motor is already spinning when the transient
+    // arrives, cancelling the live engine's inherent ~50ms FFT detection lag. Same fireKick
+    // path as the live engine; the live gate is silenced for SCHEDULED_KICK_SUPPRESS_MS
+    // afterwards so the same onset isn't double-felt. No-ops when a kick just fired (the
+    // live cooldown also guards the real onset's own live detection).
+    fun scheduleKick(
+        vibrator: Vibrator?,
+        intensity: Int,
+        calibrationMultiplier: Float,
+        batterySaverEnabled: Boolean,
+        kickGain: Float,
+        onsetMs: Long
+    ) {
+        val now = SystemClock.elapsedRealtime()
+        if (now - lastKickTime < KICK_COOLDOWN_MS) return
+        var intensityScalar = (intensity / 100f) * calibrationMultiplier
+        if (batterySaverEnabled) intensityScalar *= 0.70f
+        // Same punch-floor as the live path — a mapped onset is a full-strength transient.
+        val kickIntensityScalar = intensityScalar.coerceAtLeast(0.88f)
+        val scale = (kickIntensityScalar * kickGain).coerceIn(0f, 1f)
+        if (BuildConfig.DEBUG) Log.d(TAG, "AOT kick pre-fire: onsetMs=$onsetMs scale=$scale")
+        fireKick(vibrator, scale, clickTransient = true)
+        lastKickTime = now
+        suppressLiveKickUntil = now + SCHEDULED_KICK_SUPPRESS_MS
     }
 
     // ── KICK: cached capability picks the fastest-starting effect this device actually
@@ -209,13 +297,30 @@ class HapticMapper {
                         .compose()
                 )
                 KickPrimitiveMode.NONE -> {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    if (heavyClickSupported && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        // The system gesture-nav buzz: OEM-tuned per motor, so it's as
+                        // strong and snappy as this exact phone can physically feel.
+                        // Fixed strength by design — a kick should always land hard.
+                        vibrator.vibrate(VibrationEffect.createPredefined(VibrationEffect.EFFECT_HEAVY_CLICK))
+                    } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                         val amplitude = (s * 255f).toInt().coerceIn(210, 255)
-                        vibrator.vibrate(VibrationEffect.createWaveform(
-                            longArrayOf(0, 35, 10),
-                            intArrayOf(0, amplitude, 0),
-                            -1
-                        ))
+                        if (!hasAmplitudeControl) {
+                            // True ERM: motor inertia is slow to start (~30-50ms spin-up), so
+                            // a single 35ms pulse mostly ends before the mass is moving. Two
+                            // pulses with a short gap read as one stronger kick — the motor
+                            // stays spinning through the gap and gets re-energized.
+                            vibrator.vibrate(VibrationEffect.createWaveform(
+                                longArrayOf(0, 35, 8, 35),
+                                intArrayOf(0, amplitude, 0, amplitude),
+                                -1
+                            ))
+                        } else {
+                            vibrator.vibrate(VibrationEffect.createWaveform(
+                                longArrayOf(0, 35, 10),
+                                intArrayOf(0, amplitude, 0),
+                                -1
+                            ))
+                        }
                     } else {
                         @Suppress("DEPRECATION")
                         vibrator.vibrate(35L)
@@ -242,14 +347,19 @@ class HapticMapper {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && hasAmplitudeControl) {
                 vibrator.vibrate(VibrationEffect.createOneShot(DRONE_HOLD_MS, amplitude))
             } else {
-                // No amplitude control (budget ERM): the motor renders every pulse at
-                // full strength, so loudness is approximated by DUTY CYCLE instead —
+                // hasAmplitudeControl() == false: approximate loudness by DUTY CYCLE —
                 // quiet bass holds 40ms of each 60ms refresh window (motor inertia
                 // blurs the gap into a softer rumble), loud bass holds through it.
+                // Still pass the computed amplitude, NOT DEFAULT_AMPLITUDE: some ROMs
+                // (Tecno/MTK legacy vibrator) report no amplitude control while
+                // actually honoring it — full-strength duty pulses on those devices
+                // turned the drone into a harsh nonstop machine-gun buzz. A motor that
+                // truly can't do amplitude just ignores the value, so this is safe on
+                // both kinds of hardware.
                 val holdMs = 40L + ((amplitude - DRONE_MIN_AMP).toFloat() /
                     (DRONE_MAX_AMP - DRONE_MIN_AMP) * 80f).toLong()
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    vibrator.vibrate(VibrationEffect.createOneShot(holdMs, VibrationEffect.DEFAULT_AMPLITUDE))
+                    vibrator.vibrate(VibrationEffect.createOneShot(holdMs, amplitude))
                 } else {
                     @Suppress("DEPRECATION")
                     vibrator.vibrate(holdMs)
