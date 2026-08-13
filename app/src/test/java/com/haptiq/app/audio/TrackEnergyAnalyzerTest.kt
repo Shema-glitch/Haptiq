@@ -226,4 +226,39 @@ class TrackEnergyAnalyzerTest {
         // Pre-roll taps (before 300ms) are dropped.
         assertEquals(0, TrackEnergyAnalyzer.buildUserMap(intArrayOf(100, 150), intArrayOf(100, 150)).size)
     }
+
+    // ── Kick-map editor: snap-to-transient placement ─────────────────────────
+
+    @Test
+    fun snapKickPlacement_snapsToNearbyOnset() {
+        // A tap within 150ms of an auto onset lands exactly on it (sub-bucket exact).
+        val onsets = intArrayOf(500, 1000, 1500)
+        val energy = FloatArray(16) { 0.1f } // below the energy floor → onset wins anyway
+        assertEquals(1000, TrackEnergyAnalyzer.snapKickPlacement(1050, onsets, energy))
+        assertEquals(500, TrackEnergyAnalyzer.snapKickPlacement(480, onsets, energy))
+        // Just outside the onset window (300ms away) → falls through to peak/tap logic.
+        assertTrue(TrackEnergyAnalyzer.snapKickPlacement(200, onsets, energy) != 500)
+    }
+
+    @Test
+    fun snapKickPlacement_fallsBackToLocalPeak() {
+        // No onset near the tap — the strongest local energy peak wins (bucket center).
+        val onsets = intArrayOf(0, 3000, 6000)
+        val energy = FloatArray(24) { 0.1f }
+        energy[4] = 0.9f // bucket 4 → center 4×250+125 = 1125ms
+        assertEquals(1125, TrackEnergyAnalyzer.snapKickPlacement(1200, onsets, energy))
+    }
+
+    @Test
+    fun snapKickPlacement_flatRegionKeepsTap() {
+        val energy = FloatArray(16) { 0.05f }
+        assertEquals(2000, TrackEnergyAnalyzer.snapKickPlacement(2000, IntArray(0), energy))
+    }
+
+    @Test
+    fun snapKickPlacement_clampsToSong() {
+        val energy = FloatArray(8) { 0.05f } // 8 × 250ms = 2000ms of audio
+        assertEquals(0, TrackEnergyAnalyzer.snapKickPlacement(-999, IntArray(0), energy))
+        assertEquals(2000, TrackEnergyAnalyzer.snapKickPlacement(99_999, IntArray(0), energy))
+    }
 }

@@ -103,6 +103,13 @@ data class HaptiqUiState(
     // running tap count (drives the live counter on the tap surface).
     val isTeachingKicks: Boolean = false,
     val teachKickCount: Int = 0,
+    // Kick-map editor (visual waveform): open flag, the user's pin placements, the
+    // auto-detected candidates + beat grid to draw, and whether the map is loading.
+    val isKickMapEditorOpen: Boolean = false,
+    val kickMapEditorPins: List<Int> = emptyList(),
+    val kickMapEditorOnsets: IntArray = IntArray(0),
+    val kickMapEditorBeats: IntArray = IntArray(0),
+    val kickMapEditorLoading: Boolean = false,
     // Transport state
     val isShuffle: Boolean = false,
     val repeatMode: RepeatMode = RepeatMode.OFF,
@@ -210,6 +217,12 @@ sealed interface HaptiqUiAction {
     // from a picked file onto the current song.
     data class ExportTaughtKicks(val song: Song) : HaptiqUiAction
     data class ImportTaughtKicks(val uri: android.net.Uri) : HaptiqUiAction
+    // ── Kick-map editor: visual waveform pinning (tap peaks to mark kicks) ──
+    object OpenKickMapEditor : HaptiqUiAction
+    data class ToggleKickPin(val positionMs: Int) : HaptiqUiAction
+    object ClearKickPins : HaptiqUiAction
+    object SaveKickMapEditor : HaptiqUiAction
+    object CancelKickMapEditor : HaptiqUiAction
 }
 
 // flatMapLatest (used below for activePlaylistId and currentPresetId switching) is
@@ -320,11 +333,20 @@ class HaptiqViewModel @Inject constructor(
                         seekKickMarkers = if (songChanged) emptyList() else it.seekKickMarkers
                     )
                 }
-                // A teach session belongs to one song — swapping tracks drops it.
+                // A teach session belongs to one song — swapping tracks drops it (both
+                // the old tap-along session and the visual editor).
                 if (songChanged) {
                     synchronized(teachTapsLock) { teachTaps.clear() }
                     _uiState.update {
-                        it.copy(isTeachingKicks = false, teachKickCount = 0, hasTaughtMap = false)
+                        it.copy(
+                            isTeachingKicks = false,
+                            teachKickCount = 0,
+                            hasTaughtMap = false,
+                            isKickMapEditorOpen = false,
+                            kickMapEditorPins = emptyList(),
+                            kickMapEditorOnsets = IntArray(0),
+                            kickMapEditorBeats = IntArray(0)
+                        )
                     }
                 }
                 if (song != null) {
@@ -755,6 +777,72 @@ class HaptiqViewModel @Inject constructor(
                 viewModelScope.launch {
                     val onsets = energyMapRepository.userKicksFor(action.song.id) ?: return@launch
                     exportKickMapFile(action.song, onsets)
+                }
+            }
+            is HaptiqUiAction.OpenKickMapEditor -> {
+                val song = _uiState.value.currentSong ?: return
+                _uiState.update {
+                    it.copy(
+                        isKickMapEditorOpen = true,
+                        kickMapEditorPins = emptyList(),
+                        kickMapEditorOnsets = IntArray(0),
+                        kickMapEditorBeats = IntArray(0),
+                        kickMapEditorLoading = true
+                    )
+                }
+                viewModelScope.launch {
+                    // Raw auto candidates + beat grid (never the taught map — the taught
+                    // pins load separately below), then seed pins from the existing map.
+                    val auto = energyMapRepository.autoMapFor(song)
+                    val taught = energyMapRepository.userKicksFor(song.id)
+                    if (_uiState.value.currentSong?.id == song.id) {
+                        _uiState.update {
+                            it.copy(
+                                kickMapEditorOnsets = auto?.onsets ?: IntArray(0),
+                                kickMapEditorBeats = auto?.beats ?: IntArray(0),
+                                kickMapEditorPins = taught?.toList() ?: emptyList(),
+                                kickMapEditorLoading = false
+                            )
+                        }
+                    }
+                }
+            }
+            is HaptiqUiAction.ToggleKickPin -> {
+                _uiState.update {
+                    val pins = it.kickMapEditorPins.toMutableList()
+                    if (pins.contains(action.positionMs)) pins.remove(action.positionMs) else pins.add(action.positionMs)
+                    it.copy(kickMapEditorPins = pins.sorted())
+                }
+            }
+            is HaptiqUiAction.ClearKickPins -> {
+                _uiState.update { it.copy(kickMapEditorPins = emptyList()) }
+            }
+            is HaptiqUiAction.SaveKickMapEditor -> {
+                val song = _uiState.value.currentSong ?: return
+                val pins = _uiState.value.kickMapEditorPins
+                _uiState.update { it.copy(isKickMapEditorOpen = false) }
+                viewModelScope.launch {
+                    if (pins.size < 2) {
+                        // Fewer than two pins — there's no map to speak of; treat as a clear.
+                        energyMapRepository.clearUserKicks(song.id)
+                    } else {
+                        energyMapRepository.saveUserKicksRaw(song, pins.toIntArray())
+                    }
+                    if (_uiState.value.currentSong?.id == song.id) {
+                        loadSeekEnergy(song) // overlay + status reflect the new map
+                        playerManager.refreshAotMap()
+                    }
+                }
+            }
+            is HaptiqUiAction.CancelKickMapEditor -> {
+                _uiState.update {
+                    it.copy(
+                        isKickMapEditorOpen = false,
+                        kickMapEditorPins = emptyList(),
+                        kickMapEditorOnsets = IntArray(0),
+                        kickMapEditorBeats = IntArray(0),
+                        kickMapEditorLoading = false
+                    )
                 }
             }
             is HaptiqUiAction.ImportTaughtKicks -> {

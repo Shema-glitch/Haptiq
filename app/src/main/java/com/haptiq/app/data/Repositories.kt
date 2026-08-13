@@ -237,6 +237,26 @@ class EnergyMapRepository @Inject constructor(
     }
 
     /**
+     * The AUTO-detected map (onsets + beat grid), ignoring any taught map — the editor
+     * shows the raw auto onsets as candidates even when a taught map is in charge.
+     * [aotMapFor] prefers the user map; this one never does.
+     */
+    suspend fun autoMapFor(song: Song): AotMapData? {
+        val row = haptiqDao.getEnergyMap(song.id)
+        val storedOnsets = row?.onsets
+        val storedBeats = row?.beats
+        if (storedOnsets != null && storedBeats != null) {
+            return AotMapData(
+                com.haptiq.app.audio.TrackEnergyAnalyzer.decodeOnsets(storedOnsets),
+                com.haptiq.app.audio.TrackEnergyAnalyzer.decodeOnsets(storedBeats)
+            )
+        }
+        val result = analyzer.analyze(song.audioUrl) ?: return null
+        insertAnalysis(song, result)
+        return AotMapData(result.onsetsMs, result.beatsMs)
+    }
+
+    /**
      * The song's auto-detected onsets (analyzing once if no row exists yet) — the
      * ground-truth transient times used to clean the user's taps. Empty when the file
      * can't be decoded or the detector found nothing.

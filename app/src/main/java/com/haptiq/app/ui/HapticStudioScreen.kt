@@ -54,6 +54,7 @@ fun HapticStudioScreen(
         PresetChipData("soft_pulse", "SNAP")
     )
 
+    Box(Modifier.fillMaxSize()) {
     Scaffold(
         modifier = Modifier
             .fillMaxSize()
@@ -342,12 +343,36 @@ fun HapticStudioScreen(
                 aotMapInfo = state.aotMapInfo,
                 currentSong = state.currentSong,
                 hasTaughtMap = state.hasTaughtMap,
-                isTeaching = state.isTeachingKicks,
-                teachCount = state.teachKickCount,
                 onAction = onTuningAction
             )
 
             Spacer(modifier = Modifier.height(Spacing.md))
+        }
+    }
+
+        // ── Full-screen kick-map editor: visual waveform pinning ───────────────
+        // Replaces the blind tap-along surface — the user sees the waveform and
+        // places pins directly on the peaks they can see (snap-to-transient).
+        if (state.isKickMapEditorOpen) {
+            val song = state.currentSong
+            if (song != null) {
+                KickMapEditorOverlay(
+                    song = song,
+                    energy = state.seekEnergy,
+                    onsets = state.kickMapEditorOnsets,
+                    beats = state.kickMapEditorBeats,
+                    pins = state.kickMapEditorPins,
+                    loading = state.kickMapEditorLoading,
+                    isPlaying = state.isPlaying,
+                    progress = state.playbackProgress,
+                    onTogglePin = { ms -> onTuningAction(HaptiqUiAction.ToggleKickPin(ms)) },
+                    onClear = { onTuningAction(HaptiqUiAction.ClearKickPins) },
+                    onSave = { onTuningAction(HaptiqUiAction.SaveKickMapEditor) },
+                    onCancel = { onTuningAction(HaptiqUiAction.CancelKickMapEditor) },
+                    onTogglePlay = { onTuningAction(HaptiqUiAction.TogglePlayPause) },
+                    onRestart = { onTuningAction(HaptiqUiAction.Seek(0f)) }
+                )
+            }
         }
     }
 }
@@ -359,8 +384,6 @@ private fun TuningDashboardCard(
     aotMapInfo: AotMapInfo,
     currentSong: Song?,
     hasTaughtMap: Boolean,
-    isTeaching: Boolean,
-    teachCount: Int,
     onAction: (HaptiqUiAction) -> Unit
 ) {
     // Pick a .hqmap/.json file to import onto the current song — fires once with the
@@ -605,71 +628,17 @@ private fun TuningDashboardCard(
                 // ── TEACH KICKS: hand-built per-song map ───────────────────────────
                 // Auto-detection reads most songs fine, but a track the detector or beat
                 // grid can't parse (syncopated kick, drifting tempo, 4-of-14 style) gets
-                // a user-taught map: play the song, tap on every kick, and the taps
-                // become this song's AOT map — pre-fired with no beat-grid rejection.
-                if (isTeaching) {
-                    Column(
-                        verticalArrangement = Arrangement.spacedBy(Spacing.sm)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .heightIn(min = 160.dp)
-                                .clip(RoundedCornerShape(Radius.md))
-                                .background(ColorPrimary.copy(alpha = 0.10f))
-                                .border(1.dp, ColorPrimary.copy(alpha = 0.35f), RoundedCornerShape(Radius.md))
-                                .clickable { onAction(HaptiqUiAction.TeachKickTap) },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.spacedBy(Spacing.xs)
-                            ) {
-                                Text(
-                                    text = "TAP ON EVERY KICK",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    color = ColorPrimary,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Text(
-                                    text = if (teachCount < 2)
-                                        "Play the song, then tap the beat here"
-                                    else
-                                        "$teachCount kicks recorded - keep tapping or save",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = ColorOnSurface60
-                                )
-                            }
-                        }
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(Spacing.sm)
-                        ) {
-                            OutlinedButton(
-                                onClick = { onAction(HaptiqUiAction.CancelTeachKicks) },
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Text("Cancel", style = MaterialTheme.typography.labelLarge)
-                            }
-                            Button(
-                                onClick = { onAction(HaptiqUiAction.SaveTeachKicks) },
-                                enabled = teachCount >= 2,
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Text(
-                                    if (teachCount >= 2) "Save ($teachCount kicks)" else "Tap to start",
-                                    style = MaterialTheme.typography.labelLarge
-                                )
-                            }
-                        }
-                    }
-                } else if (currentSong != null) {
+                // a user-taught map: the full-screen editor shows the waveform with every
+                // auto-detected transient marked, and the user pins the kicks they can
+                // SEE — no guessing by ear. Pins are snapped to the real transients, so
+                // the map is exact, and it pre-fires with no beat-grid rejection.
+                if (currentSong != null) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(Spacing.sm)
                     ) {
                         OutlinedButton(
-                            onClick = { onAction(HaptiqUiAction.StartTeachKicks) },
+                            onClick = { onAction(HaptiqUiAction.OpenKickMapEditor) },
                             modifier = Modifier.weight(1f)
                         ) {
                             Text(

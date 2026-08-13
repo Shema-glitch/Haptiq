@@ -274,6 +274,43 @@ class TrackEnergyAnalyzer @Inject constructor(
             return result.toIntArray()
         }
 
+        /**
+         * Snap a waveform tap to the nearest REAL transient for the kick-map editor.
+         * Placement is exact, not guessed: an auto-detected onset within [onsetWindowMs]
+         * wins (those are sub-bucket accurate), else the strongest local energy peak
+         * within [peakWindowMs] (bucket-center resolution), else the tap position itself
+         * (silence/flat region — nothing to snap to). The result is clamped to the song.
+         */
+        fun snapKickPlacement(
+            tapMs: Int,
+            onsetsMs: IntArray,
+            energy: FloatArray,
+            frameMs: Long = FRAME_MS,
+            onsetWindowMs: Int = 150,
+            peakWindowMs: Int = 300
+        ): Int {
+            val clamped = tapMs.coerceIn(0, (energy.size * frameMs).toInt())
+            // 1. Exact transient beats everything else.
+            nearestOnset(clamped, onsetsMs)?.let { n ->
+                if (kotlin.math.abs(n - clamped) <= onsetWindowMs) return n
+            }
+            // 2. Strongest local energy peak in the window (a real hit, not silence).
+            val bucket = (clamped.toLong() / frameMs).toInt().coerceIn(0, energy.lastIndex)
+            val half = (peakWindowMs / frameMs).toInt().coerceAtLeast(1)
+            var best = bucket
+            var bestE = energy[bucket]
+            for (b in (bucket - half)..(bucket + half)) {
+                if (b !in energy.indices) continue
+                if (energy[b] > bestE) { bestE = energy[b]; best = b }
+            }
+            val peakMs = (best * frameMs + frameMs / 2).toInt()
+            if (bestE >= SNAP_ENERGY_FLOOR) return peakMs
+            // 3. Flat/silent region — keep the tap's own position.
+            return clamped
+        }
+
+        private const val SNAP_ENERGY_FLOOR = 0.15f
+
         /** Nearest onset time to [t], or null when [onsetsMs] is empty. */
         private fun nearestOnset(t: Int, onsetsMs: IntArray): Int? {
             if (onsetsMs.isEmpty()) return null
