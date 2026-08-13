@@ -93,28 +93,40 @@ fun KickMapEditorOverlay(
                         overflow = TextOverflow.Ellipsis
                     )
                     Text(
-                        text = buildString {
-                            append(song.artist)
-                            append(" · ")
-                            append(formatMs(song.durationSeconds * 1000))
-                            val bpm = bpmOf(beats)
-                            if (bpm > 0) append(" · ~").append(bpm).append(" BPM")
-                        },
+                        text = "${song.artist} · ${formatMs(song.durationSeconds * 1000)}",
                         style = MaterialTheme.typography.bodySmall,
                         color = ColorOnSurface60,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                 }
-                Text(
-                    text = "${pins.size} kicks",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = if (pins.isNotEmpty()) ColorHapticAccent else ColorOnSurface60,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(Radius.sm))
-                        .background(if (pins.isNotEmpty()) ColorHapticAccent.copy(alpha = 0.12f) else ColorSurfaceVariant.copy(alpha = 0.5f))
-                        .padding(horizontal = Spacing.sm, vertical = Spacing.xs)
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.xs)
+                ) {
+                    // Detected tempo — the rhythm context for placing kicks.
+                    val bpm = bpmOf(beats)
+                    if (bpm > 0) {
+                        Text(
+                            text = "~$bpm BPM",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = ColorPrimary,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(Radius.sm))
+                                .background(ColorPrimary.copy(alpha = 0.12f))
+                                .padding(horizontal = Spacing.sm, vertical = Spacing.xs)
+                        )
+                    }
+                    Text(
+                        text = "${pins.size} kicks",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = if (pins.isNotEmpty()) ColorHapticAccent else ColorOnSurface60,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(Radius.sm))
+                            .background(if (pins.isNotEmpty()) ColorHapticAccent.copy(alpha = 0.12f) else ColorSurfaceVariant.copy(alpha = 0.5f))
+                            .padding(horizontal = Spacing.sm, vertical = Spacing.xs)
+                    )
+                }
             }
             HorizontalDivider(color = ColorOutlineVariant.copy(alpha = 0.4f))
 
@@ -174,6 +186,11 @@ fun KickMapEditorOverlay(
                             )
                         }
                         val xFor: (Int) -> Float = { ms -> (ms / totalMs.toFloat()) * size.width }
+                        // Beat grid here too — rhythm context at the whole-song scale.
+                        beats.forEach { b ->
+                            val x = xFor(b)
+                            drawLine(ColorOutlineVariant.copy(alpha = 0.3f), Offset(x, 0f), Offset(x, size.height), 1.dp.toPx())
+                        }
                         onsets.forEach {
                             drawLine(ColorOnSurface60.copy(alpha = 0.4f), Offset(xFor(it), 0f), Offset(xFor(it), size.height), 1.dp.toPx())
                         }
@@ -230,11 +247,12 @@ fun KickMapEditorOverlay(
                                 cornerRadius = CornerRadius(barWpx / 2f)
                             )
                         }
-                        // Beat grid — faint rhythm context, never louder than the pins.
+                        // Beat grid — rhythm context while placing pins. Visible but
+                        // quieter than the onset ticks and never louder than the pins.
                         val xFor: (Int) -> Float = { ms -> (ms / totalMs.toFloat()) * size.width }
                         beats.forEach { b ->
                             val x = xFor(b)
-                            drawLine(ColorOutlineVariant.copy(alpha = 0.25f), Offset(x, 0f), Offset(x, size.height), 1.dp.toPx())
+                            drawLine(ColorOutlineVariant.copy(alpha = 0.4f), Offset(x, 0f), Offset(x, size.height), 1.dp.toPx())
                         }
                         // Auto candidates: short ticks along the top edge.
                         onsets.forEach { o ->
@@ -262,7 +280,7 @@ fun KickMapEditorOverlay(
                     verticalArrangement = Arrangement.spacedBy(Spacing.sm)
                 ) {
                     Text(
-                        text = "Tap a peak to mark a kick · tap a pin to remove · play to hear your map",
+                        text = "Tap a peak to mark a kick · tap a pin to remove · faint lines are the beat grid",
                         style = MaterialTheme.typography.bodySmall,
                         color = ColorOnSurface60
                     )
