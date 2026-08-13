@@ -174,6 +174,14 @@ class EnergyMapRepository @Inject constructor(
      * been analyzed before; otherwise decoded + analyzed now and cached. Null when
      * the file can't be decoded — callers treat that as "no seek-preview".
      */
+    /** Guarantee a row exists for [song] (analyzing once if needed) so UPDATEs have a target. */
+    private suspend fun ensureRow(song: Song) {
+        if (haptiqDao.getEnergyMap(song.id) == null) {
+            val result = analyzer.analyze(song.audioUrl)
+            if (result != null) insertAnalysis(song, result)
+        }
+    }
+
     /** A fresh analysis result wrapped as a persisted row, preserving any taught map. */
     private suspend fun insertAnalysis(song: Song, result: com.haptiq.app.audio.TrackEnergyResult) {
         val existing = haptiqDao.getEnergyMap(song.id)
@@ -251,13 +259,35 @@ class EnergyMapRepository @Inject constructor(
         val auto = autoOnsetsFor(song)
         val map = com.haptiq.app.audio.TrackEnergyAnalyzer.buildUserMap(tapsMs, auto)
         if (map.isEmpty()) return map
-        if (haptiqDao.getEnergyMap(song.id) == null) {
-            val result = analyzer.analyze(song.audioUrl)
-            if (result != null) insertAnalysis(song, result)
-        }
+        ensureRow(song)
         haptiqDao.setUserOnsets(song.id, com.haptiq.app.audio.TrackEnergyAnalyzer.encodeOnsets(map))
         return map
     }
+
+    /**
+     * Save an already-cleaned kick list verbatim (import path) — unlike [saveUserKicks]
+     * it skips the tap-cleaning: imported times are exact, and snapping them to THIS
+     * device's auto onsets would drag them off. Sorted + deduped with a 60ms gap, and
+     * requires at least two kicks (matches the tap flow's floor).
+     */
+    suspend fun saveUserKicksRaw(song: Song, onsets: IntArray) {
+        val cleaned = onsets.filter { it > 0 }.sorted().let { sorted ->
+            val out = ArrayList<Int>(sorted.size)
+            for (t in sorted) {
+                if (out.isEmpty() || t - out.last() >= 60) out.add(t)
+            }
+            out
+        }
+        if (cleaned.size < 2) return
+        ensureRow(song)
+        haptiqDao.setUserOnsets(song.id, com.haptiq.app.audio.TrackEnergyAnalyzer.encodeOnsets(cleaned.toIntArray()))
+    }
+
+    /** The current taught kick list for [songId], or null when there is no taught map. */
+    suspend fun userKicksFor(songId: String): IntArray? =
+        haptiqDao.getEnergyMap(songId)?.userOnsets
+            ?.let { com.haptiq.app.audio.TrackEnergyAnalyzer.decodeOnsets(it) }
+            ?.takeIf { it.isNotEmpty() }
 
     /** Remove the taught map; the auto map (if any) takes back over. */
     suspend fun clearUserKicks(songId: String) {

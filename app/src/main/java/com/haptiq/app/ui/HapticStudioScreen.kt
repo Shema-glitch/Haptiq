@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.haptiq.app.audio.HapticTuningState
 import com.haptiq.app.audio.KickCharacter
+import com.haptiq.app.data.Song
 import com.haptiq.app.ui.theme.*
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -339,7 +340,7 @@ fun HapticStudioScreen(
             TuningDashboardCard(
                 tuning = tuning,
                 aotMapInfo = state.aotMapInfo,
-                currentSongId = state.currentSong?.id,
+                currentSong = state.currentSong,
                 hasTaughtMap = state.hasTaughtMap,
                 isTeaching = state.isTeachingKicks,
                 teachCount = state.teachKickCount,
@@ -356,12 +357,19 @@ fun HapticStudioScreen(
 private fun TuningDashboardCard(
     tuning: HapticTuningState,
     aotMapInfo: AotMapInfo,
-    currentSongId: String?,
+    currentSong: Song?,
     hasTaughtMap: Boolean,
     isTeaching: Boolean,
     teachCount: Int,
     onAction: (HaptiqUiAction) -> Unit
 ) {
+    // Pick a .hqmap/.json file to import onto the current song — fires once with the
+    // chosen Uri, then the ViewModel reads, validates, and saves it.
+    val importLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) onAction(HaptiqUiAction.ImportTaughtKicks(uri))
+    }
     var expanded by remember { mutableStateOf(false) }
     val chevronRotation by animateFloatAsState(
         targetValue = if (expanded) 180f else 0f,
@@ -655,7 +663,7 @@ private fun TuningDashboardCard(
                             }
                         }
                     }
-                } else if (currentSongId != null) {
+                } else if (currentSong != null) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(Spacing.sm)
@@ -672,7 +680,7 @@ private fun TuningDashboardCard(
                         }
                         if (hasTaughtMap) {
                             TextButton(
-                                onClick = { onAction(HaptiqUiAction.ClearTaughtKicks(currentSongId)) },
+                                onClick = { onAction(HaptiqUiAction.ClearTaughtKicks(currentSong.id)) },
                                 modifier = Modifier.weight(1f)
                             ) {
                                 Text(
@@ -681,6 +689,34 @@ private fun TuningDashboardCard(
                                     color = ColorOnSurface60
                                 )
                             }
+                        }
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(Spacing.sm)
+                    ) {
+                        OutlinedButton(
+                            onClick = {
+                                importLauncher.launch(arrayOf("application/json", "text/plain"))
+                            },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text(
+                                "Import map",
+                                style = MaterialTheme.typography.labelLarge,
+                                color = ColorPrimary
+                            )
+                        }
+                        OutlinedButton(
+                            onClick = { onAction(HaptiqUiAction.ExportTaughtKicks(currentSong)) },
+                            enabled = hasTaughtMap,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text(
+                                "Export map",
+                                style = MaterialTheme.typography.labelLarge,
+                                color = ColorPrimary
+                            )
                         }
                     }
                 }

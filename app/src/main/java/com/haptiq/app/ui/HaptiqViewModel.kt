@@ -15,6 +15,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 enum class SortMode(val label: String) {
@@ -205,6 +206,10 @@ sealed interface HaptiqUiAction {
     object SaveTeachKicks : HaptiqUiAction
     object CancelTeachKicks : HaptiqUiAction
     data class ClearTaughtKicks(val songId: String) : HaptiqUiAction
+    // Share a taught map as a file (share sheet → another device/app) / import one
+    // from a picked file onto the current song.
+    data class ExportTaughtKicks(val song: Song) : HaptiqUiAction
+    data class ImportTaughtKicks(val uri: android.net.Uri) : HaptiqUiAction
 }
 
 // flatMapLatest (used below for activePlaylistId and currentPresetId switching) is
@@ -746,11 +751,65 @@ class HaptiqViewModel @Inject constructor(
                     }
                 }
             }
+            is HaptiqUiAction.ExportTaughtKicks -> {
+                viewModelScope.launch {
+                    val onsets = energyMapRepository.userKicksFor(action.song.id) ?: return@launch
+                    exportKickMapFile(action.song, onsets)
+                }
+            }
+            is HaptiqUiAction.ImportTaughtKicks -> {
+                val song = _uiState.value.currentSong ?: return
+                viewModelScope.launch {
+                    val json = withContext(kotlinx.coroutines.Dispatchers.IO) {
+                        runCatching {
+                            context.contentResolver.openInputStream(action.uri)
+                                ?.bufferedReader()?.use { it.readText() }
+                        }.getOrNull()
+                    } ?: return@launch
+                    val file = KickMapCodec.decode(json) ?: return@launch // junk file → ignore
+                    energyMapRepository.saveUserKicksRaw(song, file.onsets)
+                    if (_uiState.value.currentSong?.id == song.id) {
+                        loadSeekEnergy(song) // overlay + status now show the imported map
+                        playerManager.refreshAotMap()
+                    }
+                }
+            }
             is HaptiqUiAction.ResetTuning -> {
                 _hapticTuning.update { HapticTuningState() }
                 playerManager.updateTuning(_hapticTuning.value)
                 _aotMapInfo.value = AotMapInfo() // lookahead resets to OFF with everything else
             }
+        }
+    }
+
+    /**
+     * Stage the taught map as a cache file and open the system share sheet with it.
+     * The file is named after the song so the recipient can tell what it is; song IDs
+     * differ between devices, so the JSON carries title/artist/duration for humans.
+     */
+    private fun exportKickMapFile(song: Song, onsets: IntArray) {
+        val json = KickMapCodec.encode(song, onsets)
+        val dir = java.io.File(context.cacheDir, "maps").apply { mkdirs() }
+        val safeName = song.title.replace(Regex("[^A-Za-z0-9 _-]"), "").trim()
+            .ifEmpty { song.id }
+        val file = java.io.File(dir, "$safeName.hqmap")
+        runCatching {
+            file.writeText(json)
+            val uri = androidx.core.content.FileProvider.getUriForFile(
+                context, "${context.packageName}.fileprovider", file
+            )
+            val share = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                type = "application/json"
+                putExtra(android.content.Intent.EXTRA_STREAM, uri)
+                putExtra(android.content.Intent.EXTRA_SUBJECT, "Haptiq kick map: ${song.title}")
+                addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(
+                android.content.Intent.createChooser(share, "Share kick map").apply {
+                    addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+            )
         }
     }
 
