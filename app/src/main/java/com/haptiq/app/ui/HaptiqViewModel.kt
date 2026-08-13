@@ -38,7 +38,9 @@ enum class AotMapState { NOT_ENABLED, ANALYZING, READY, NO_MAP }
 data class AotMapInfo(
     val state: AotMapState = AotMapState.NOT_ENABLED,
     val onsetCount: Int = 0,
-    val onBeatCount: Int = 0
+    val onBeatCount: Int = 0,
+    /** True when the map came from Teach kicks — hand-validated, nothing filtered. */
+    val isUserMap: Boolean = false
 )
 
 /** One kick marker on the seek-preview scrubber: where the AOT map detected a kick,
@@ -93,6 +95,13 @@ data class HaptiqUiState(
     // kicks (and which the beat grid will let pre-fire). Shown whether or not the
     // lookahead toggle is on, so you can preview the map before enabling it.
     val seekKickMarkers: List<KickMarker> = emptyList(),
+    // Teach kicks: whether a hand-taught map exists for the current song (shown even
+    // when the lookahead toggle is off, so the Clear button is always reachable).
+    val hasTaughtMap: Boolean = false,
+    // Teach kicks session state: active while the user is tapping along, and the
+    // running tap count (drives the live counter on the tap surface).
+    val isTeachingKicks: Boolean = false,
+    val teachKickCount: Int = 0,
     // Transport state
     val isShuffle: Boolean = false,
     val repeatMode: RepeatMode = RepeatMode.OFF,
@@ -189,6 +198,13 @@ sealed interface HaptiqUiAction {
     data class SetSurfaceAdaptiveEnabled(val enabled: Boolean) : HaptiqUiAction
     data class SetAotLookaheadEnabled(val enabled: Boolean) : HaptiqUiAction
     object ResetTuning : HaptiqUiAction
+    // ── Teach kicks: hand-built per-song kick maps (workaround for songs the auto
+    // detector/grid reads poorly — tap along and the taps become the AOT map) ──
+    object StartTeachKicks : HaptiqUiAction
+    object TeachKickTap : HaptiqUiAction
+    object SaveTeachKicks : HaptiqUiAction
+    object CancelTeachKicks : HaptiqUiAction
+    data class ClearTaughtKicks(val songId: String) : HaptiqUiAction
 }
 
 // flatMapLatest (used below for activePlaylistId and currentPresetId switching) is
@@ -219,6 +235,12 @@ class HaptiqViewModel @Inject constructor(
     /** Separate StateFlow for live DSP tuning — not part of HaptiqUiState to avoid snapshot churn. */
     private val _hapticTuning = MutableStateFlow(HapticTuningState())
     val hapticTuning: StateFlow<HapticTuningState> = _hapticTuning.asStateFlow()
+
+    // ── Teach kicks session state (tap positions collected during Start→Save) ──
+    private val teachTaps = ArrayList<Long>()
+    private val teachTapsLock = Any()
+    // Taps closer than this (ms of playback position) are treated as double-taps.
+    private val teachTapGapMs = 120L
 
     /** Per-song AOT kick-map status — resolved alongside the seek-energy analysis. */
     private val _aotMapInfo = MutableStateFlow(AotMapInfo())
@@ -292,6 +314,13 @@ class HaptiqViewModel @Inject constructor(
                         seekEnergyLoading = if (songChanged) song != null else it.seekEnergyLoading,
                         seekKickMarkers = if (songChanged) emptyList() else it.seekKickMarkers
                     )
+                }
+                // A teach session belongs to one song — swapping tracks drops it.
+                if (songChanged) {
+                    synchronized(teachTapsLock) { teachTaps.clear() }
+                    _uiState.update {
+                        it.copy(isTeachingKicks = false, teachKickCount = 0, hasTaughtMap = false)
+                    }
                 }
                 if (song != null) {
                     recentSongRepository.addRecentSong(song.id)
@@ -658,10 +687,63 @@ class HaptiqViewModel @Inject constructor(
                         val map = energyMapRepository.aotMapFor(song)
                         if (_uiState.value.currentSong?.id == song.id) {
                             _aotMapInfo.value = resolveAotMapInfo(map)
+                            _uiState.update { it.copy(hasTaughtMap = map?.isUserMap == true) }
                         }
                     }
                 } else if (!action.enabled) {
                     _aotMapInfo.value = AotMapInfo()
+                }
+            }
+            is HaptiqUiAction.StartTeachKicks -> {
+                val song = _uiState.value.currentSong ?: return
+                synchronized(teachTapsLock) { teachTaps.clear() }
+                _uiState.update { it.copy(isTeachingKicks = true, teachKickCount = 0) }
+                // Make sure the taps have a map row to land on later (analyze once now,
+                // off the UI thread, so the beat/onset ground truth is ready at save).
+                viewModelScope.launch { energyMapRepository.autoOnsetsFor(song) }
+            }
+            is HaptiqUiAction.TeachKickTap -> {
+                if (!_uiState.value.isTeachingKicks) return
+                val pos = playerManager.getPlayer()?.currentPosition ?: 0L
+                if (pos <= 0L) return // no playback position yet — nothing to anchor to
+                val accepted = synchronized(teachTapsLock) {
+                    val last = teachTaps.lastOrNull()
+                    if (last != null && pos - last < teachTapGapMs) false else {
+                        teachTaps.add(pos)
+                        true
+                    }
+                }
+                if (accepted) _uiState.update { it.copy(teachKickCount = teachTaps.size) }
+            }
+            is HaptiqUiAction.SaveTeachKicks -> {
+                val song = _uiState.value.currentSong ?: return
+                val taps = synchronized(teachTapsLock) {
+                    teachTaps.map { it.toInt() }.toIntArray().also { teachTaps.clear() }
+                }
+                _uiState.update { it.copy(isTeachingKicks = false, teachKickCount = 0) }
+                if (taps.isEmpty()) return
+                viewModelScope.launch {
+                    val saved = energyMapRepository.saveUserKicks(song, taps)
+                    if (saved.isNotEmpty() && _uiState.value.currentSong?.id == song.id) {
+                        // Refresh the overlay + status from the taught map and pick it up
+                        // in the scheduler (cheap Room reads — the row already exists).
+                        loadSeekEnergy(song)
+                        playerManager.refreshAotMap()
+                    }
+                }
+            }
+            is HaptiqUiAction.CancelTeachKicks -> {
+                synchronized(teachTapsLock) { teachTaps.clear() }
+                _uiState.update { it.copy(isTeachingKicks = false, teachKickCount = 0) }
+            }
+            is HaptiqUiAction.ClearTaughtKicks -> {
+                viewModelScope.launch {
+                    energyMapRepository.clearUserKicks(action.songId)
+                    val song = _uiState.value.currentSong
+                    if (song?.id == action.songId) {
+                        loadSeekEnergy(song) // auto map (if any) takes back over
+                        playerManager.refreshAotMap()
+                    }
                 }
             }
             is HaptiqUiAction.ResetTuning -> {
@@ -679,7 +761,7 @@ class HaptiqViewModel @Inject constructor(
         val onBeat = map.onsets.count {
             com.haptiq.app.audio.TrackEnergyAnalyzer.isOnBeat(it, map.beats)
         }
-        return AotMapInfo(AotMapState.READY, map.onsets.size, onBeat)
+        return AotMapInfo(AotMapState.READY, map.onsets.size, onBeat, map.isUserMap)
     }
 
     /** Kept per-song so a slow analysis of the previous track can't clobber the new one. */
@@ -723,7 +805,12 @@ class HaptiqViewModel @Inject constructor(
                     )
                 } ?: emptyList()
                 _uiState.update {
-                    it.copy(seekEnergy = energy, seekEnergyLoading = false, seekKickMarkers = markers)
+                    it.copy(
+                        seekEnergy = energy,
+                        seekEnergyLoading = false,
+                        seekKickMarkers = markers,
+                        hasTaughtMap = map?.isUserMap == true
+                    )
                 }
                 _aotMapInfo.value = resolveAotMapInfo(map)
             }

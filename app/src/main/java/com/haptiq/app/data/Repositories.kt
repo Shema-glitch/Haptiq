@@ -153,10 +153,15 @@ class FavoritesRepository @Inject constructor(private val haptiqDao: HaptiqDao) 
     }
 }
 
-/** Kick-onset + beat-grid data for AOT lookahead — both come from the same decode pass. */
+/**
+ * Kick-onset + beat-grid data for AOT lookahead — both come from the same decode pass.
+ * [isUserMap] marks a user-taught map (Teach kicks): those are hand-validated, so the
+ * scheduler pre-fires every onset without the beat-grid rejection (empty [beats]).
+ */
 data class AotMapData(
     val onsets: IntArray,
-    val beats: IntArray
+    val beats: IntArray,
+    val isUserMap: Boolean = false
 )
 
 @Singleton
@@ -169,20 +174,28 @@ class EnergyMapRepository @Inject constructor(
      * been analyzed before; otherwise decoded + analyzed now and cached. Null when
      * the file can't be decoded — callers treat that as "no seek-preview".
      */
+    /** A fresh analysis result wrapped as a persisted row, preserving any taught map. */
+    private suspend fun insertAnalysis(song: Song, result: com.haptiq.app.audio.TrackEnergyResult) {
+        val existing = haptiqDao.getEnergyMap(song.id)
+        haptiqDao.insertEnergyMap(
+            TrackEnergyMap(
+                song.id, result.durationMs, result.frames,
+                com.haptiq.app.audio.TrackEnergyAnalyzer.encodeOnsets(result.onsetsMs),
+                com.haptiq.app.audio.TrackEnergyAnalyzer.encodeOnsets(result.beatsMs),
+                // A re-analysis must never wipe a taught map — carry it over.
+                userOnsets = existing?.userOnsets,
+                System.currentTimeMillis()
+            )
+        )
+    }
+
     suspend fun energyFor(song: Song): FloatArray? {
         val row = haptiqDao.getEnergyMap(song.id)
         val frames = row?.frames ?: run {
             val result = analyzer.analyze(song.audioUrl) ?: return null
             // analyze() computes frames, kick onsets AND the beat grid in one pass — store
             // all three so neither the AOT scheduler nor the seek preview needs a second decode.
-            haptiqDao.insertEnergyMap(
-                TrackEnergyMap(
-                    song.id, result.durationMs, result.frames,
-                    com.haptiq.app.audio.TrackEnergyAnalyzer.encodeOnsets(result.onsetsMs),
-                    com.haptiq.app.audio.TrackEnergyAnalyzer.encodeOnsets(result.beatsMs),
-                    System.currentTimeMillis()
-                )
-            )
+            insertAnalysis(song, result)
             result.frames
         }
         if (frames.isEmpty()) return null
@@ -196,6 +209,12 @@ class EnergyMapRepository @Inject constructor(
      */
     suspend fun aotMapFor(song: Song): AotMapData? {
         val row = haptiqDao.getEnergyMap(song.id)
+        // A taught map wins: the user hand-validated these kicks, so every one is
+        // pre-fired — no beat-grid rejection (empty beats → isOnBeat accepts all).
+        if (row?.userOnsets != null) {
+            val user = com.haptiq.app.audio.TrackEnergyAnalyzer.decodeOnsets(row.userOnsets)
+            return AotMapData(user, IntArray(0), isUserMap = true)
+        }
         val storedOnsets = row?.onsets
         val storedBeats = row?.beats
         if (storedOnsets != null && storedBeats != null) {
@@ -205,16 +224,49 @@ class EnergyMapRepository @Inject constructor(
             )
         }
         val result = analyzer.analyze(song.audioUrl) ?: return null
-        haptiqDao.insertEnergyMap(
-            TrackEnergyMap(
-                song.id, result.durationMs, result.frames,
-                com.haptiq.app.audio.TrackEnergyAnalyzer.encodeOnsets(result.onsetsMs),
-                com.haptiq.app.audio.TrackEnergyAnalyzer.encodeOnsets(result.beatsMs),
-                System.currentTimeMillis()
-            )
-        )
+        insertAnalysis(song, result)
         return AotMapData(result.onsetsMs, result.beatsMs)
     }
+
+    /**
+     * The song's auto-detected onsets (analyzing once if no row exists yet) — the
+     * ground-truth transient times used to clean the user's taps. Empty when the file
+     * can't be decoded or the detector found nothing.
+     */
+    suspend fun autoOnsetsFor(song: Song): IntArray {
+        val row = haptiqDao.getEnergyMap(song.id)
+        if (row?.onsets != null) return com.haptiq.app.audio.TrackEnergyAnalyzer.decodeOnsets(row.onsets)
+        if (row?.frames != null) return IntArray(0) // analyzed, genuinely no onsets
+        val result = analyzer.analyze(song.audioUrl) ?: return IntArray(0)
+        insertAnalysis(song, result)
+        return result.onsetsMs
+    }
+
+    /**
+     * Save a user-taught kick map for [song]. Ensures a row exists (analyzing once if
+     * needed) so the UPDATE has a target, then stores the cleaned taps. The taught map
+     * immediately overrides the auto map for lookahead and the seek-bar overlay.
+     */
+    suspend fun saveUserKicks(song: Song, tapsMs: IntArray): IntArray {
+        val auto = autoOnsetsFor(song)
+        val map = com.haptiq.app.audio.TrackEnergyAnalyzer.buildUserMap(tapsMs, auto)
+        if (map.isEmpty()) return map
+        if (haptiqDao.getEnergyMap(song.id) == null) {
+            val result = analyzer.analyze(song.audioUrl)
+            if (result != null) insertAnalysis(song, result)
+        }
+        haptiqDao.setUserOnsets(song.id, com.haptiq.app.audio.TrackEnergyAnalyzer.encodeOnsets(map))
+        return map
+    }
+
+    /** Remove the taught map; the auto map (if any) takes back over. */
+    suspend fun clearUserKicks(songId: String) {
+        haptiqDao.setUserOnsets(songId, null)
+    }
+
+    /** True when [songId] currently has a taught map. */
+    suspend fun hasUserMap(songId: String): Boolean =
+        haptiqDao.getEnergyMap(songId)?.userOnsets != null
 }
 
 class CalibrationRepository @Inject constructor(private val haptiqDao: HaptiqDao) {

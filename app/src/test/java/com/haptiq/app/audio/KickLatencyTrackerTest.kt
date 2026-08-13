@@ -58,4 +58,27 @@ class KickLatencyTrackerTest {
         assertEquals(19f, s.max(), 0.001f)
         assertEquals(17f, s.mean(), 0.001f)
     }
+
+    // ── Motor-calibrated AOT lead ───────────────────────────────────────────
+
+    @Test
+    fun `motorLeadMs falls back to 50ms before enough onsets are measured`() {
+        assertEquals(50L, KickLatencyTracker().motorLeadMs())
+        val nearlyEnough = stats(28f, 30f)
+        assertEquals(50L, KickLatencyTracker().motorLeadMsFor(nearlyEnough))
+    }
+
+    @Test
+    fun `motorLeadMs is the p50 dispatch-to-onset latency`() {
+        // p50 of [28, 30, 32] → index 1 → 30
+        assertEquals(30L, KickLatencyTracker().motorLeadMsFor(stats(28f, 30f, 32f)))
+    }
+
+    @Test
+    fun `motorLeadMs is clamped to a sane range`() {
+        // An unusually fast motor (or a weak onset) can't drive the lead below 20ms.
+        assertEquals(20L, KickLatencyTracker().motorLeadMsFor(stats(5f, 10f, 15f)))
+        // A slow ERM or a measurement anomaly can't push it past 120ms.
+        assertEquals(120L, KickLatencyTracker().motorLeadMsFor(stats(200f, 300f, 400f)))
+    }
 }

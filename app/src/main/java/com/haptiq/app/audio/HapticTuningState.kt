@@ -51,7 +51,8 @@ data class HapticTuningState(
     val isBassEnabled: Boolean = false,
     /**
      * AOT lookahead: pre-fire kicks from the per-track onset map (see
-     * TrackEnergyAnalyzer.onsetsMs) LOOKAHEAD_LEAD_MS before the audio hit, so the motor
+     * TrackEnergyAnalyzer.onsetsMs) before the audio hit (by the measured dispatch→onset
+     * motor latency, KickLatencyTracker.motorLeadMs), so the motor
      * is already moving when the bass lands — live FFT detection is inherently ~50-70ms
      * late. Only active while playing songs that have a kick map; everything else keeps
      * live detection. Off by default until the scheduler is validated on-device.

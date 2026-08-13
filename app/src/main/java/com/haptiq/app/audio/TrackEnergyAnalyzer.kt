@@ -16,6 +16,7 @@ import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.math.PI
 import kotlin.math.exp
+import kotlin.math.roundToInt
 import kotlin.math.sqrt
 
 /** Offline bass-energy scan result: one 0–255 sample per [TrackEnergyAnalyzer.FRAME_MS]. */
@@ -80,6 +81,17 @@ class TrackEnergyAnalyzer @Inject constructor(
         // How close an onset must be to a beat for lookahead to trust it (ms). Shared by
         // the scheduler's double-check and the Studio's on-beat count.
         const val BEAT_MATCH_TOLERANCE_MS = 90L
+
+        // ── User-taught kick map (Teach kicks) ───────────────────────────────────
+        // Tap-along taps carry human reaction latency (~100-250ms late) and jitter.
+        // buildUserMap() cleans them: dedupe, drop pre-roll, estimate the median
+        // reaction lag against the auto-detected transients, phase-correct, then snap
+        // each tap to the nearest real transient — the audio gives the exact kick
+        // time; the finger only says "there is a kick here". Taps with no nearby
+        // transient are kept as-is: teaching exists to catch what the detector missed.
+        private const val TEACH_PREROLL_MS = 300
+        private const val TEACH_MIN_TAP_GAP_MS = 120
+        private const val TEACH_OUTPUT_GAP_MS = 60
 
         /** Encode onset/beat times (ms) as 4-byte big-endian ints for Room storage. */
         fun encodeOnsets(timesMs: IntArray): ByteArray {
@@ -156,6 +168,163 @@ class TrackEnergyAnalyzer @Inject constructor(
                 t += periodMs
             }
             return beats.toIntArray()
+        }
+
+        /**
+         * Refined beat period (ms) via parabolic interpolation on the autocorrelation
+         * peak of the onset-strength envelope. detectBeats() locks onto an integer
+         * 40ms-multiple lag; this returns the sub-window peak so the grid period tracks
+         * tempos that aren't exact multiples of 25 BPM. 0 = no steady beat. Kept as its
+         * own function (same constants as detectBeats) so the refinement is testable and
+         * the coarse-grid function stays untouched.
+         */
+        fun refinedPeriodMs(
+            shortRms: List<Float>,
+            windowMs: Long,
+            onsetsMs: IntArray = IntArray(0)
+        ): Float {
+            val n = shortRms.size
+            if (n < BEAT_MAX_LAG + 4) return 0f
+            val strength = FloatArray(n)
+            for (i in 1 until n) strength[i] = maxOf(0f, shortRms[i] - shortRms[i - 1])
+            val corr = DoubleArray(BEAT_MAX_LAG + 1)
+            var bestLag = -1
+            var bestCorr = 0.0
+            for (lag in BEAT_MIN_LAG..BEAT_MAX_LAG) {
+                var s = 0.0
+                for (i in 0 until n - lag) s += strength[i] * strength[i + lag]
+                corr[lag] = s / (n - lag)
+                if (corr[lag] > bestCorr) { bestCorr = corr[lag]; bestLag = lag }
+            }
+            if (bestLag < 0 || bestCorr <= 0.0) return 0f
+            // Same half-tempo guard as detectBeats, so both agree on the period family.
+            while (bestLag % 2 == 0 && bestLag / 2 >= BEAT_MIN_LAG &&
+                corr[bestLag / 2] >= corr[bestLag] * BEAT_HALF_TEMPO_RATIO
+            ) bestLag /= 2
+            val c0 = corr[bestLag]
+            val cm1 = corr[bestLag - 1]
+            val cp1 = corr[bestLag + 1]
+            val denom = cm1 - 2 * c0 + cp1
+            val delta = if (kotlin.math.abs(denom) > 1e-12) 0.5 * (cm1 - cp1) / denom else 0.0
+            val lag = (bestLag + delta.coerceIn(-0.9, 0.9)).coerceAtLeast(1.0)
+            var period = (lag * windowMs).toFloat()
+
+            // Harmonic disambiguation against the actual onsets: a sparse signal can make
+            // the autocorrelation peak land on a 3× (or 2×) multiple of the true beat —
+            // e.g. 1038ms vs a real 344.8ms — which would leave a grid that rejects most
+            // real kicks. The median inter-onset gap is the kick-dominant fundamental, so
+            // when the correlation period is more than 1.5× the median gap, the peak is a
+            // harmonic and the gap wins. Never the other direction: snares between kicks
+            // legitimately HALVE the gap median, so a short gap never overrides.
+            if (onsetsMs.size >= 4) {
+                val gaps = ArrayList<Int>(onsetsMs.size - 1)
+                for (i in 1 until onsetsMs.size) gaps.add(onsetsMs[i] - onsetsMs[i - 1])
+                gaps.sort()
+                val medianGap = gaps[gaps.size / 2].toFloat()
+                if (medianGap >= BEAT_MIN_LAG * windowMs && medianGap <= BEAT_MAX_LAG * windowMs &&
+                    period > medianGap * 1.5f
+                ) period = medianGap
+            }
+            return period
+        }
+
+        /**
+         * Re-anchor a coarse beat grid to the real onsets. The coarse grid is a rigid
+         * arithmetic progression at a quantized period — any period error accumulates and
+         * walks the grid out of [BEAT_MATCH_TOLERANCE_MS] within a few beats. This walks
+         * the grid forward with the refined [periodMs] and snaps each expected beat to the
+         * nearest onset within ±45% of the period, so the grid follows the music while a
+         * genuinely off-beat transient (a snare between kicks) still doesn't attract a
+         * beat. Output stays sorted and on-beat checks keep working unchanged.
+         */
+        fun refineGrid(
+            coarseBeats: IntArray,
+            onsetsMs: IntArray,
+            periodMs: Float,
+            durationMs: Long,
+            anchorRatio: Float = 0.45f
+        ): IntArray {
+            if (coarseBeats.isEmpty() || onsetsMs.isEmpty() || periodMs <= 0f) return coarseBeats
+            val anchorWinMs = (periodMs * anchorRatio).toInt().coerceAtLeast(40)
+            // Cover the full track (the coarse grid may be a harmonic of the true tempo
+            // and too sparse) — the coarse grid only seeds the starting phase.
+            val maxBeats = (durationMs / periodMs).toInt() + 4
+            val result = ArrayList<Int>(maxBeats.coerceAtMost(4096))
+            var expected = coarseBeats[0].toFloat()
+            var cursor = 0
+            while (expected <= durationMs && result.size < maxBeats) {
+                // Nearest onset inside the anchor window around the expected beat.
+                while (cursor < onsetsMs.size && onsetsMs[cursor] < expected - anchorWinMs) cursor++
+                var best = -1
+                var bestDist = (anchorWinMs + 1).toFloat()
+                var j = cursor
+                while (j < onsetsMs.size && onsetsMs[j] <= expected + anchorWinMs) {
+                    val d = kotlin.math.abs(onsetsMs[j] - expected)
+                    if (d < bestDist) { bestDist = d; best = j }
+                    j++
+                }
+                if (best >= 0) {
+                    result.add(onsetsMs[best])
+                    expected = onsetsMs[best] + periodMs
+                } else {
+                    result.add(expected.roundToInt())
+                    expected += periodMs
+                }
+            }
+            return result.toIntArray()
+        }
+
+        /** Nearest onset time to [t], or null when [onsetsMs] is empty. */
+        private fun nearestOnset(t: Int, onsetsMs: IntArray): Int? {
+            if (onsetsMs.isEmpty()) return null
+            var lo = 0
+            var hi = onsetsMs.size - 1
+            while (lo < hi) {
+                val mid = (lo + hi) ushr 1
+                if (onsetsMs[mid] < t) lo = mid + 1 else hi = mid
+            }
+            val best = onsetsMs[lo]
+            return if (lo > 0 && kotlin.math.abs(onsetsMs[lo - 1] - t) < kotlin.math.abs(best - t)) {
+                onsetsMs[lo - 1]
+            } else best
+        }
+
+        /**
+         * Turn a user's tap-along positions into a saved kick map. Pure + unit-testable.
+         * Returns an empty array when there aren't enough usable taps.
+         *
+         * The user taps on every kick they want pre-fired; each tap lands some
+         * reaction-lag late. The auto-detected onsets give the transients' true times
+         * (that part of the detector is accurate — the beat grid was the broken half),
+         * so the taps are median phase-corrected and snapped to them. When the detector
+         * missed a real kick (why the user is teaching), the tap's own time is kept.
+         */
+        fun buildUserMap(tapsMs: IntArray, autoOnsetsMs: IntArray, snapWindowMs: Int = 250): IntArray {
+            val cleaned = ArrayList<Int>(tapsMs.size)
+            for (t in tapsMs.sorted()) {
+                if (t < TEACH_PREROLL_MS) continue
+                if (cleaned.isNotEmpty() && t - cleaned.last() < TEACH_MIN_TAP_GAP_MS) continue
+                cleaned.add(t)
+            }
+            if (cleaned.size < 2) return IntArray(0)
+
+            // Median reaction lag: how far each tap sits from its own transient, over
+            // taps that actually have one nearby. Robust to a few off-target taps.
+            val offsets = ArrayList<Int>(cleaned.size)
+            for (t in cleaned) {
+                val n = nearestOnset(t, autoOnsetsMs)
+                if (n != null && kotlin.math.abs(n - t) <= snapWindowMs) offsets.add(n - t)
+            }
+            val medianOffset = if (offsets.isEmpty()) 0 else offsets.sorted()[offsets.size / 2]
+
+            val result = ArrayList<Int>(cleaned.size)
+            for (t in cleaned) {
+                val corrected = t + medianOffset
+                val n = nearestOnset(corrected, autoOnsetsMs)
+                val v = if (n != null && kotlin.math.abs(n - corrected) <= snapWindowMs) n else corrected
+                if (v > 0 && (result.isEmpty() || v - result.last() >= TEACH_OUTPUT_GAP_MS)) result.add(v)
+            }
+            return result.toIntArray()
         }
 
         /**
@@ -340,7 +509,18 @@ class TrackEnergyAnalyzer @Inject constructor(
             val effectiveDuration = if (durationMs > 0) durationMs else bucketRms.size * FRAME_MS
             // Global beat grid from the same 40ms envelope — used by lookahead to reject
             // off-beat onset false positives. Empty for tracks without a steady beat.
-            val beatsMs = detectBeats(shortRmsList, effectiveDuration, SHORT_MS)
+            // The coarse grid's period is quantized to the 40ms window, so a tempo that
+            // isn't a multiple of 25 BPM (e.g. 174 BPM → 344.8ms) drifts out of the 90ms
+            // match tolerance within a few beats and wrongly rejects real kicks (the
+            // "4 of 14" failure). Refine the period sub-window and re-anchor the grid to
+            // the actual onsets so it hugs the music instead of running on a rigid ruler.
+            val coarseBeats = detectBeats(shortRmsList, effectiveDuration, SHORT_MS)
+            val beatsMs = if (coarseBeats.isEmpty() || onsetsMs.isEmpty()) coarseBeats
+                else refineGrid(
+                    coarseBeats, onsetsMs,
+                    refinedPeriodMs(shortRmsList, SHORT_MS, onsetsMs),
+                    effectiveDuration
+                )
             Log.d(TAG, "analyzed ${frames.size} frames over ${effectiveDuration}ms, " +
                 "${onsetsMs.size} kick onsets, ${beatsMs.size} beats")
             TrackEnergyResult(frames, effectiveDuration, onsetsMs, beatsMs)

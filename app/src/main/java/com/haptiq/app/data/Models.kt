@@ -67,6 +67,12 @@ data class FavoriteSong(
  * [beats] is the beat-grid list (same encoding): per-beat times in ms. Null = never
  * analyzed for beats; empty = no steady beat detected. Lookahead double-checks each
  * onset against the grid and skips off-beat false positives.
+ *
+ * [userOnsets] is a USER-TAUGHT kick map (the "Teach kicks" mode — tap along with
+ * the song and the taps become this song's AOT map). Same encoding. Null = no taught
+ * map. When present it WINS over the auto [onsets]: the user validated these by hand,
+ * so the scheduler pre-fires them without any beat-grid rejection (and the seek-bar
+ * overlay shows them all as will-fire).
  */
 @Entity(tableName = "track_energy_maps")
 data class TrackEnergyMap(
@@ -75,6 +81,7 @@ data class TrackEnergyMap(
     val frames: ByteArray,
     val onsets: ByteArray? = null,
     val beats: ByteArray? = null,
+    val userOnsets: ByteArray? = null,
     val analyzedAt: Long
 ) {
     override fun equals(other: Any?): Boolean =

@@ -62,5 +62,7 @@ interface PlayerManager {
     /** Mini-player swipe-down: stop, clear now-playing, and forget the saved session. */
     fun dismissPlayback()
     fun updateTuning(state: HapticTuningState)
+    /** Re-read the current song's AOT map (e.g. after a taught map is saved/cleared). */
+    fun refreshAotMap()
     fun getPlayer(): ExoPlayer?
 }

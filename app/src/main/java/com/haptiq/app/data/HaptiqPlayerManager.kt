@@ -9,6 +9,7 @@ import android.os.Build
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.util.Log
+import com.haptiq.app.BuildConfig
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
@@ -40,10 +41,10 @@ class HaptiqPlayerManager @Inject constructor(
         // Live FFT detection (Visualizer at ~20Hz) inherently fires kicks 50-70ms after the
         // transient. When enabled (HapticTuningState.isAotLookaheadEnabled, toggled from the
         // Studio), kicks are ALSO pre-fired from a per-track onset map (see
-        // TrackEnergyAnalyzer.onsetsMs) LOOKAHEAD_LEAD_MS before the audio hit, so the motor
-        // is already moving when the bass lands.
-        // How early (ms) a mapped kick fires before its audio position.
-        private const val LOOKAHEAD_LEAD_MS = 50L
+        // TrackEnergyAnalyzer.onsetsMs) before the audio hit, so the motor is already moving
+        // when the bass lands. The lead is the MEASURED dispatch→onset motor latency from
+        // KickLatencyTracker (per-device calibration — an ERM's real spin-up, not a guess);
+        // lookaheadLeadMs is refreshed each time the scheduler restarts.
         // Poll granularity while inside the lead window.
         private const val LOOKAHEAD_POLL_MS = 8L
         // Sleep cap between onsets — keeps the loop idle-friendly on sparse maps.
@@ -67,6 +68,9 @@ class HaptiqPlayerManager @Inject constructor(
     // ── AOT lookahead scheduler state (active only while isAotLookaheadEnabled) ──
     private var lookaheadJob: Job? = null
     private var lookaheadOnsets = IntArray(0)
+    // How early to pre-fire, in ms — the measured dispatch→onset motor latency
+    // (KickLatencyTracker.motorLeadMs()), refreshed on every scheduler restart.
+    private var lookaheadLeadMs = 50L
     // Beat grid for the current song — onsets not near a beat are map false positives
     // (snare thumps, vocal artifacts) and are skipped instead of pre-fired. Empty grid
     // (no steady beat) rejects nothing.
@@ -322,12 +326,13 @@ class HaptiqPlayerManager @Inject constructor(
     }
 
     // ── AOT lookahead kick scheduling ────────────────────────────────────────────────
-    // Pre-fires mapped kicks LOOKAHEAD_LEAD_MS before their audio position so the motor is
-    // already spinning when the transient lands (the live FFT engine is inherently late).
-    // Safe by construction: it only fires when 0 <= onset - position <= LOOKAHEAD_LEAD_MS at
-    // check time, so a stalled position (buffering/pause) can never fire into the void — if
-    // an onset passes unmapped, the live engine catches it as usual. Only runs for songs
-    // with a stored onset map; everything else keeps the live engine alone.
+    // Pre-fires mapped kicks lookaheadLeadMs (the measured dispatch→onset motor latency)
+    // before their audio position so the motor is already spinning when the transient
+    // lands (the live FFT engine is inherently late). Safe by construction: it only fires
+    // when 0 <= onset - position <= lookaheadLeadMs at check time, so a stalled position
+    // (buffering/pause) can never fire into the void — if an onset passes unmapped, the
+    // live engine catches it as usual. Only runs for songs with a stored onset map;
+    // everything else keeps the live engine alone.
     private fun restartLookahead() {
         lookaheadJob?.cancel()
         if (!tuningState.isAotLookaheadEnabled) return
@@ -342,6 +347,12 @@ class HaptiqPlayerManager @Inject constructor(
             lookaheadOnsets = map.onsets
             lookaheadBeats = map.beats
             lookaheadIdx = 0
+            // Per-device calibration: pre-fire by the motor's real measured spin-up.
+            lookaheadLeadMs = kickLatencyTracker.motorLeadMs()
+            if (BuildConfig.DEBUG) Log.i(
+                "HaptiqPlayer",
+                "lookahead start: ${map.onsets.size} kicks (${if (map.isUserMap) "taught map" else "auto map"}), lead=${lookaheadLeadMs}ms"
+            )
             lookaheadLoop()
         }
     }
@@ -362,7 +373,7 @@ class HaptiqPlayerManager @Inject constructor(
             if (lookaheadIdx >= lookaheadOnsets.size) return
             val onset = lookaheadOnsets[lookaheadIdx]
             val lead = onset - posMs
-            if (lead <= LOOKAHEAD_LEAD_MS) {
+            if (lead <= lookaheadLeadMs) {
                 // Beat double-check: skip map false positives (onsets not on the beat
                 // grid) — they don't get pre-fired. Live detection is untouched, so a
                 // genuinely musical off-beat transient is still felt normally.
@@ -383,8 +394,8 @@ class HaptiqPlayerManager @Inject constructor(
             // sleep vs media time drifts at playback speeds != 1.0, but that only shifts the
             // fire a little early/late within the window — the fire condition is re-checked
             // against position, so it can never fire before the audio actually reaches it.
-            val sleep = if (lead > LOOKAHEAD_LEAD_MS)
-                minOf(lead - LOOKAHEAD_LEAD_MS, LOOKAHEAD_QUIET_SLEEP_MS) else LOOKAHEAD_POLL_MS
+            val sleep = if (lead > lookaheadLeadMs)
+                minOf(lead - lookaheadLeadMs, LOOKAHEAD_QUIET_SLEEP_MS) else LOOKAHEAD_POLL_MS
             delay(sleep)
         }
     }
@@ -395,6 +406,15 @@ class HaptiqPlayerManager @Inject constructor(
         lookaheadOnsets = IntArray(0)
         lookaheadBeats = IntArray(0)
         lookaheadIdx = 0
+    }
+
+    /** Re-read the current song's AOT map — picks up a just-taught or cleared map. */
+    override fun refreshAotMap() {
+        if (!tuningState.isAotLookaheadEnabled) return
+        val wasPlaying = _isPlaying.value && _hapticActive.value
+        lookaheadJob?.cancel()
+        lookaheadJob = null
+        if (wasPlaying) restartLookahead()
     }
 
     override fun setSongs(songs: List<Song>, startIndex: Int) {

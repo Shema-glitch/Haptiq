@@ -114,4 +114,116 @@ class TrackEnergyAnalyzerTest {
         assertFalse(TrackEnergyAnalyzer.isOnBeat(0, beats, toleranceMs = 100))
         assertFalse(TrackEnergyAnalyzer.isOnBeat(6000, beats, toleranceMs = 1000))
     }
+
+    // ── Beat-grid drift regression (the "4 of 14" failure) ──────────────────
+
+    @Test
+    fun refinedPeriodMs_tracksNonIntegerTempo() {
+        val windowMs = 40L
+        // 174 BPM → 344.8ms period — no 40ms grid multiple matches it exactly.
+        val periodMs = 344.8
+        val n = 400
+        val env = FloatArray(n)
+        var t = 0.0
+        while (t < n) {
+            env[t.toInt().coerceAtMost(n - 1)] = 1.0f
+            t += periodMs / windowMs
+        }
+        // A sparse impulse train makes the raw autocorrelation peak land on the 3×
+        // harmonic (1038ms) — the median-gap disambiguation must pull it back to the
+        // fundamental. Without onsets, the correlation period is what you get.
+        val onsets = IntArray(40) { (it * periodMs).toInt() }
+        val refined = TrackEnergyAnalyzer.refinedPeriodMs(env.toList(), windowMs, onsets)
+        assertTrue("refined period should be near 344.8, got $refined", refined > 320f && refined < 370f)
+        val noOnsets = TrackEnergyAnalyzer.refinedPeriodMs(env.toList(), windowMs)
+        assertTrue(
+            "correlation-only should still report a beat, got $noOnsets",
+            noOnsets >= 320f && noOnsets <= 1200f
+        )
+    }
+
+    @Test
+    fun refineGrid_hugsNonIntegerTempoOnsets() {
+        // The 174 BPM signature: detected onsets land on 40ms bucket centers that
+        // alternate 320/360ms gaps, and the coarse grid locks to an integer lag
+        // (here 320ms). A rigid 320ms grid drifts out of the 90ms tolerance within
+        // a few beats — only the first handful are on-beat (the real 4-of-14).
+        // The coarse grid is truncated before the tail so the sawtooth can't re-align.
+        val onsets = intArrayOf(
+            20, 360, 700, 1040, 1380, 1720, 2080, 2400, 2760, 3120, 3440, 3800, 4120, 4480
+        )
+        val coarse = intArrayOf(20, 340, 660, 980, 1300, 1620, 1940, 2260, 2580, 2900, 3220, 3540)
+        val oldOnBeat = onsets.count { TrackEnergyAnalyzer.isOnBeat(it, coarse) }
+        assertTrue(
+            "coarse grid must reject most non-integer-tempo kicks (got $oldOnBeat/${onsets.size})",
+            oldOnBeat < onsets.size / 2
+        )
+        val refined = TrackEnergyAnalyzer.refineGrid(coarse, onsets, 344.8f, 6000L)
+        val newOnBeat = onsets.count { TrackEnergyAnalyzer.isOnBeat(it, refined) }
+        assertEquals(
+            "refined grid should accept every kick (got $newOnBeat/${onsets.size})",
+            onsets.size, newOnBeat
+        )
+    }
+
+    @Test
+    fun refineGrid_sparseCoarseGrid_stillCoversAllKicks() {
+        // When the coarse grid is a harmonic of the true tempo it's too sparse — the
+        // refined walk must still produce a beat for every kick, not cap at the coarse
+        // grid's (wrong) count.
+        val onsets = intArrayOf(0, 500, 1000, 1500, 2000, 2500, 3000, 3500, 4000)
+        val coarseHarmonic = intArrayOf(0, 1500, 3000) // 3× too sparse
+        val refined = TrackEnergyAnalyzer.refineGrid(coarseHarmonic, onsets, 500f, 4200L)
+        assertEquals(onsets.size, refined.size)
+        val onBeat = onsets.count { TrackEnergyAnalyzer.isOnBeat(it, refined) }
+        assertEquals(onsets.size, onBeat)
+    }
+
+    @Test
+    fun refineGrid_emptyInputs_passthrough() {
+        val coarse = intArrayOf(0, 480, 960)
+        assertArrayEquals(coarse, TrackEnergyAnalyzer.refineGrid(coarse, IntArray(0), 480f, 2000L))
+        assertArrayEquals(IntArray(0), TrackEnergyAnalyzer.refineGrid(IntArray(0), intArrayOf(100), 480f, 2000L))
+    }
+
+    // ── User-taught kick map (Teach kicks) ─────────────────────────────────
+
+    @Test
+    fun buildUserMap_snapsTapsToTransients() {
+        // True kick times (after the 300ms pre-roll so no tap is dropped); the user
+        // taps ~150ms late with jitter; the auto detector found the true kicks plus
+        // one false positive (a snare at 1150, between two kicks).
+        val trueKicks = intArrayOf(400, 900, 1400, 1900, 2400, 2900, 3400)
+        val auto = intArrayOf(400, 900, 1150, 1400, 1900, 2400, 2900, 3400) // 1150 is the false positive
+        val taps = trueKicks.mapIndexed { i, k -> k + 150 + (i % 3) * 20 - 20 }.toIntArray()
+        val map = TrackEnergyAnalyzer.buildUserMap(taps, auto)
+        // Every tap snapped to its own kick — the false positive never selected
+        // (it's not near any tap), and the output matches the true kicks.
+        assertEquals(trueKicks.size, map.size)
+        for (i in trueKicks.indices) {
+            assertTrue(
+                "kick $i should be near ${trueKicks[i]}, got ${map[i]}",
+                kotlin.math.abs(map[i] - trueKicks[i]) <= 60
+            )
+        }
+    }
+
+    @Test
+    fun buildUserMap_keepsTapsTheDetectorMissed() {
+        // The detector missed every other kick (why the user is teaching). Taps at
+        // the missed kicks must survive, un-snapped (no transient nearby).
+        val auto = intArrayOf(0, 1000, 2000, 3000)
+        val taps = intArrayOf(0, 500, 1000, 1500, 2000, 2500, 3000)
+        val map = TrackEnergyAnalyzer.buildUserMap(taps, auto)
+        assertTrue("missed kicks should be kept (got ${map.joinToString()})", map.contains(500))
+        assertTrue(map.contains(1500))
+        assertTrue(map.contains(2500))
+    }
+
+    @Test
+    fun buildUserMap_tooFewTaps_isEmpty() {
+        assertEquals(0, TrackEnergyAnalyzer.buildUserMap(intArrayOf(1200), intArrayOf(1200)).size)
+        // Pre-roll taps (before 300ms) are dropped.
+        assertEquals(0, TrackEnergyAnalyzer.buildUserMap(intArrayOf(100, 150), intArrayOf(100, 150)).size)
+    }
 }

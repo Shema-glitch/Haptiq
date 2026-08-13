@@ -46,6 +46,10 @@ interface HaptiqDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertEnergyMap(map: TrackEnergyMap)
 
+    /** Write (or clear, with null) the user-taught kick map for a song. */
+    @Query("UPDATE track_energy_maps SET userOnsets = :onsets WHERE songId = :songId")
+    suspend fun setUserOnsets(songId: String, onsets: ByteArray?)
+
     // ── Playlists ────────────────────────────────────────────
     @Query(
         """SELECT p.id, p.name, p.createdAt, COUNT(ps.songId) AS songCount

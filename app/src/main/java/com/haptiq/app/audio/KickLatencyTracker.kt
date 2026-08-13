@@ -9,6 +9,7 @@ import android.os.SystemClock
 import android.util.Log
 import com.haptiq.app.BuildConfig
 import java.util.Locale
+import kotlin.math.roundToInt
 import kotlin.math.sqrt
 
 /**
@@ -58,6 +59,12 @@ class KickLatencyTracker {
         // single sample on an unusual surface (brief phone pick-up mid-song) would
         // otherwise skew the whole session.
         private const val MIN_SURFACE_SAMPLES = 8
+        // AOT lookahead lead, derived from the measured dispatch→onset motor latency.
+        // Until the gyro has confirmed a few onsets, fall back to the old fixed 50ms.
+        private const val LEAD_FALLBACK_MS = 50L
+        private const val LEAD_MIN_MS = 20L
+        private const val LEAD_MAX_MS = 120L
+        private const val LEAD_MIN_SAMPLES = 3
     }
 
     /**
@@ -264,6 +271,24 @@ class KickLatencyTracker {
     fun surfaceCharacterShift(): Int {
         if (measuredOnsets < MIN_SURFACE_SAMPLES) return 0
         return characterShiftForMagnitude(onsetMagnitudes.mean())
+    }
+
+    /**
+     * Measured dispatch→onset motor latency (p50) — how early the AOT lookahead must
+     * pre-fire so the motor peaks at the audio hit. This is the motor-calibration
+     * number the old fixed 50ms lead guessed at: an ERM's real spin-up, measured on
+     * THIS device while music actually plays. Falls back to 50ms until the gyro
+     * confirms enough onsets, clamped to a sane range so one measurement anomaly
+     * can't make the lead absurd.
+     */
+    @Synchronized
+    fun motorLeadMs(): Long = motorLeadMsFor(onsetAfterDispatch)
+
+    /** Pure p50→clamped-lead mapping, split out for unit testing. */
+    internal fun motorLeadMsFor(stats: LatencyStats): Long {
+        if (stats.count < LEAD_MIN_SAMPLES) return LEAD_FALLBACK_MS
+        return stats.percentile(50).roundToInt()
+            .toLong().coerceIn(LEAD_MIN_MS, LEAD_MAX_MS)
     }
 
     private fun logSummary(label: String) {

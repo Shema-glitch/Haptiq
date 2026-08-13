@@ -339,6 +339,10 @@ fun HapticStudioScreen(
             TuningDashboardCard(
                 tuning = tuning,
                 aotMapInfo = state.aotMapInfo,
+                currentSongId = state.currentSong?.id,
+                hasTaughtMap = state.hasTaughtMap,
+                isTeaching = state.isTeachingKicks,
+                teachCount = state.teachKickCount,
                 onAction = onTuningAction
             )
 
@@ -352,6 +356,10 @@ fun HapticStudioScreen(
 private fun TuningDashboardCard(
     tuning: HapticTuningState,
     aotMapInfo: AotMapInfo,
+    currentSongId: String?,
+    hasTaughtMap: Boolean,
+    isTeaching: Boolean,
+    teachCount: Int,
     onAction: (HaptiqUiAction) -> Unit
 ) {
     var expanded by remember { mutableStateOf(false) }
@@ -563,7 +571,10 @@ private fun TuningDashboardCard(
                                 AotMapState.ANALYZING ->
                                     "Analyzing this song's kicks..."
                                 AotMapState.READY ->
-                                    "Ready - ${aotMapInfo.onBeatCount} of ${aotMapInfo.onsetCount} kicks on-beat, pre-firing early"
+                                    if (aotMapInfo.isUserMap)
+                                        "Taught map - ${aotMapInfo.onsetCount} kicks, pre-firing all (no beat filter)"
+                                    else
+                                        "Ready - ${aotMapInfo.onBeatCount} of ${aotMapInfo.onsetCount} kicks on-beat, pre-firing early"
                                 AotMapState.NO_MAP ->
                                     "No kick map for this song - live detection only"
                             },
@@ -581,6 +592,97 @@ private fun TuningDashboardCard(
                             uncheckedTrackColor = ColorSurfaceVariant
                         )
                     )
+                }
+
+                // ── TEACH KICKS: hand-built per-song map ───────────────────────────
+                // Auto-detection reads most songs fine, but a track the detector or beat
+                // grid can't parse (syncopated kick, drifting tempo, 4-of-14 style) gets
+                // a user-taught map: play the song, tap on every kick, and the taps
+                // become this song's AOT map — pre-fired with no beat-grid rejection.
+                if (isTeaching) {
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(Spacing.sm)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 160.dp)
+                                .clip(RoundedCornerShape(Radius.md))
+                                .background(ColorPrimary.copy(alpha = 0.10f))
+                                .border(1.dp, ColorPrimary.copy(alpha = 0.35f), RoundedCornerShape(Radius.md))
+                                .clickable { onAction(HaptiqUiAction.TeachKickTap) },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(Spacing.xs)
+                            ) {
+                                Text(
+                                    text = "TAP ON EVERY KICK",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = ColorPrimary,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = if (teachCount < 2)
+                                        "Play the song, then tap the beat here"
+                                    else
+                                        "$teachCount kicks recorded - keep tapping or save",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = ColorOnSurface60
+                                )
+                            }
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(Spacing.sm)
+                        ) {
+                            OutlinedButton(
+                                onClick = { onAction(HaptiqUiAction.CancelTeachKicks) },
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text("Cancel", style = MaterialTheme.typography.labelLarge)
+                            }
+                            Button(
+                                onClick = { onAction(HaptiqUiAction.SaveTeachKicks) },
+                                enabled = teachCount >= 2,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text(
+                                    if (teachCount >= 2) "Save ($teachCount kicks)" else "Tap to start",
+                                    style = MaterialTheme.typography.labelLarge
+                                )
+                            }
+                        }
+                    }
+                } else if (currentSongId != null) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(Spacing.sm)
+                    ) {
+                        OutlinedButton(
+                            onClick = { onAction(HaptiqUiAction.StartTeachKicks) },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text(
+                                "Teach kicks",
+                                style = MaterialTheme.typography.labelLarge,
+                                color = ColorPrimary
+                            )
+                        }
+                        if (hasTaughtMap) {
+                            TextButton(
+                                onClick = { onAction(HaptiqUiAction.ClearTaughtKicks(currentSongId)) },
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text(
+                                    "Clear taught map",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = ColorOnSurface60
+                                )
+                            }
+                        }
+                    }
                 }
 
                 // ── ENGINE MUTES ─────────────────────────────────────────────────────
