@@ -3,8 +3,10 @@ package com.haptiq.app.ui
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -12,15 +14,22 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
@@ -53,6 +62,7 @@ fun KickMapEditorOverlay(
     isPlaying: Boolean,
     progress: Float,
     onTogglePin: (Int) -> Unit,
+    onScrub: (Float) -> Unit,
     onClear: () -> Unit,
     onSave: () -> Unit,
     onCancel: () -> Unit,
@@ -150,11 +160,19 @@ fun KickMapEditorOverlay(
                 val gap = 3.dp
                 val stepDp = barW + gap
                 val stepPx = with(LocalDensity.current) { stepDp.toPx() }
-                val totalWDp = stepDp * energy.size
+                // Pinch zoom: 1× = full-resolution bar spacing, up to 6× for fine placement.
+                val zoomState = remember { mutableStateOf(1f) }
+                val contentWDp = stepDp * energy.size * zoomState.value
                 val scrollState = rememberScrollState()
                 val scope = rememberCoroutineScope()
+                val scrubHitSlopPx = with(LocalDensity.current) { 24.dp.toPx() }
+                // pointerInput closures capture their first-frame values; these keep the
+                // live progress/callbacks current without restarting an in-progress gesture.
+                val currentProgress by rememberUpdatedState(progress)
+                val currentOnTogglePin by rememberUpdatedState(onTogglePin)
+                val currentOnScrub by rememberUpdatedState(onScrub)
 
-                // ── Overview strip: whole song at a glance; tap to jump the detail ──
+                // ── Overview strip: whole song at a glance; tap to jump, drag to scrub ──
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -164,6 +182,14 @@ fun KickMapEditorOverlay(
                             detectTapGestures { offset ->
                                 val fraction = (offset.x / size.width).coerceIn(0f, 1f)
                                 scope.launch { scrollState.scrollTo((scrollState.maxValue * fraction).toInt()) }
+                            }
+                        }
+                        .pointerInput(Unit) {
+                            detectDragGestures { change, _ ->
+                                // Drag anywhere on the overview scrubs the whole song —
+                                // the fastest way to audition a section without playback.
+                                currentOnScrub((change.position.x / size.width).coerceIn(0f, 1f))
+                                change.consume()
                             }
                         }
                 ) {
@@ -197,13 +223,14 @@ fun KickMapEditorOverlay(
                         pins.forEach {
                             drawLine(ColorHapticAccent, Offset(xFor(it), 0f), Offset(xFor(it), size.height), 2.dp.toPx())
                         }
-                        if (progress > 0f) {
-                            drawLine(ColorPrimary, Offset(progress * size.width, 0f), Offset(progress * size.width, size.height), 2.dp.toPx())
-                        }
-                        // Viewport indicator over the detail's visible window.
-                        val detailWidth = (totalWDp.value - scrollState.maxValue).coerceAtLeast(1f)
-                        val indicatorLeft = size.width * (scrollState.value / totalWDp.value)
-                        val indicatorWidth = size.width * (detailWidth / totalWDp.value)
+                        // Playhead — always drawn so the scrub handle is a discoverable
+                        // affordance even before the song has been played.
+                        drawLine(ColorPrimary, Offset(progress * size.width, 0f), Offset(progress * size.width, size.height), 2.dp.toPx())
+                        // Viewport indicator over the detail's visible window (zoom-aware).
+                        val contentWpx = stepPx * energy.size * zoomState.value
+                        val detailWpx = (contentWpx - scrollState.maxValue).coerceAtLeast(1f)
+                        val indicatorLeft = size.width * (scrollState.value / contentWpx)
+                        val indicatorWidth = size.width * (detailWpx / contentWpx)
                         drawRect(
                             color = ColorPrimary.copy(alpha = 0.12f),
                             topLeft = Offset(indicatorLeft, 0f),
@@ -212,29 +239,112 @@ fun KickMapEditorOverlay(
                     }
                 }
 
-                // ── Detail: full-resolution waveform, scrollable, tap to place ──
+                // ── Detail: full-resolution waveform with one unified gesture handler.
+                // Pinch zooms (1–6×) around the pinch point, single-finger drag pans,
+                // dragging from the playhead handle scrubs (seek + haptic audition),
+                // and a clean tap places/removes a kick pin. The canvas is translated by
+                // the scroll offset via graphicsLayer, so pointer coordinates arrive in
+                // content space and the drawing needs no manual offset. ──
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f)
-                        .horizontalScroll(scrollState)
+                        .clipToBounds()
                 ) {
                     Canvas(
                         modifier = Modifier
-                            .width(totalWDp)
+                            .width(contentWDp)
                             .fillMaxHeight()
+                            .graphicsLayer { translationX = -scrollState.value.toFloat() }
                             .pointerInput(energy.size, onsets.size) {
-                                detectTapGestures { offset ->
-                                    val bucket = (offset.x / stepPx).toInt().coerceIn(0, energy.size - 1)
-                                    val tapMs = (bucket * frameMs + frameMs / 2).toInt()
-                                    onTogglePin(
-                                        TrackEnergyAnalyzer.snapKickPlacement(tapMs, onsets, energy)
-                                    )
+                                awaitEachGesture {
+                                    val down = awaitFirstDown(requireUnconsumed = false)
+                                    var isPinch = false
+                                    var isTap = true
+                                    var scrubbing = false
+                                    var totalDrag = 0f
+                                    var lastDist = 0f
+                                    var scrollNow = scrollState.value.toFloat()
+                                    val slop = viewConfiguration.touchSlop
+                                    val contentW = stepPx * zoomState.value * energy.size
+                                    val nearPlayhead =
+                                        kotlin.math.abs(down.position.x - currentProgress * contentW) <= scrubHitSlopPx
+
+                                    while (true) {
+                                        val event = awaitPointerEvent()
+                                        val pressed = event.changes.filter { it.pressed }
+
+                                        if (pressed.size >= 2) {
+                                            // Pinch: zoom around the centroid, keeping the
+                                            // content under the fingers stationary.
+                                            isPinch = true
+                                            isTap = false
+                                            scrubbing = false
+                                            val c0 = pressed[0]
+                                            val c1 = pressed[1]
+                                            val dist = (c1.position - c0.position).getDistance()
+                                            val centroidX = (c0.position.x + c1.position.x) / 2f
+                                            if (lastDist > 0f && dist > 0f) {
+                                                val factor = dist / lastDist
+                                                if (factor != 1f) {
+                                                    val oldContentX = scrollNow + centroidX
+                                                    zoomState.value = (zoomState.value * factor).coerceIn(1f, 6f)
+                                                    scrollNow = (oldContentX * factor - centroidX)
+                                                        .coerceIn(0f, scrollState.maxValue.toFloat())
+                                                    scrollState.dispatchRawDelta(scrollNow - scrollState.value)
+                                                }
+                                            }
+                                            lastDist = dist
+                                            event.changes.forEach { it.consume() }
+                                        } else if (pressed.size == 1) {
+                                            val change = pressed[0]
+                                            val drag = change.positionChange()
+                                            if (isPinch) { isPinch = false; lastDist = 0f }
+                                            if (scrubbing) {
+                                                val w = stepPx * zoomState.value * energy.size
+                                                currentOnScrub((change.position.x / w).coerceIn(0f, 1f))
+                                                change.consume()
+                                            } else if (nearPlayhead) {
+                                                // Drag from the playhead handle scrubs (seek +
+                                                // haptic audition); a still tap stays a tap.
+                                                totalDrag += drag.x
+                                                if (!scrubbing && kotlin.math.abs(totalDrag) > slop) scrubbing = true
+                                                if (scrubbing) {
+                                                    isTap = false
+                                                    val w = stepPx * zoomState.value * energy.size
+                                                    currentOnScrub((change.position.x / w).coerceIn(0f, 1f))
+                                                    change.consume()
+                                                }
+                                            } else {
+                                                // Plain pan — one finger drags the waveform.
+                                                totalDrag += drag.x
+                                                if (kotlin.math.abs(totalDrag) > slop && isTap) isTap = false
+                                                if (!isTap) {
+                                                    scrollNow += -drag.x
+                                                    scrollState.dispatchRawDelta(-drag.x)
+                                                    change.consume()
+                                                }
+                                            }
+                                        }
+                                        if (event.changes.all { !it.pressed }) break
+                                    }
+
+                                    if (isTap && !scrubbing) {
+                                        // Clean tap (no drag, no pinch): place/remove a pin,
+                                        // snapped to the nearest real transient.
+                                        val bucket = (down.position.x / (stepPx * zoomState.value))
+                                            .toInt().coerceIn(0, energy.size - 1)
+                                        val tapMs = (bucket * frameMs + frameMs / 2).toInt()
+                                        currentOnTogglePin(
+                                            TrackEnergyAnalyzer.snapKickPlacement(tapMs, onsets, energy)
+                                        )
+                                    }
                                 }
                             }
                     ) {
-                        val barWpx = barW.toPx()
-                        val gapPx = gap.toPx()
+                        val z = zoomState.value
+                        val barWpx = barW.toPx() * z
+                        val stepPxZ = stepPx * z
                         val minH = 3.dp.toPx()
                         val baseColor = ColorOutlineVariant.copy(alpha = 0.75f)
                         for (i in energy.indices) {
@@ -242,7 +352,7 @@ fun KickMapEditorOverlay(
                             val h = minH + e * (size.height - minH)
                             drawRoundRect(
                                 color = baseColor,
-                                topLeft = Offset(i * (barWpx + gapPx), (size.height - h) / 2f),
+                                topLeft = Offset(i * stepPxZ, (size.height - h) / 2f),
                                 size = Size(barWpx, h),
                                 cornerRadius = CornerRadius(barWpx / 2f)
                             )
@@ -265,10 +375,11 @@ fun KickMapEditorOverlay(
                             drawLine(ColorHapticAccent, Offset(x, 0f), Offset(x, size.height), 3.dp.toPx())
                             drawCircle(ColorHapticAccent, 4.dp.toPx(), Offset(x, 7.dp.toPx()))
                         }
-                        // Playhead — live position while playing; static once paused.
-                        if (isPlaying || progress > 0f) {
-                            drawLine(ColorPrimary, Offset(progress * size.width, 0f), Offset(progress * size.width, size.height), 2.dp.toPx())
-                        }
+                        // Playhead — live position while playing; static once paused. The
+                        // top dot is the scrub handle (24dp hit slop in the gesture handler).
+                        val playX = currentProgress * size.width
+                        drawLine(ColorPrimary, Offset(playX, 0f), Offset(playX, size.height), 2.dp.toPx())
+                        drawCircle(ColorPrimary, 6.dp.toPx(), Offset(playX, 10.dp.toPx()))
                     }
                 }
 
@@ -280,7 +391,7 @@ fun KickMapEditorOverlay(
                     verticalArrangement = Arrangement.spacedBy(Spacing.sm)
                 ) {
                     Text(
-                        text = "Tap a peak to mark a kick · tap a pin to remove · faint lines are the beat grid",
+                        text = "Pinch to zoom · drag the playhead to scrub · tap a peak to mark a kick",
                         style = MaterialTheme.typography.bodySmall,
                         color = ColorOnSurface60
                     )

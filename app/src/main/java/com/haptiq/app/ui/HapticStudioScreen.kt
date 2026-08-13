@@ -366,6 +366,10 @@ fun HapticStudioScreen(
                     isPlaying = state.isPlaying,
                     progress = state.playbackProgress,
                     onTogglePin = { ms -> onTuningAction(HaptiqUiAction.ToggleKickPin(ms)) },
+                    onScrub = { p ->
+                        onTuningAction(HaptiqUiAction.Seek(p))            // jump the player
+                        onTuningAction(HaptiqUiAction.SeekPreview(p))     // haptic audition
+                    },
                     onClear = { onTuningAction(HaptiqUiAction.ClearKickPins) },
                     onSave = { onTuningAction(HaptiqUiAction.SaveKickMapEditor) },
                     onCancel = { onTuningAction(HaptiqUiAction.CancelKickMapEditor) },
