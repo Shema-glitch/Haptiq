@@ -1,9 +1,12 @@
 package com.haptiq.app.data
 
+import android.content.Context
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
@@ -11,119 +14,54 @@ import javax.inject.Singleton
 
 @Singleton
 class SongRepository @Inject constructor(
-    private val mediaStoreScanner: MediaStoreScanner
+    @ApplicationContext private val context: Context,
+    private val mediaStoreScanner: MediaStoreScanner,
+    private val userSettings: UserSettingsStore
 ) {
-    // Cached songs from device scan
-    private var cachedSongs: List<Song>? = null
+    // Hot, always-current — unlike a one-shot cold Flow, every collector sees every
+    // future scanDevice() result too, not just whatever was true at first collection.
+    private val _songs = MutableStateFlow<List<Song>>(emptyList())
+    val allSongs: StateFlow<List<Song>> = _songs.asStateFlow()
 
-    // Hardcoded demo songs as fallback when no local music found
-    private val demoSongs = listOf(
-        Song(
-            id = "demo_1",
-            title = "Resonance Cascade",
-            artist = "Neural Shift",
-            durationSeconds = 302,
-            artworkUrl = "https://lh3.googleusercontent.com/aida-public/AB6AXuDHq_tT-9SIwg_xOTYAO5by3FJ8YRpFH2VYhp5B0v_YTsXwbrfBoKLb4p2I9s-s0QR4pXHuCZULL683uWvShXi6GgAtCFCCL5f90X7uGiH-nGQYPN7g4IjA4Sj98SY-b14qOJxjEjDVf8-ITg2qhK75T-MaYaLaGbko9o95JH9wqwE2yQHxViazabJVtpsQ4xUpbjyuHFdJigjqSR_BIIrvlXY7m7Y3Y4QLA-g0-AG5_nuwdDbtliTu5Z8MeCByqJI_BvfE4aXMNKRk",
-            audioUrl = "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
-            hapticPresetId = "deep_bass"
-        ),
-        Song(
-            id = "demo_2",
-            title = "Subterranean",
-            artist = "Echolocation",
-            durationSeconds = 422,
-            artworkUrl = "https://lh3.googleusercontent.com/aida-public/AB6AXuBa7AhRy9DzqC8q2tzvaCouepKNtDriqjHMvEdT-cwRZq1IxCyUcGZEVWLqzuFtwyrg1-KFyUv6cOPtcdaSerjkM_fxBypkiJpRVJKLEcJnNKCEv--2iaWDq108yTPJi4Zb2fI1FrMl2gPm7NyZYMI_h3-s0ytCTlzeLPy8mnNSZWv-B3l4jHI3TBYdJXA36q-3oY_yVMNpraSQS0ftitYyWeU6QOnnEg6Cl6sgaXJaMScite-Lj8zA0pusVtbDcZacaI-gFGoFLT4B",
-            audioUrl = "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3",
-            hapticPresetId = "punch"
-        ),
-        Song(
-            id = "demo_3",
-            title = "Tactile Memory",
-            artist = "The Architects",
-            durationSeconds = 345,
-            artworkUrl = "https://lh3.googleusercontent.com/aida-public/AB6AXuAujAtMpfTLuVEuSQPbS4SXfIQGw3pKmyqMUpeaOpKOxyABF5Saw4pUUdKraUPzXIO2pPYS7qHGRMFA5oiq5gJ4xrpxjWPWiRqxIbvOPdpQyVjQ9w7TKdi6E72jg2GEWGTtzTyj9bn_piJLtXjOsWSLvVOx3R6U5IvoCPbGgSM_pX1kPEffe1wKrS-mRy5XtWlnCpHyjld-Uq0lot1eZu7rCcomHzWxy3DJUU8XE_UEJ9Z44ClE6rT6G_muaKg9luBL5vwI7WFqFm1S",
-            audioUrl = "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3",
-            hapticPresetId = "concert"
-        ),
-        Song(
-            id = "demo_4",
-            title = "Frequency Shift",
-            artist = "Aura Mechanics",
-            durationSeconds = 288,
-            artworkUrl = "https://lh3.googleusercontent.com/aida-public/AB6AXuDYiclGmptxTn1QwBo6c7g00jBhkmzF9F5jDvGyzmuKJzWSUMzTTvwenLqeWLOqD8xZAWvYWa90feY5CJk77TIPuTVJXh5BBiW-FFyT52VSmMpeOkwzQuIcrZI2RJMlDKJ-pVakuuvINs0XCI8rqfnvHtXdkbbqP8PE4Cbr24p592KAJonMa3SkTylb_2RFlpVzQUWSJyGtwCQsIfeQbh7hiNZsD52DaTQT5ZKCyhK4m1Mn2CTb-C2WtN1Ae1QLmB5N9eTmmsC1nWt_",
-            audioUrl = "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3",
-            hapticPresetId = "soft_pulse"
-        ),
-        Song(
-            id = "demo_5",
-            title = "Concrete Echo",
-            artist = "The Architects",
-            durationSeconds = 310,
-            artworkUrl = "https://lh3.googleusercontent.com/aida-public/AB6AXuD-3MwT7pEGJxKv8KaCHqX3kFW_CSY2hEGPZCtd2yIVEE4bE_KkE0IooSOFsEdjmevIHntrRbbW6KJ6sKQrbJ0oMShOeCzZGiXRnNweQS9yliz9GMGalB9Umb1tkmF1xb96b_UfeXTsHuYTg0Ha7oF2fqJ0zmmcQ6fKFUBPLzB8fS_nkimU5Q84Dnb_G-_Rtw4sVlNcqP-80JQH3_E20G5_KzIUUNliTH3eCOe03fDI2nBLYzGzorpxmCdliCsRkca-Yb44vgZD-cXK",
-            audioUrl = "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-5.mp3",
-            hapticPresetId = "deep_bass"
-        ),
-        Song(
-            id = "demo_6",
-            title = "Viscous Flow",
-            artist = "Liquid State",
-            durationSeconds = 412,
-            artworkUrl = "https://lh3.googleusercontent.com/aida-public/AB6AXuAf53JUtHpwEzKvv6pxC9f6lVECmA9zF3uDlhThIBzdGXPrJYTQLULO41RBPitEgRDiSjbHXcl_ZRa0ATanQpS5Mqwji_R-dIw8G0n7aYpE7lOlVasG2jQPGYwSnRv8d80JqG2LtO0K_P-KtgZVezAeGoOfwgo4stZneX58hyFsTTWlQAtsh3ymdi7qfRoJr1g0mRDir1zUB9PsiwUJVf4wVcghBFY-il09HyBoNeeexkp260WvjyIEyxaVS8V3lRmaLW71xolHt0eM",
-            audioUrl = "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-6.mp3",
-            hapticPresetId = "punch"
-        ),
-        Song(
-            id = "demo_7",
-            title = "Neon Pulse Iteration",
-            artist = "The Synthetics",
-            durationSeconds = 240,
-            artworkUrl = "https://lh3.googleusercontent.com/aida-public/AB6AXuAhz4RkW3-MIhZYGswOmrHa0wrqknKS9fgtHOO5z7SoDhSjIavBU4Wq8YGxbusf4WCyODnq-TeWugf-FE1JSSG0qLXSkPMZQ1M2tJHtnidD_TBVopksRWPNkghldPCe0e76jfEM6IsdNw69VHSOqrektg3EU8l9hrZQjHuWX5qcm1iODjAxx5p7LwGCxs2FNJfoL8F_qHPB_QcKpzxq-MeEx-MnbaSXlP23KVqxEyaykmeSaEwCvrHJs4Vi2JsaieqKNLFcO-7JpkN7",
-            audioUrl = "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-7.mp3",
-            hapticPresetId = "deep_bass"
-        )
-    )
+    private var hasLoaded = false
 
-    /**
-     * Get all songs — real device songs only. No mock fallback.
-     * Returns empty list if no music found, which triggers the empty state in the UI.
-     */
-    fun getAllSongs(): Flow<List<Song>> = flow {
-        val cached = cachedSongs
-        if (cached != null) {
-            emit(cached)
-            return@flow
-        }
-
-        val localSongs = try {
-            mediaStoreScanner.scanForAudio()
-        } catch (e: Exception) {
-            emptyList()
-        }
-
-        cachedSongs = localSongs
-        emit(localSongs)
-    }
+    fun isLoaded(): Boolean = hasLoaded
 
     fun getSongById(id: String): Song? {
-        return cachedSongs?.find { it.id == id } ?: demoSongs.find { it.id == id }
+        return _songs.value.find { it.id == id } ?: demoSongs.find { it.id == id }
     }
 
-    /**
-     * Force a rescan of the device.
-     */
+    /** Force the next scanDevice() to be treated as a fresh load. */
     fun rescan() {
-        cachedSongs = null
+        hasLoaded = false
     }
 
     /**
-     * Scan the device for audio files and update the cache.
+     * Scan the device for audio files and update [allSongs].
+     * Runs on IO — MediaStore queries are blocking and must never run on Main.
      * Returns the scanned songs, or throws on failure.
      */
     suspend fun scanDevice(onProgress: ((Int, String) -> Unit)? = null): List<Song> = withContext(Dispatchers.IO) {
-        cachedSongs = null
-        val songs = mediaStoreScanner.scanForAudio(onProgress)
-        cachedSongs = songs
+        val songs = mediaStoreScanner.scanForAudio(userSettings.minDurationSec, onProgress)
+        _songs.value = songs
+        hasLoaded = true
         songs
+    }
+
+    /**
+     * Wipes every disk cache the library depends on — extracted artwork, Coil's
+     * image cache — and forces a fresh scan. Coil's own disk+memory caches are
+     * cleared too, not just the artwork source files: Coil keys entries by the
+     * file:// URI, so a stale in-memory bitmap would otherwise keep showing until
+     * evicted even after the source file was deleted and re-extracted.
+     */
+    @OptIn(coil.annotation.ExperimentalCoilApi::class)
+    suspend fun clearCache() = withContext(Dispatchers.IO) {
+        mediaStoreScanner.clearArtworkCache()
+        val loader = coil.Coil.imageLoader(context)
+        loader.memoryCache?.clear()
+        loader.diskCache?.clear()
+        rescan()
     }
 }
 
@@ -168,6 +106,217 @@ class PresetRepository @Inject constructor(private val haptiqDao: HaptiqDao) {
     suspend fun savePreset(presetId: String, intensity: Int, sensitivity: Int) {
         haptiqDao.insertPreset(SavedPresets(presetId, intensity, sensitivity))
     }
+}
+
+class PlaylistRepository @Inject constructor(
+    private val haptiqDao: HaptiqDao,
+    private val songRepository: SongRepository
+) {
+    val allPlaylists: Flow<List<PlaylistWithCount>> = haptiqDao.getAllPlaylists()
+
+    /** Songs of a playlist, resolved against the scanned library, in stored order. */
+    fun songsOf(playlistId: Long): Flow<List<Song>> =
+        haptiqDao.getPlaylistSongs(playlistId).map { entries ->
+            entries.mapNotNull { songRepository.getSongById(it.songId) }
+        }
+
+    suspend fun create(name: String): Long =
+        haptiqDao.insertPlaylist(Playlist(name = name.trim(), createdAt = System.currentTimeMillis()))
+
+    suspend fun rename(id: Long, name: String) = haptiqDao.renamePlaylist(id, name.trim())
+
+    suspend fun delete(id: Long) {
+        haptiqDao.clearPlaylistSongs(id)
+        haptiqDao.deletePlaylist(id)
+    }
+
+    suspend fun addSong(playlistId: Long, songId: String) {
+        val position = haptiqDao.playlistSize(playlistId)
+        haptiqDao.insertPlaylistSong(
+            PlaylistSong(playlistId, songId, position, System.currentTimeMillis())
+        )
+    }
+
+    suspend fun removeSong(playlistId: Long, songId: String) =
+        haptiqDao.removePlaylistSong(playlistId, songId)
+}
+
+class FavoritesRepository @Inject constructor(private val haptiqDao: HaptiqDao) {
+    val allFavoriteIds: Flow<Set<String>> = haptiqDao.getAllFavoriteIds().map { it.toSet() }
+
+    suspend fun toggle(songId: String, isCurrentlyFavorite: Boolean) {
+        if (isCurrentlyFavorite) {
+            haptiqDao.deleteFavorite(songId)
+        } else {
+            haptiqDao.insertFavorite(FavoriteSong(songId, System.currentTimeMillis()))
+        }
+    }
+}
+
+/**
+ * Kick-onset + beat-grid data for AOT lookahead — both come from the same decode pass.
+ * [isUserMap] marks a user-taught map (Teach kicks): those are hand-validated, so the
+ * scheduler pre-fires every onset without the beat-grid rejection (empty [beats]).
+ */
+data class AotMapData(
+    val onsets: IntArray,
+    val beats: IntArray,
+    val isUserMap: Boolean = false
+)
+
+@Singleton
+class EnergyMapRepository @Inject constructor(
+    private val haptiqDao: HaptiqDao,
+    private val analyzer: com.haptiq.app.audio.TrackEnergyAnalyzer
+) {
+    /**
+     * Normalized 0–1 bass envelope for a song. Served from Room when the track has
+     * been analyzed before; otherwise decoded + analyzed now and cached. Null when
+     * the file can't be decoded — callers treat that as "no seek-preview".
+     */
+    /** Guarantee a row exists for [song] (analyzing once if needed) so UPDATEs have a target. */
+    private suspend fun ensureRow(song: Song) {
+        if (haptiqDao.getEnergyMap(song.id) == null) {
+            val result = analyzer.analyze(song.audioUrl)
+            if (result != null) insertAnalysis(song, result)
+        }
+    }
+
+    /** A fresh analysis result wrapped as a persisted row, preserving any taught map. */
+    private suspend fun insertAnalysis(song: Song, result: com.haptiq.app.audio.TrackEnergyResult) {
+        val existing = haptiqDao.getEnergyMap(song.id)
+        haptiqDao.insertEnergyMap(
+            TrackEnergyMap(
+                song.id, result.durationMs, result.frames,
+                com.haptiq.app.audio.TrackEnergyAnalyzer.encodeOnsets(result.onsetsMs),
+                com.haptiq.app.audio.TrackEnergyAnalyzer.encodeOnsets(result.beatsMs),
+                // A re-analysis must never wipe a taught map — carry it over.
+                userOnsets = existing?.userOnsets,
+                System.currentTimeMillis()
+            )
+        )
+    }
+
+    suspend fun energyFor(song: Song): FloatArray? {
+        val row = haptiqDao.getEnergyMap(song.id)
+        val frames = row?.frames ?: run {
+            val result = analyzer.analyze(song.audioUrl) ?: return null
+            // analyze() computes frames, kick onsets AND the beat grid in one pass — store
+            // all three so neither the AOT scheduler nor the seek preview needs a second decode.
+            insertAnalysis(song, result)
+            result.frames
+        }
+        if (frames.isEmpty()) return null
+        return FloatArray(frames.size) { (frames[it].toInt() and 0xFF) / 255f }
+    }
+
+    /**
+     * Kick onsets + beat grid for AOT lookahead, in one read. Null only when the file
+     * can't be decoded at all. A row missing either field (written by an older build)
+     * is re-analyzed once and re-stored with both.
+     */
+    suspend fun aotMapFor(song: Song): AotMapData? {
+        val row = haptiqDao.getEnergyMap(song.id)
+        // A taught map wins: the user hand-validated these kicks, so every one is
+        // pre-fired — no beat-grid rejection (empty beats → isOnBeat accepts all).
+        if (row?.userOnsets != null) {
+            val user = com.haptiq.app.audio.TrackEnergyAnalyzer.decodeOnsets(row.userOnsets)
+            return AotMapData(user, IntArray(0), isUserMap = true)
+        }
+        val storedOnsets = row?.onsets
+        val storedBeats = row?.beats
+        if (storedOnsets != null && storedBeats != null) {
+            return AotMapData(
+                com.haptiq.app.audio.TrackEnergyAnalyzer.decodeOnsets(storedOnsets),
+                com.haptiq.app.audio.TrackEnergyAnalyzer.decodeOnsets(storedBeats)
+            )
+        }
+        val result = analyzer.analyze(song.audioUrl) ?: return null
+        insertAnalysis(song, result)
+        return AotMapData(result.onsetsMs, result.beatsMs)
+    }
+
+    /**
+     * The AUTO-detected map (onsets + beat grid), ignoring any taught map — the editor
+     * shows the raw auto onsets as candidates even when a taught map is in charge.
+     * [aotMapFor] prefers the user map; this one never does.
+     */
+    suspend fun autoMapFor(song: Song): AotMapData? {
+        val row = haptiqDao.getEnergyMap(song.id)
+        val storedOnsets = row?.onsets
+        val storedBeats = row?.beats
+        if (storedOnsets != null && storedBeats != null) {
+            return AotMapData(
+                com.haptiq.app.audio.TrackEnergyAnalyzer.decodeOnsets(storedOnsets),
+                com.haptiq.app.audio.TrackEnergyAnalyzer.decodeOnsets(storedBeats)
+            )
+        }
+        val result = analyzer.analyze(song.audioUrl) ?: return null
+        insertAnalysis(song, result)
+        return AotMapData(result.onsetsMs, result.beatsMs)
+    }
+
+    /**
+     * The song's auto-detected onsets (analyzing once if no row exists yet) — the
+     * ground-truth transient times used to clean the user's taps. Empty when the file
+     * can't be decoded or the detector found nothing.
+     */
+    suspend fun autoOnsetsFor(song: Song): IntArray {
+        val row = haptiqDao.getEnergyMap(song.id)
+        if (row?.onsets != null) return com.haptiq.app.audio.TrackEnergyAnalyzer.decodeOnsets(row.onsets)
+        if (row?.frames != null) return IntArray(0) // analyzed, genuinely no onsets
+        val result = analyzer.analyze(song.audioUrl) ?: return IntArray(0)
+        insertAnalysis(song, result)
+        return result.onsetsMs
+    }
+
+    /**
+     * Save a user-taught kick map for [song]. Ensures a row exists (analyzing once if
+     * needed) so the UPDATE has a target, then stores the cleaned taps. The taught map
+     * immediately overrides the auto map for lookahead and the seek-bar overlay.
+     */
+    suspend fun saveUserKicks(song: Song, tapsMs: IntArray): IntArray {
+        val auto = autoOnsetsFor(song)
+        val map = com.haptiq.app.audio.TrackEnergyAnalyzer.buildUserMap(tapsMs, auto)
+        if (map.isEmpty()) return map
+        ensureRow(song)
+        haptiqDao.setUserOnsets(song.id, com.haptiq.app.audio.TrackEnergyAnalyzer.encodeOnsets(map))
+        return map
+    }
+
+    /**
+     * Save an already-cleaned kick list verbatim (import path) — unlike [saveUserKicks]
+     * it skips the tap-cleaning: imported times are exact, and snapping them to THIS
+     * device's auto onsets would drag them off. Sorted + deduped with a 60ms gap, and
+     * requires at least two kicks (matches the tap flow's floor).
+     */
+    suspend fun saveUserKicksRaw(song: Song, onsets: IntArray) {
+        val cleaned = onsets.filter { it > 0 }.sorted().let { sorted ->
+            val out = ArrayList<Int>(sorted.size)
+            for (t in sorted) {
+                if (out.isEmpty() || t - out.last() >= 60) out.add(t)
+            }
+            out
+        }
+        if (cleaned.size < 2) return
+        ensureRow(song)
+        haptiqDao.setUserOnsets(song.id, com.haptiq.app.audio.TrackEnergyAnalyzer.encodeOnsets(cleaned.toIntArray()))
+    }
+
+    /** The current taught kick list for [songId], or null when there is no taught map. */
+    suspend fun userKicksFor(songId: String): IntArray? =
+        haptiqDao.getEnergyMap(songId)?.userOnsets
+            ?.let { com.haptiq.app.audio.TrackEnergyAnalyzer.decodeOnsets(it) }
+            ?.takeIf { it.isNotEmpty() }
+
+    /** Remove the taught map; the auto map (if any) takes back over. */
+    suspend fun clearUserKicks(songId: String) {
+        haptiqDao.setUserOnsets(songId, null)
+    }
+
+    /** True when [songId] currently has a taught map. */
+    suspend fun hasUserMap(songId: String): Boolean =
+        haptiqDao.getEnergyMap(songId)?.userOnsets != null
 }
 
 class CalibrationRepository @Inject constructor(private val haptiqDao: HaptiqDao) {

@@ -6,6 +6,19 @@ plugins {
   alias(libs.plugins.roborazzi)
 }
 
+// Internal build fingerprint — branch codename + short SHA baked into every build,
+// so "which commit do we revert to?" is answered by the About row, not archaeology.
+fun git(vararg args: String): String = providers.exec {
+  commandLine("git", *args)
+}.standardOutput.asText.get().trim()
+
+val gitBranch = runCatching { git("rev-parse", "--abbrev-ref", "HEAD") }.getOrDefault("unknown")
+// ".dirty" marks builds made from uncommitted changes — without it, every build
+// between commits carries the same SHA and becomes indistinguishable.
+val gitDirty = runCatching { git("status", "--porcelain").isNotEmpty() }.getOrDefault(false)
+val gitSha = runCatching { git("rev-parse", "--short", "HEAD") }.getOrDefault("nogit") +
+  if (gitDirty) ".dirty" else ""
+
 android {
   namespace = "com.haptiq.app"
   compileSdk = 36
@@ -14,8 +27,15 @@ android {
     applicationId = "com.haptiq.app"
     minSdk = 28
     targetSdk = 36
-    versionCode = 1
-    versionName = "1.0"
+    // Versioning convention: every change batch bumps versionName by 0.01
+    // (1.01 → 1.02 → …) and versionCode by 1. Majors reset the minor (2.00).
+    versionCode = 15
+    versionName = "1.13"
+    // Public release codename, Android-dessert style: alphabetical, haptic-themed.
+    // 1.0 "Aftershock" → next majors continue B, C, D… (Bassline? Crossfade?)
+    buildConfigField("String", "RELEASE_CODENAME", "\"Aftershock\"")
+    buildConfigField("String", "BUILD_CODENAME", "\"$gitBranch\"")
+    buildConfigField("String", "GIT_SHA", "\"$gitSha\"")
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
@@ -44,6 +64,7 @@ android {
       signingConfig = signingConfigs.getByName("release")
     }
     debug {
+      versionNameSuffix = "-$gitBranch+$gitSha"
     }
   }
   compileOptions {
@@ -60,6 +81,21 @@ android {
     buildConfig = true
   }
   testOptions { unitTests { isIncludeAndroidResources = true } }
+
+}
+
+// Self-describing APK names: Haptiq-1.05-ui-tinkering+abc1234.dirty-debug.apk
+// instead of app-debug.apk, so sideloaded/uploaded builds stay tellable-apart.
+androidComponents {
+  onVariants { variant ->
+    variant.outputs.forEach { output ->
+      (output as? com.android.build.api.variant.impl.VariantOutputImpl)?.let { impl ->
+        impl.outputFileName.set(
+          impl.versionName.map { "Haptiq-$it-${variant.buildType}.apk" }
+        )
+      }
+    }
+  }
 }
 
 dependencies {
@@ -96,12 +132,8 @@ dependencies {
   implementation(libs.hilt.android)
   ksp(libs.hilt.compiler)
   implementation(libs.hilt.navigation.compose)
-  implementation(libs.hilt.work)
   // Hilt 2.60 generated code uses error_prone annotations
   implementation("com.google.errorprone:error_prone_annotations:2.36.0")
-
-  // WorkManager
-  implementation(libs.work.runtime.ktx)
 
   // Media3 ExoPlayer
   implementation(libs.media3.exoplayer)

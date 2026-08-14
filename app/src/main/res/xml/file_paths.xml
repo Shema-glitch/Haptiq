@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- FileProvider paths — exported kick maps are staged in cacheDir/maps/ so they
+     never touch the user's Documents (no storage permission needed) and the system
+     can clean them up. -->
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <cache-path name="haptiq_maps" path="maps/" />
+</paths>

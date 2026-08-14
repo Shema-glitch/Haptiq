@@ -26,31 +26,73 @@ data class SavedPresets(
     val sensitivity: Int
 )
 
+@Entity(tableName = "playlists")
+data class Playlist(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val name: String,
+    val createdAt: Long
+)
+
+@Entity(tableName = "playlist_songs", primaryKeys = ["playlistId", "songId"])
+data class PlaylistSong(
+    val playlistId: Long,
+    val songId: String,
+    val position: Int,
+    val addedAt: Long
+)
+
+/** Query projection: a playlist plus how many songs it holds. */
+data class PlaylistWithCount(
+    val id: Long,
+    val name: String,
+    val createdAt: Long,
+    val songCount: Int
+)
+
+@Entity(tableName = "favorites")
+data class FavoriteSong(
+    @PrimaryKey val songId: String,
+    val addedAt: Long
+)
+
+/**
+ * Precomputed bass-energy envelope for one track (the revived AOT haptic-map concept):
+ * one unsigned byte (0–255) per TrackEnergyAnalyzer.FRAME_MS of audio. Consumed by the
+ * seek-preview scrubber, which needs energy at arbitrary positions ahead of playback.
+ *
+ * [onsets] is the AOT kick-onset list (see TrackEnergyAnalyzer): kick-attack times in
+ * ms into the track, encoded as 4-byte big-endian ints. Null = never analyzed for
+ * onsets (pre-AOT rows / rows written before the field existed); empty = analyzed and
+ * genuinely no onsets (a ballad). The lookahead scheduler treats null as "re-analyze".
+ * [beats] is the beat-grid list (same encoding): per-beat times in ms. Null = never
+ * analyzed for beats; empty = no steady beat detected. Lookahead double-checks each
+ * onset against the grid and skips off-beat false positives.
+ *
+ * [userOnsets] is a USER-TAUGHT kick map (the "Teach kicks" mode — tap along with
+ * the song and the taps become this song's AOT map). Same encoding. Null = no taught
+ * map. When present it WINS over the auto [onsets]: the user validated these by hand,
+ * so the scheduler pre-fires them without any beat-grid rejection (and the seek-bar
+ * overlay shows them all as will-fire).
+ */
+@Entity(tableName = "track_energy_maps")
+data class TrackEnergyMap(
+    @PrimaryKey val songId: String,
+    val durationMs: Long,
+    val frames: ByteArray,
+    val onsets: ByteArray? = null,
+    val beats: ByteArray? = null,
+    val userOnsets: ByteArray? = null,
+    val analyzedAt: Long
+) {
+    override fun equals(other: Any?): Boolean =
+        other is TrackEnergyMap && other.songId == songId && other.analyzedAt == analyzedAt
+
+    override fun hashCode(): Int = songId.hashCode() * 31 + analyzedAt.hashCode()
+}
+
 @Entity(tableName = "calibration_profile")
 data class CalibrationProfile(
     @PrimaryKey val deviceModel: String,
     val multiplier: Float,
     val updatedAt: Long
 )
-
-/**
- * Pre-computed haptic map for a track.
- * Stores bass intensity values at fixed intervals (every 50ms).
- * During playback, the engine reads the array by timestamp index
- * instead of running real-time FFT — zero math on playback thread.
- */
-@Entity(tableName = "haptic_track_map")
-data class HapticTrackMap(
-    @PrimaryKey val songId: String,
-    val durationMs: Long,
-    val isProcessed: Boolean = false,
-    val hapticFrames: ByteArray? = null // Compressed intensity 0-100 per 50ms interval
-) {
-    override fun equals(other: Any?): Boolean {
-        if (this === other) return true
-        if (other !is HapticTrackMap) return false
-        return songId == other.songId
-    }
-
-    override fun hashCode(): Int = songId.hashCode()
-}

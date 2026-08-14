@@ -34,32 +34,20 @@ fun SettingsScreen(
     onAction: (HaptiqUiAction) -> Unit,
     onCalibrationClicked: () -> Unit
 ) {
+    var showLicenses by remember { mutableStateOf(false) }
+    // No .padding(innerPadding) here: HaptiqScaffold already consumes it on the
+    // column that hosts this screen. Applying it again doubled the bottom inset
+    // (nav bar + mini player height), leaving a dead cutout under the content.
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(innerPadding)
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 16.dp)
+            .padding(horizontal = Spacing.md)
             .testTag("settings_screen")
     ) {
-        // Top Bar (screen-specific — title only, no back button; bottom nav handles navigation)
-        CenterAlignedTopAppBar(
-            title = {
-                Text(
-                    text = "Settings",
-                    style = MaterialTheme.typography.titleLarge,
-                    color = ColorPrimary,
-                    fontWeight = FontWeight.Bold
-                )
-            },
-            colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                containerColor = ColorBackground
-            )
-        )
-
         // Preferences section
         Column(
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+            verticalArrangement = Arrangement.spacedBy(Spacing.xs)
         ) {
             Text(
                 text = "PREFERENCES",
@@ -67,19 +55,19 @@ fun SettingsScreen(
                 color = ColorOnSurface60,
                 letterSpacing = 1.5.sp,
                 fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(horizontal = 4.dp)
+                modifier = Modifier.padding(horizontal = Spacing.xxs)
             )
 
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(12.dp))
+                    .clip(RoundedCornerShape(Radius.md))
                     .background(ColorSurface)
             ) {
                 // Battery Saver mapping
                 SettingsRowWithSwitch(
                     icon = Icons.Default.BatterySaver,
-                    iconColor = ColorHapticAccent,
+                    iconColor = ColorPrimary,
                     title = "Haptic Battery Saver",
                     subtitle = if (state.batterySaverEnabled) "Saves 30% haptic energy" else "Standard mode",
                     checked = state.batterySaverEnabled,
@@ -88,10 +76,26 @@ fun SettingsScreen(
 
                 HorizontalDivider(color = ColorOutlineVariant.copy(alpha = 0.2f), thickness = 1.dp)
 
+                // Sleep timer — tap cycles Off → 15 → 30 → 60 → Off
+                SettingsRow(
+                    icon = Icons.Default.Bedtime,
+                    iconColor = ColorPrimary,
+                    title = "Sleep Timer",
+                    subtitle = if (state.sleepTimerMinutes > 0) "Stops in ${state.sleepTimerMinutes} min" else "Off",
+                    onClick = {
+                        val next = when (state.sleepTimerMinutes) {
+                            0 -> 15; 15 -> 30; 30 -> 60; else -> 0
+                        }
+                        onAction(HaptiqUiAction.SetSleepTimer(next))
+                    }
+                )
+
+                HorizontalDivider(color = ColorOutlineVariant.copy(alpha = 0.2f), thickness = 1.dp)
+
                 // D4: Calibration row — navigates to Routes.CALIBRATION
                 SettingsRow(
                     icon = Icons.Default.Vibration,
-                    iconColor = ColorHapticAccent,
+                    iconColor = ColorPrimary,
                     title = "Haptic Calibration",
                     subtitle = "Multiplier: ${state.calibrationMultiplier}x",
                     onClick = onCalibrationClicked
@@ -99,11 +103,121 @@ fun SettingsScreen(
             }
         }
 
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(Spacing.xl))
+
+        // Playback section
+        Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+            Text(
+                text = "PLAYBACK",
+                style = MaterialTheme.typography.labelSmall,
+                color = ColorOnSurface60,
+                letterSpacing = 1.5.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(horizontal = Spacing.xxs)
+            )
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(Radius.md))
+                    .background(ColorSurface)
+            ) {
+                SettingsRowWithSwitch(
+                    icon = Icons.Default.TouchApp,
+                    iconColor = ColorPrimary,
+                    title = "Haptic Seek Preview",
+                    subtitle = "Feel the bass under your finger while scrubbing",
+                    checked = state.seekPreviewEnabled,
+                    onCheckedChange = { onAction(HaptiqUiAction.SetSeekPreviewEnabled(it)) }
+                )
+
+                HorizontalDivider(color = ColorOutlineVariant.copy(alpha = 0.2f), thickness = 1.dp)
+
+                SettingsRow(
+                    icon = Icons.Default.Equalizer,
+                    iconColor = ColorOnSurface60,
+                    title = "Equalizer",
+                    subtitle = "Choose an equalizer app",
+                    onClick = { onAction(HaptiqUiAction.OpenEqualizer) }
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(Spacing.xl))
+
+        // Library section
+        Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+            Text(
+                text = "LIBRARY",
+                style = MaterialTheme.typography.labelSmall,
+                color = ColorOnSurface60,
+                letterSpacing = 1.5.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(horizontal = Spacing.xxs)
+            )
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(Radius.md))
+                    .background(ColorSurface)
+            ) {
+                // Cycles Off → 15s → 30s → 60s, like the sleep timer
+                SettingsRow(
+                    icon = Icons.Default.Timer,
+                    iconColor = ColorOnSurface60,
+                    title = "Skip Short Audio",
+                    subtitle = if (state.minDurationSec > 5) {
+                        "Hiding tracks under ${state.minDurationSec}s (voice notes, clips)"
+                    } else "Off — all audio shows in the library",
+                    onClick = {
+                        val next = when (state.minDurationSec) {
+                            0, 5 -> 15; 15 -> 30; 30 -> 60; else -> 0
+                        }
+                        onAction(HaptiqUiAction.SetMinDuration(next))
+                    }
+                )
+
+                HorizontalDivider(color = ColorOutlineVariant.copy(alpha = 0.2f), thickness = 1.dp)
+
+                SettingsRow(
+                    icon = Icons.Default.Refresh,
+                    iconColor = ColorOnSurface60,
+                    title = "Rescan Library",
+                    subtitle = if (state.isScanning) state.scanStatus
+                    else "${state.songs.size} songs indexed",
+                    onClick = { if (!state.isScanning) onAction(HaptiqUiAction.RescanLibrary) }
+                )
+
+                HorizontalDivider(color = ColorOutlineVariant.copy(alpha = 0.2f), thickness = 1.dp)
+
+                SettingsRow(
+                    icon = Icons.Default.History,
+                    iconColor = ColorOnSurface60,
+                    title = "Clear Recently Played",
+                    subtitle = "Empties the history row on the Library tab",
+                    onClick = { onAction(HaptiqUiAction.ClearRecents) }
+                )
+
+                HorizontalDivider(color = ColorOutlineVariant.copy(alpha = 0.2f), thickness = 1.dp)
+
+                SettingsRow(
+                    icon = Icons.Default.CleaningServices,
+                    iconColor = ColorOnSurface60,
+                    title = "Clear Cache",
+                    subtitle = if (state.isClearingCache) {
+                        state.scanStatus.ifBlank { "Clearing…" }
+                    } else {
+                        "Frees up space and rebuilds artwork if the library feels slow"
+                    },
+                    onClick = { if (!state.isClearingCache) onAction(HaptiqUiAction.ClearCache) }
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(Spacing.xl))
 
         // Information section
         Column(
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+            verticalArrangement = Arrangement.spacedBy(Spacing.xs)
         ) {
             Text(
                 text = "INFORMATION",
@@ -111,23 +225,118 @@ fun SettingsScreen(
                 color = ColorOnSurface60,
                 letterSpacing = 1.5.sp,
                 fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(horizontal = 4.dp)
+                modifier = Modifier.padding(horizontal = Spacing.xxs)
             )
 
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(12.dp))
+                    .clip(RoundedCornerShape(Radius.md))
                     .background(ColorSurface)
             ) {
+                val context = androidx.compose.ui.platform.LocalContext.current
+                // lastUpdateTime = when THIS apk was sideloaded; the one signal that
+                // always differs between builds, even from the same commit.
+                val installedAt = remember {
+                    runCatching {
+                        val millis = context.packageManager
+                            .getPackageInfo(context.packageName, 0).lastUpdateTime
+                        java.text.SimpleDateFormat("MMM d · HH:mm", java.util.Locale.US)
+                            .format(java.util.Date(millis))
+                    }.getOrDefault("unknown")
+                }
                 SettingsRow(
                     icon = Icons.Default.Info,
                     iconColor = ColorOnSurface60,
                     title = "About",
-                    subtitle = "Haptiq v1.0.0 (MVP)"
+                    subtitle = "Haptiq ${com.haptiq.app.BuildConfig.RELEASE_CODENAME} " +
+                        "v${com.haptiq.app.BuildConfig.VERSION_NAME}\n" +
+                        "Installed $installedAt"
+                )
+
+                HorizontalDivider(color = ColorOutlineVariant.copy(alpha = 0.2f), thickness = 1.dp)
+
+                SettingsRow(
+                    icon = Icons.Default.Description,
+                    iconColor = ColorOnSurface60,
+                    title = "Open Source Licenses",
+                    subtitle = "View third-party attributions",
+                    onClick = { showLicenses = true }
                 )
             }
         }
+
+        Spacer(modifier = Modifier.height(Spacing.xxl))
+    }
+
+    if (showLicenses) {
+        AlertDialog(
+            onDismissRequest = { showLicenses = false },
+            containerColor = ColorSurface,
+            title = { Text("Open Source Licenses", color = ColorOnSurface) },
+            text = {
+                Column(Modifier.verticalScroll(rememberScrollState())) {
+                    listOf(
+                        "Jetpack Compose — Apache 2.0",
+                        "AndroidX Media3 (ExoPlayer) — Apache 2.0",
+                        "AndroidX Room — Apache 2.0",
+                        "Dagger Hilt — Apache 2.0",
+                        "Coil — Apache 2.0",
+                        "Kotlin Coroutines — Apache 2.0"
+                    ).forEach { line ->
+                        Text(
+                            line,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = ColorOnSurfaceVariant,
+                            modifier = Modifier.padding(vertical = Spacing.xxs)
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showLicenses = false }) {
+                    Text("Close", color = ColorPrimary)
+                }
+            }
+        )
+    }
+
+    // Equalizer picker — lists every installed app that can handle the system EQ
+    // intent. Firing the intent blind blank-screens on ROMs with a broken handler.
+    state.equalizerChoices?.let { choices ->
+        AlertDialog(
+            onDismissRequest = { onAction(HaptiqUiAction.DismissEqualizerPicker) },
+            containerColor = ColorSurface,
+            title = { Text("Choose Equalizer", color = ColorOnSurface) },
+            text = {
+                if (choices.isEmpty()) {
+                    Text(
+                        "No equalizer app found on this device. Install one from the Play Store (Wavelet is a good free option) and it will show up here.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = ColorOnSurfaceVariant
+                    )
+                } else {
+                    Column(Modifier.verticalScroll(rememberScrollState())) {
+                        choices.forEach { app ->
+                            Text(
+                                app.label,
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = ColorOnSurface,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { onAction(HaptiqUiAction.SelectEqualizer(app)) }
+                                    .padding(vertical = Spacing.sm)
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { onAction(HaptiqUiAction.DismissEqualizerPicker) }) {
+                    Text("Cancel", color = ColorPrimary)
+                }
+            }
+        )
     }
 }
 
@@ -143,17 +352,17 @@ fun SettingsRow(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(enabled = onClick != null) { onClick?.invoke() }
-            .padding(16.dp),
+            .padding(Spacing.md),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Icon(
             imageVector = icon,
             contentDescription = null,
             tint = iconColor,
-            modifier = Modifier.size(24.dp)
+            modifier = Modifier.size(ComponentSize.iconMedium)
         )
 
-        Spacer(modifier = Modifier.width(16.dp))
+        Spacer(modifier = Modifier.width(Spacing.md))
 
         Column(
             modifier = Modifier.weight(1f)
@@ -174,12 +383,14 @@ fun SettingsRow(
             }
         }
 
-        Icon(
-            imageVector = Icons.Default.ChevronRight,
-            contentDescription = null,
-            tint = ColorOnSurface60,
-            modifier = Modifier.size(20.dp)
-        )
+        if (onClick != null) {
+            Icon(
+                imageVector = Icons.Default.ChevronRight,
+                contentDescription = null,
+                tint = ColorOnSurface60,
+                modifier = Modifier.size(ComponentSize.iconSmall)
+            )
+        }
     }
 }
 
@@ -196,17 +407,17 @@ fun SettingsRowWithSwitch(
         modifier = Modifier
             .fillMaxWidth()
             .clickable { onCheckedChange(!checked) }
-            .padding(16.dp),
+            .padding(Spacing.md),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Icon(
             imageVector = icon,
             contentDescription = null,
             tint = iconColor,
-            modifier = Modifier.size(24.dp)
+            modifier = Modifier.size(ComponentSize.iconMedium)
         )
 
-        Spacer(modifier = Modifier.width(16.dp))
+        Spacer(modifier = Modifier.width(Spacing.md))
 
         Column(
             modifier = Modifier.weight(1f)
@@ -232,7 +443,7 @@ fun SettingsRowWithSwitch(
             onCheckedChange = onCheckedChange,
             colors = SwitchDefaults.colors(
                 checkedThumbColor = ColorSurface,
-                checkedTrackColor = ColorHapticAccent,
+                checkedTrackColor = ColorPrimary,
                 uncheckedThumbColor = ColorOnSurface60,
                 uncheckedTrackColor = ColorSurfaceVariant
             )

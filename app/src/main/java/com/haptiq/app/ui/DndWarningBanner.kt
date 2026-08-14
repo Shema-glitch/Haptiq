@@ -2,23 +2,27 @@ package com.haptiq.app.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.NotificationsOff
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.haptiq.app.ui.theme.*
 
 /**
- * Warning banner shown when Do Not Disturb is active.
+ * Floating toast shown when Do Not Disturb is silencing haptics.
  *
- * DND suppresses vibration on Android, which means haptic feedback
- * will not work even if the toggle is on. This banner alerts the user.
+ * Designed as an overlay, not an inline banner: it carries its own shadow and an
+ * opaque surface so it reads as floating above the content, and the caller places
+ * it in an overlay slot that never reflows the artwork or transport controls.
  */
 @Composable
 fun DndWarningBanner(
@@ -28,23 +32,34 @@ fun DndWarningBanner(
     Surface(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp)),
-        color = ColorSurfaceVariant,
-        tonalElevation = 2.dp
+            .shadow(Elevation.high, RoundedCornerShape(Radius.lg))
+            .clip(RoundedCornerShape(Radius.lg)),
+        // Opaque elevated surface, not the translucent SurfaceVariant — a floating
+        // toast must fully hide whatever scrolls behind it.
+        color = ColorSurfaceContainerHigh,
+        tonalElevation = Elevation.high
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(12.dp),
+                .padding(start = Spacing.md, end = Spacing.xs, top = Spacing.sm, bottom = Spacing.sm),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
+            horizontalArrangement = Arrangement.spacedBy(Spacing.sm)
         ) {
-            Icon(
-                imageVector = Icons.Default.NotificationsOff,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.error,
-                modifier = Modifier.size(24.dp)
-            )
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.error.copy(alpha = 0.14f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.NotificationsOff,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.size(ComponentSize.iconSmall)
+                )
+            }
 
             Column(modifier = Modifier.weight(1f)) {
                 Text(
@@ -55,10 +70,21 @@ fun DndWarningBanner(
                 )
                 Spacer(Modifier.height(2.dp))
                 Text(
-                    text = "Haptics are silenced by DND. Turn it off in Settings to feel vibrations.",
+                    text = "Haptics are silenced. Turn off DND to feel vibrations.",
                     style = MaterialTheme.typography.bodySmall,
                     color = ColorOnSurface60
                 )
+            }
+
+            if (onDismiss != null) {
+                IconButton(onClick = onDismiss, modifier = Modifier.size(ComponentSize.touchTarget)) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "Dismiss",
+                        tint = ColorOnSurface60,
+                        modifier = Modifier.size(ComponentSize.iconSmall)
+                    )
+                }
             }
         }
     }

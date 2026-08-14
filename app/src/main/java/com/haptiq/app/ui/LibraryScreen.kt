@@ -1,14 +1,28 @@
 package com.haptiq.app.ui
 
+import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import kotlin.math.abs
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.ui.layout.onSizeChanged
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material3.*
@@ -17,7 +31,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import android.content.Context
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -38,47 +54,96 @@ fun LibraryScreen(
     onSearchQueryChanged: (String) -> Unit,
     onScanDevice: () -> Unit,
     onHapticStudioClicked: () -> Unit,
-    onToggleFavorite: (String) -> Unit = {}
+    onToggleFavorite: (String) -> Unit = {},
+    onSortModeChanged: (SortMode) -> Unit = {},
+    onAction: (HaptiqUiAction) -> Unit = {}
 ) {
-    val filteredSongs = remember(state.songs, state.searchQuery) {
-        if (state.searchQuery.isEmpty()) state.songs
+    // Which song the add-to-playlist dialog is open for (null = closed)
+    var songForPlaylist by remember { mutableStateOf<Song?>(null) }
+    val filteredSongs = remember(state.songs, state.searchQuery, state.sortMode) {
+        val matched = if (state.searchQuery.isEmpty()) state.songs
         else state.songs.filter {
             it.title.contains(state.searchQuery, ignoreCase = true) ||
                     it.artist.contains(state.searchQuery, ignoreCase = true)
         }
+        when (state.sortMode) {
+            SortMode.TITLE -> matched.sortedBy { it.title.lowercase() }
+            SortMode.ARTIST -> matched.sortedBy { it.artist.lowercase() }
+            SortMode.DURATION -> matched.sortedByDescending { it.durationSeconds }
+        }
     }
+    var showSortMenu by remember { mutableStateOf(false) }
 
     // Show skeleton while scanning and no songs loaded yet
     val showSkeleton = state.isScanning && state.songs.isEmpty()
 
+    // Search starts collapsed to a header icon; expanding is an explicit act.
+    // Stays open while a query is active so results never render "headless".
+    var searchExpanded by remember { mutableStateOf(false) }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .background(ColorBackground)
             .testTag("library_screen")
     ) {
-        // ─── HAPTIQ Top App Bar ─────────────────────────────────
-        CenterAlignedTopAppBar(
-            title = {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        text = "HAPTIQ",
-                        style = MaterialTheme.typography.titleLarge,
-                        color = ColorPrimary,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 4.sp
+        // ─── Header (shared treatment across all tabs) ──────────
+        HaptiqScreenHeader(
+            subtitle = "Library",
+            modifier = Modifier.padding(horizontal = Layout.screenHorizontalPadding),
+            trailing = {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+                // Sort menu
+                Box {
+                    IconButton(
+                        onClick = { showSortMenu = true },
+                        modifier = Modifier.background(ColorSurface, CircleShape)
+                    ) {
+                        Icon(Icons.Default.SwapVert, contentDescription = "Sort tracks", tint = ColorOnSurface)
+                    }
+                    DropdownMenu(
+                        expanded = showSortMenu,
+                        onDismissRequest = { showSortMenu = false },
+                        containerColor = ColorSurfaceVariant
+                    ) {
+                        SortMode.entries.forEach { mode ->
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        mode.label,
+                                        color = if (mode == state.sortMode) ColorPrimary else ColorOnSurface
+                                    )
+                                },
+                                onClick = {
+                                    onSortModeChanged(mode)
+                                    showSortMenu = false
+                                }
+                            )
+                        }
+                    }
+                }
+                // Search toggle — collapsing search to an icon keeps the default
+                // screen calm; the field slides open only when asked for.
+                IconButton(
+                    onClick = {
+                        if (searchExpanded) onSearchQueryChanged("")
+                        searchExpanded = !searchExpanded
+                    },
+                    modifier = Modifier.background(
+                        if (searchExpanded) ColorSurfaceVariant else ColorSurface, CircleShape
                     )
-                    Text(
-                        text = "Library",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = ColorOnSurface60
+                ) {
+                    Icon(
+                        if (searchExpanded) Icons.Default.Close else Icons.Default.Search,
+                        contentDescription = if (searchExpanded) "Close search" else "Search library",
+                        tint = ColorOnSurface
                     )
                 }
-            },
-            actions = {
                 // Refresh/Scan button
                 IconButton(
                     onClick = onScanDevice,
-                    enabled = !state.isScanning
+                    enabled = !state.isScanning,
+                    modifier = Modifier.background(ColorSurface, CircleShape)
                 ) {
                     if (state.isScanning) {
                         CircularProgressIndicator(
@@ -90,14 +155,12 @@ fun LibraryScreen(
                         Icon(
                             Icons.Default.Refresh,
                             contentDescription = "Scan for new music",
-                            tint = ColorOnSurfaceVariant
+                            tint = ColorOnSurface
                         )
                     }
                 }
-            },
-            colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                containerColor = ColorBackground
-            )
+                }
+            }
         )
 
         // Scan progress bar
@@ -128,7 +191,16 @@ fun LibraryScreen(
                 .fillMaxSize()
                 .padding(horizontal = Layout.screenHorizontalPadding)
         ) {
-            // ─── Inline Search Bar ───────────────────────────────
+            // ─── Sliding Search Bar ──────────────────────────────
+            androidx.compose.animation.AnimatedVisibility(
+                visible = searchExpanded || state.searchQuery.isNotEmpty(),
+                enter = androidx.compose.animation.expandVertically(animationSpec = HaptiqMotion.standardSpring()) +
+                    androidx.compose.animation.fadeIn(),
+                // Exit uses the same spring as the enter — a closing panel retraces its
+                // opening curve instead of cutting to a default tween.
+                exit = androidx.compose.animation.shrinkVertically(animationSpec = HaptiqMotion.standardSpring()) +
+                    androidx.compose.animation.fadeOut()
+            ) {
             OutlinedTextField(
                 value = state.searchQuery,
                 onValueChange = onSearchQueryChanged,
@@ -145,28 +217,70 @@ fun LibraryScreen(
                     .fillMaxWidth()
                     .height(ComponentSize.searchBarHeight)
                     .testTag("search_bar"),
-                shape = RoundedCornerShape(Radius.pill),
+                shape = ExpressiveShapes.navPill,
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedContainerColor = ColorSurfaceVariant,
                     unfocusedContainerColor = ColorSurfaceVariant.copy(alpha = 0.5f),
-                    focusedBorderColor = ColorHapticAccent,
+                    focusedBorderColor = ColorPrimary,
                     unfocusedBorderColor = ColorOutlineVariant.copy(alpha = 0.3f),
-                    cursorColor = ColorHapticAccent,
+                    cursorColor = ColorPrimary,
                     focusedTextColor = ColorOnSurface,
                     unfocusedTextColor = ColorOnSurface
                 ),
                 singleLine = true
             )
+            }
 
             Spacer(Modifier.height(Layout.sectionGap))
 
             // ─── Scrollable Content ──────────────────────────────
+            val listState = rememberLazyListState()
+            val scrollScope = rememberCoroutineScope()
+            val showRecents = state.searchQuery.isEmpty() && state.recentSongs.isNotEmpty()
+            // Items that precede the track rows in the LazyColumn — the alphabet
+            // rail needs this offset to land scrolls on the right song.
+            val headerItemCount = (if (showRecents) 3 else 0) +
+                (if (filteredSongs.isNotEmpty()) 1 else 0)
+            // First track-list index for each leading letter (A–Z, '#' for digits).
+            // LinkedHashMap preserves list order, so keys come out already sorted.
+            val letterIndexMap = remember(filteredSongs, state.sortMode) {
+                val map = linkedMapOf<Char, Int>()
+                filteredSongs.forEachIndexed { index, song ->
+                    val source = if (state.sortMode == SortMode.ARTIST) song.artist else song.title
+                    val key = source.firstOrNull { !it.isWhitespace() }
+                        ?.uppercaseChar()?.let { if (it.isLetter()) it else '#' } ?: '#'
+                    if (key !in map) map[key] = index
+                }
+                map
+            }
+            val showRail = filteredSongs.size > 50 && state.sortMode != SortMode.DURATION
+
+            // Gestures are now taught by the first-run GestureTutorialOverlay
+            // (shown once when the library first has songs), so the old peek-nudge
+            // that briefly slid the first row open has been removed.
+            val tutorialContext = androidx.compose.ui.platform.LocalContext.current
+            var showTutorial by remember {
+                mutableStateOf(
+                    tutorialContext
+                        .getSharedPreferences("haptiq_prefs", Context.MODE_PRIVATE)
+                        .getBoolean("gesture_tutorial_shown", false)
+                        .not()
+                )
+            }
+
+            Box(Modifier.fillMaxSize()) {
             LazyColumn(
+                state = listState,
                 modifier = Modifier.fillMaxSize(),
-                verticalArrangement = Arrangement.spacedBy(Spacing.xs)
+                verticalArrangement = Arrangement.spacedBy(Spacing.xs),
+                // Bottom breathing room so the last track clears the mini-player
+                // instead of sitting flush against it.
+                contentPadding = PaddingValues(bottom = Spacing.xl)
             ) {
-                // Recently Played (only when not searching)
-                if (state.searchQuery.isEmpty() && state.songs.isNotEmpty()) {
+                // Recently Played — real play history from Room, newest first.
+                // (Previously rendered state.songs.take(5): the first five scan
+                // results, which had nothing to do with what was played.)
+                if (showRecents) {
                     item {
                         Text(
                             "Recently Played",
@@ -181,8 +295,8 @@ fun LibraryScreen(
                             horizontalArrangement = Arrangement.spacedBy(Spacing.md),
                             contentPadding = PaddingValues(bottom = Spacing.xs)
                         ) {
-                            val recents = state.songs.take(5)
-                            itemsIndexed(recents) { _, song ->
+                            val recents = state.recentSongs.take(10)
+                            itemsIndexed(recents, key = { _, song -> song.id }) { _, song ->
                                 val isActive = state.currentSong?.id == song.id
                                 MediaCard(
                                     song = song,
@@ -215,7 +329,7 @@ fun LibraryScreen(
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
-                                "${filteredSongs.size} songs",
+                                countLabel(filteredSongs.size, "song"),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = ColorOnSurface60
                             )
@@ -224,18 +338,24 @@ fun LibraryScreen(
                     }
                 }
 
-                // Track list
+                // Track list — swipe a row right to queue it as "play next"
                 if (filteredSongs.isNotEmpty()) {
-                    itemsIndexed(filteredSongs) { index, song ->
+                    itemsIndexed(filteredSongs, key = { _, song -> song.id }) { index, song ->
                         val isCurrent = state.currentSong?.id == song.id
-                        TrackRow(
+                        SwipeToQueueRow(
                             song = song,
-                            isCurrentPlaying = isCurrent,
-                            isPlaying = state.isPlaying && isCurrent,
-                            isFavorite = song.id in state.favoriteIds,
-                            onClick = { onSongSelected(filteredSongs, index) },
-                            onToggleFavorite = { onToggleFavorite(song.id) }
-                        )
+                            onEnqueueNext = { onAction(HaptiqUiAction.EnqueueNext(song)) }
+                        ) {
+                            TrackRow(
+                                song = song,
+                                isCurrentPlaying = isCurrent,
+                                isPlaying = state.isPlaying && isCurrent,
+                                isFavorite = song.id in state.favoriteIds,
+                                onClick = { onSongSelected(filteredSongs, index) },
+                                onToggleFavorite = { onToggleFavorite(song.id) },
+                                onAddToPlaylist = { songForPlaylist = song }
+                            )
+                        }
                     }
                 } else if (state.songs.isEmpty() && !state.isScanning) {
                     // Empty library — no device songs found
@@ -249,24 +369,60 @@ fun LibraryScreen(
                 } else if (state.searchQuery.isNotEmpty() && filteredSongs.isEmpty()) {
                     // No search results
                     item {
-                        Box(
-                            modifier = Modifier.fillMaxWidth().padding(Spacing.xxl),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Icon(Icons.Default.SearchOff, null, Modifier.size(ComponentSize.iconXXL), tint = ColorOnSurface60)
-                                Spacer(Modifier.height(Spacing.md))
-                                Text("No results", style = MaterialTheme.typography.titleMedium, color = ColorOnSurface)
-                            }
-                        }
+                        EmptyState(
+                            icon = Icons.Default.SearchOff,
+                            title = "No results",
+                            subtitle = "Nothing matches \"${state.searchQuery}\""
+                        )
                     }
                 }
 
                 // Bottom spacer for breathing room above MiniPlayer
                 item { Spacer(Modifier.height(Spacing.xxl)) }
             }
+
+            // ─── A–Z fast-scroll rail ────────────────────────────
+            // Only for big, alphabetically sorted lists — on duration sort the
+            // letters would be meaningless jump targets.
+            if (showRail) {
+                AlphabetRail(
+                    letters = letterIndexMap.keys.toList(),
+                    onLetterSelected = { letter ->
+                        letterIndexMap[letter]?.let { songIndex ->
+                            scrollScope.launch {
+                                listState.scrollToItem(headerItemCount + songIndex)
+                            }
+                        }
+                    },
+                    modifier = Modifier.align(Alignment.CenterEnd)
+                )
+            }
+
+            // First-run gesture tutorial — overlays the library once, teaches the
+            // swipe/skip/pull-down gestures, and celebrates the songs we found.
+            if (showTutorial && state.songs.isNotEmpty()) {
+                GestureTutorialOverlay(
+                    songCount = state.songs.size,
+                    onFinish = {
+                        tutorialContext
+                            .getSharedPreferences("haptiq_prefs", Context.MODE_PRIVATE)
+                            .edit().putBoolean("gesture_tutorial_shown", true).apply()
+                        showTutorial = false
+                    }
+                )
+            }
+            }
         }
         }
+    }
+
+    songForPlaylist?.let { song ->
+        AddToPlaylistDialog(
+            song = song,
+            playlists = state.playlists,
+            onAction = onAction,
+            onDismiss = { songForPlaylist = null }
+        )
     }
 }
 
@@ -307,12 +463,22 @@ fun LibraryEmptyState(
                 Text(scanError, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error, textAlign = TextAlign.Center)
             }
             Spacer(Modifier.height(Spacing.huge))
+            val scanInteraction = remember { MutableInteractionSource() }
+            val isScanPressed by scanInteraction.collectIsPressedAsState()
+            val scanScale by animateFloatAsState(
+                targetValue = if (isScanPressed) 0.97f else 1f,
+                animationSpec = HaptiqMotion.fastSpring(),
+                label = "scan_press_scale"
+            )
             Button(
                 onClick = onScanDevice,
                 enabled = !isScanning,
+                interactionSource = scanInteraction,
                 colors = ButtonDefaults.buttonColors(containerColor = ColorPrimary, contentColor = ColorOnPrimary),
                 shape = RoundedCornerShape(Radius.pill),
-                modifier = Modifier.height(ComponentSize.buttonHeight)
+                modifier = Modifier
+                    .height(ComponentSize.buttonHeight)
+                    .graphicsLayer { scaleX = scanScale; scaleY = scanScale }
             ) {
                 if (isScanning) {
                     CircularProgressIndicator(Modifier.size(ComponentSize.iconMedium), color = ColorOnPrimary, strokeWidth = 2.dp)
@@ -337,12 +503,19 @@ fun MediaCard(
     onClick: () -> Unit,
     onToggleFavorite: () -> Unit
 ) {
-    val infiniteTransition = rememberInfiniteTransition(label = "haptic_pulse")
-    val pulseBorderWidthFactor by infiniteTransition.animateFloat(
-        initialValue = 1.0f, targetValue = 2.0f,
-        animationSpec = infiniteRepeatable(tween(1000, easing = EaseInOut), RepeatMode.Reverse),
-        label = "pulse_border_width"
-    )
+    // The border only breathes on the card that is actually playing haptics — an
+    // idle row must not run an infinite animation for every card on screen.
+    val pulseBorderWidthFactor = if (isActiveHaptic) {
+        val t = rememberInfiniteTransition(label = "haptic_pulse")
+        val f by t.animateFloat(
+            initialValue = 1.0f, targetValue = 2.0f,
+            animationSpec = infiniteRepeatable(tween(1000, easing = EaseInOut), RepeatMode.Reverse),
+            label = "pulse_border_width"
+        )
+        f
+    } else {
+        1f
+    }
 
     Column(
         modifier = Modifier
@@ -366,18 +539,32 @@ fun MediaCard(
                 contentDescription = "${song.title} cover",
                 modifier = Modifier.fillMaxSize(),
                 iconSize = ComponentSize.iconXXL,
-                cornerRadius = Radius.md
+                cornerRadius = Radius.md,
+                fallbackLabel = song.title
             )
-            IconButton(
-                onClick = onToggleFavorite,
-                modifier = Modifier.align(Alignment.TopEnd).padding(Spacing.xxs).size(ComponentSize.touchTarget)
+            // The tap target is a full 44dp (a11y minimum) even though the tinted
+            // badge stays small — a 32dp target this close to the artwork edge was
+            // fiddly to hit.
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .size(ComponentSize.touchTarget)
+                    .clickable(onClick = onToggleFavorite),
+                contentAlignment = Alignment.Center
             ) {
-                Icon(
-                    if (isFavorite) Icons.Default.Favorite else Icons.Outlined.FavoriteBorder,
-                    if (isFavorite) "Remove from favorites" else "Add to favorites",
-                    tint = if (isFavorite) ColorPrimary else Color.White.copy(alpha = 0.7f),
-                    modifier = Modifier.size(ComponentSize.iconMedium)
-                )
+                Box(
+                    modifier = Modifier
+                        .size(30.dp)
+                        .background(Color.Black.copy(alpha = 0.4f), CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = if (isFavorite) Icons.Default.Favorite else Icons.Outlined.FavoriteBorder,
+                        contentDescription = if (isFavorite) "Remove from favorites" else "Add to favorites",
+                        tint = if (isFavorite) ColorPrimary else Color.White,
+                        modifier = Modifier.size(ComponentSize.iconSmall)
+                    )
+                }
             }
             if (isActiveHaptic) {
                 Box(
@@ -404,43 +591,52 @@ fun TrackRow(
     isPlaying: Boolean,
     isFavorite: Boolean,
     onClick: () -> Unit,
-    onToggleFavorite: () -> Unit
+    onToggleFavorite: () -> Unit,
+    onAddToPlaylist: (() -> Unit)? = null
 ) {
-    val infiniteTransition = rememberInfiniteTransition(label = "bouncing_bars")
-    var showDropdown by remember { mutableStateOf(false) }
-
+    // Flat list rows: only the playing track gets a container. A card+shadow on
+    // every row made the list read as a stack of competing surfaces instead of
+    // a scannable list, and left the real signal (what's playing) with nothing
+    // visually distinct to say it with. The equalizer transition is created only
+    // on the playing row — an idle list of hundreds of rows must not run N
+    // ticking (if empty) infinite transitions.
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(ComponentSize.buttonHeight)
-            .clip(RoundedCornerShape(Radius.sm))
-            .background(if (isCurrentPlaying) ColorHapticAccent.copy(alpha = 0.12f) else ColorSurface.copy(alpha = 0.4f))
+            .clip(RoundedCornerShape(Radius.md))
+            .background(if (isCurrentPlaying) ColorSurfaceVariant else Color.Transparent)
             .clickable(onClick = onClick)
-            .semantics(mergeDescendants = true) {
-                contentDescription = when {
-                    isCurrentPlaying && isPlaying -> "Now playing: ${song.title} by ${song.artist}"
-                    isCurrentPlaying -> "Current track: ${song.title}, paused"
-                    else -> "${song.title} by ${song.artist}"
-                }
-            }
-            .padding(horizontal = Spacing.xs),
+            // Tighter rows: 44dp art + 8dp vertical padding ≈ 60dp tall vs. the old
+            // ~80dp, so a long library scrolls in far fewer swipes.
+            .padding(horizontal = Spacing.sm, vertical = Spacing.xs),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(Modifier.size(ComponentSize.artworkSmall).clip(RoundedCornerShape(Radius.sm)), contentAlignment = Alignment.Center) {
-            ArtworkImage(song.artworkUrl, null, Modifier.fillMaxSize(), iconSize = ComponentSize.iconSmall, cornerRadius = Radius.sm)
+            ArtworkImage(song.artworkUrl, null, Modifier.fillMaxSize(), iconSize = ComponentSize.iconSmall, cornerRadius = Radius.sm, fallbackLabel = song.title)
             if (isCurrentPlaying && isPlaying) {
+                val infiniteTransition = rememberInfiniteTransition(label = "bouncing_bars")
                 Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.5f)), contentAlignment = Alignment.Center) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.Bottom, modifier = Modifier.height(ComponentSize.iconMedium)) {
-                        BouncingEqualizerBar(infiniteTransition, 0, 16)
-                        BouncingEqualizerBar(infiniteTransition, 200, 12)
-                        BouncingEqualizerBar(infiniteTransition, 400, 14)
+                    Row(horizontalArrangement = Arrangement.spacedBy(3.dp), verticalAlignment = Alignment.Bottom, modifier = Modifier.height(18.dp)) {
+                        BouncingEqualizerBar(infiniteTransition, 0, 14)
+                        BouncingEqualizerBar(infiniteTransition, 200, 10)
+                        BouncingEqualizerBar(infiniteTransition, 400, 12)
                     }
                 }
             }
         }
-        Spacer(Modifier.width(Spacing.md))
+        Spacer(Modifier.width(Spacing.sm))
         Column(Modifier.weight(1f)) {
-            Text(song.title, style = MaterialTheme.typography.labelLarge, color = ColorOnSurface, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.Bold)
+            // The playing row already announces itself via the container highlight and
+            // the equalizer overlay on its artwork — a third and fourth signal (clay
+            // title + indicator bar that read as a stray "|") were pure noise.
+            Text(
+                text = song.title,
+                style = MaterialTheme.typography.titleMedium,
+                color = ColorOnSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Spacer(Modifier.height(2.dp))
             Text(song.artist, style = MaterialTheme.typography.bodyMedium, color = ColorOnSurface60, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         IconButton(onClick = onToggleFavorite, modifier = Modifier.size(ComponentSize.touchTarget)) {
@@ -451,17 +647,235 @@ fun TrackRow(
                 modifier = Modifier.size(ComponentSize.iconMedium)
             )
         }
-        Box {
-            IconButton(onClick = { showDropdown = true }, modifier = Modifier.size(ComponentSize.touchTarget)) {
-                Icon(Icons.Default.MoreVert, "Options", tint = ColorOnSurface60)
-            }
-            DropdownMenu(expanded = showDropdown, onDismissRequest = { showDropdown = false }, containerColor = ColorSurface) {
-                DropdownMenuItem(text = { Text("Play next") }, onClick = { showDropdown = false })
-                DropdownMenuItem(text = { Text("Add to queue") }, onClick = { showDropdown = false })
-                DropdownMenuItem(text = { Text("Go to artist") }, onClick = { showDropdown = false })
+        if (onAddToPlaylist != null) {
+            IconButton(onClick = onAddToPlaylist, modifier = Modifier.size(ComponentSize.touchTarget)) {
+                Icon(
+                    Icons.AutoMirrored.Filled.PlaylistAdd,
+                    "Add to playlist",
+                    tint = ColorOnSurface60,
+                    modifier = Modifier.size(ComponentSize.iconMedium)
+                )
             }
         }
     }
+}
+
+// ─── A–Z fast-scroll rail ───────────────────────────────────
+/**
+ * Vertical letter strip for jumping through a long, sorted list. Tap or drag —
+ * each new letter under the finger ticks the haptics and fires [onLetterSelected].
+ * Only letters actually present in the list are shown, so every touch lands.
+ */
+@Composable
+private fun AlphabetRail(
+    letters: List<Char>,
+    onLetterSelected: (Char) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val haptics = androidx.compose.ui.platform.LocalHapticFeedback.current
+    var railHeightPx by remember { mutableStateOf(0) }
+    var activeLetter by remember { mutableStateOf<Char?>(null) }
+
+    fun selectAt(y: Float) {
+        if (railHeightPx == 0 || letters.isEmpty()) return
+        val index = ((y / railHeightPx) * letters.size).toInt().coerceIn(0, letters.size - 1)
+        val letter = letters[index]
+        if (letter != activeLetter) {
+            activeLetter = letter
+            haptics.performHapticFeedback(
+                androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove
+            )
+            onLetterSelected(letter)
+        }
+    }
+
+    BoxWithConstraints(
+        modifier = modifier.padding(end = Spacing.xs),
+        contentAlignment = Alignment.CenterEnd
+    ) {
+        // Size the rail to how many letters it actually has instead of always
+        // stretching to 85% of the screen — a 9-letter list doesn't need the
+        // same span as a full A-Z, and stretching it made the gaps between
+        // letters look random and unbalanced.
+        val idealHeight = 22.dp * letters.size
+        val railHeight = idealHeight.coerceAtMost(maxHeight * 0.85f).coerceAtLeast(120.dp)
+
+        // Floating preview bubble — pops out to the left of the rail while
+        // dragging so the target letter is readable without the finger
+        // covering the rail itself (mirrors iOS/YT Music's index scrubber).
+        androidx.compose.animation.AnimatedVisibility(
+            visible = activeLetter != null,
+            enter = androidx.compose.animation.scaleIn(initialScale = 0.6f) + androidx.compose.animation.fadeIn(),
+            exit = androidx.compose.animation.scaleOut(targetScale = 0.6f) + androidx.compose.animation.fadeOut(),
+            modifier = Modifier.offset(x = (-52).dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .shadow(Elevation.medium, CircleShape)
+                    .clip(CircleShape)
+                    .background(ColorHapticAccent),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = (activeLetter ?: ' ').toString(),
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = ColorOnPrimary
+                )
+            }
+        }
+
+        Column(
+            modifier = Modifier
+                .height(railHeight)
+                .width(22.dp)
+                .clip(RoundedCornerShape(Radius.pill))
+                .background(ColorSurface.copy(alpha = 0.6f))
+                .onSizeChanged { railHeightPx = it.height }
+                .pointerInput(letters) {
+                    detectVerticalDragGestures(
+                        onDragStart = { selectAt(it.y) },
+                        onVerticalDrag = { change, _ -> selectAt(change.position.y) },
+                        onDragEnd = { activeLetter = null },
+                        onDragCancel = { activeLetter = null }
+                    )
+                }
+                .pointerInput(letters) {
+                    detectTapGestures(
+                        onPress = { offset ->
+                            selectAt(offset.y)
+                            tryAwaitRelease()
+                            activeLetter = null
+                        }
+                    )
+                }
+                .padding(vertical = Spacing.xs),
+            verticalArrangement = Arrangement.SpaceEvenly,
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            letters.forEach { letter ->
+                Text(
+                    text = letter.toString(),
+                    // 11sp is the app's stated legibility floor (Typography.labelSmall);
+                    // this was 10sp, one notch under it.
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (letter == activeLetter) ColorHapticAccent else ColorOnSurface60
+                )
+            }
+        }
+    }
+}
+
+// ─── Swipe-to-Queue wrapper ─────────────────────────────────
+/**
+ * Swipe a row from the left edge to enqueue it right after the current song.
+ * The row never dismisses — it springs back, leaving the queue changed.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SwipeToQueueRow(
+    song: Song,
+    onEnqueueNext: () -> Unit,
+    /** Extra X offset (px) for the row content — drives the one-time discovery
+     *  nudge that peeks the "Play next" layer without a real swipe. */
+    contentOffsetX: () -> Float = { 0f },
+    content: @Composable () -> Unit
+) {
+    val haptics = androidx.compose.ui.platform.LocalHapticFeedback.current
+    // After a successful swipe the card flashes a "Playing next" confirmation over
+    // itself, then reverts — so the gesture visibly *did something* rather than just
+    // snapping back with no acknowledgement.
+    var justQueued by remember { mutableStateOf(false) }
+    LaunchedEffect(justQueued) {
+        if (justQueued) {
+            kotlinx.coroutines.delay(1300)
+            justQueued = false
+        }
+    }
+    val dismissState = rememberSwipeToDismissBoxState(
+        confirmValueChange = { value ->
+            if (value == SwipeToDismissBoxValue.StartToEnd) {
+                haptics.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+                onEnqueueNext()
+                justQueued = true
+            }
+            false // snap back; the action is queueing, not removing the row
+        }
+    )
+    SwipeToDismissBox(
+        state = dismissState,
+        enableDismissFromStartToEnd = true,
+        enableDismissFromEndToStart = false,
+        backgroundContent = {
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clip(RoundedCornerShape(Radius.md))
+                    .background(ColorHapticAccent.copy(alpha = 0.15f))
+                    .padding(horizontal = Spacing.md),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    Icons.Default.QueuePlayNext,
+                    contentDescription = "Play next",
+                    tint = ColorHapticAccent
+                )
+                Spacer(Modifier.width(Spacing.sm))
+                Text(
+                    "Play next",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = ColorHapticAccent
+                )
+            }
+        },
+        content = {
+            // Opaque backing is load-bearing: TrackRow's resting background is
+            // transparent, and SwipeToDismissBox always composes backgroundContent
+            // behind the row — without this, "Play next" bleeds through under the
+            // artwork and title. Opaque here keeps it hidden until actually swiped.
+            Box(
+                Modifier
+                    .graphicsLayer { translationX = contentOffsetX() }
+                    .background(ColorBackground)
+            ) {
+                content()
+                // Confirmation overlay: an amber sheet slides in over the card,
+                // holds ~1.3s, then fades to reveal the normal row again.
+                androidx.compose.animation.AnimatedVisibility(
+                    visible = justQueued,
+                    enter = androidx.compose.animation.slideInHorizontally { -it } +
+                        androidx.compose.animation.fadeIn(tween(180)),
+                    exit = androidx.compose.animation.fadeOut(tween(220)),
+                    modifier = Modifier.matchParentSize()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clip(RoundedCornerShape(Radius.md))
+                            .background(ColorHapticAccent)
+                            .padding(horizontal = Spacing.md),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(Spacing.sm)
+                    ) {
+                        Icon(
+                            Icons.Default.Check,
+                            contentDescription = null,
+                            tint = ColorOnPrimary,
+                            modifier = Modifier.size(ComponentSize.iconMedium)
+                        )
+                        Text(
+                            "Playing next",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = ColorOnPrimary,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+        }
+    )
 }
 
 // ─── Equalizer Bar ──────────────────────────────────────────
@@ -475,69 +889,3 @@ fun BouncingEqualizerBar(transition: InfiniteTransition, delayMillis: Int, targe
     Box(Modifier.width(3.dp).height(barHeight.dp).background(ColorHapticAccent, RoundedCornerShape(topStart = 1.dp, topEnd = 1.dp)))
 }
 
-// ─── Mini Player ────────────────────────────────────────────
-@Composable
-fun MiniPlayer(
-    currentSong: Song?,
-    isPlaying: Boolean,
-    progress: Float,
-    hapticActive: Boolean,
-    onTogglePlayPause: () -> Unit,
-    onNext: () -> Unit,
-    onPrev: () -> Unit,
-    onExpand: () -> Unit
-) {
-    if (currentSong == null) return
-
-    val infinitePulse = rememberInfiniteTransition(label = "glow_pulse")
-    val dotAlpha by infinitePulse.animateFloat(
-        initialValue = 0.4f, targetValue = 1.0f,
-        animationSpec = infiniteRepeatable(tween(1000, easing = EaseInOut), RepeatMode.Reverse),
-        label = "dot_alpha"
-    )
-
-    Surface(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onExpand).testTag("mini_player"),
-        color = ColorSurface,
-        tonalElevation = Elevation.low
-    ) {
-        Column {
-            Row(
-                modifier = Modifier.fillMaxWidth().height(ComponentSize.miniPlayerHeight).padding(horizontal = Spacing.md),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                ArtworkImage(currentSong.artworkUrl, null, Modifier.size(ComponentSize.artworkMedium), iconSize = ComponentSize.iconMedium, cornerRadius = Radius.sm)
-                Spacer(Modifier.width(Spacing.md))
-                Column(Modifier.weight(1f)) {
-                    Text(currentSong.title, style = MaterialTheme.typography.labelLarge, color = ColorOnSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        if (hapticActive) {
-                            Box(Modifier.size(6.dp).clip(CircleShape).background(ColorHapticAccent.copy(alpha = dotAlpha)))
-                            Spacer(Modifier.width(Spacing.xxs))
-                            Text("Haptic Active", style = MaterialTheme.typography.labelSmall, color = ColorHapticAccent, maxLines = 1)
-                        } else {
-                            Text(currentSong.artist, style = MaterialTheme.typography.labelSmall, color = ColorOnSurface60, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        }
-                    }
-                }
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.xxs)) {
-                    IconButton(onClick = onPrev, modifier = Modifier.size(ComponentSize.touchTarget)) {
-                        Icon(Icons.Default.SkipPrevious, "Previous", tint = ColorOnSurface, modifier = Modifier.size(ComponentSize.iconLarge))
-                    }
-                    IconButton(onClick = onTogglePlayPause, modifier = Modifier.size(ComponentSize.touchTarget).background(ColorSurfaceVariant, CircleShape)) {
-                        Icon(if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, if (isPlaying) "Pause" else "Play", tint = ColorOnSurface, modifier = Modifier.size(ComponentSize.iconMedium))
-                    }
-                    IconButton(onClick = onNext, modifier = Modifier.size(ComponentSize.touchTarget)) {
-                        Icon(Icons.Default.SkipNext, "Next", tint = ColorOnSurface, modifier = Modifier.size(ComponentSize.iconLarge))
-                    }
-                }
-            }
-            LinearProgressIndicator(
-                progress = { progress },
-                modifier = Modifier.fillMaxWidth().height(2.dp),
-                color = ColorHapticAccent,
-                trackColor = ColorSurfaceVariant,
-            )
-        }
-    }
-}
