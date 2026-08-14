@@ -323,10 +323,10 @@
   </svg>
   <h1>Feel the music <span class="accent">you already have</span></h1>
   <p class="hero-sub">
-    Haptiq is a free Android music player that turns your phone's vibration motor
-    into a tiny subwoofer. It listens while a song plays, looks a beat ahead, and
-    taps the kick drum and hums the bassline against your palm — live, in time,
-    on your own files.
+    Haptiq is a free Android music player that plays the kick drum and the
+    bassline through your phone's vibration motor. It listens while a song plays,
+    looks a beat ahead, and taps the kick and hums the bass against your palm —
+    live, in time, on your own files.
   </p>
   <div class="hero-cta">
     <a class="btn btn-primary" href="https://github.com/Shema-glitch/Haptiq/releases/latest/download/Haptiq-1.15-ui-tinkering%2B7c7caa0.dirty-debug.apk">Download the APK</a>
@@ -360,8 +360,8 @@
           A kick drum is a sudden jump in low-end energy that falls right back down.
           Haptiq fires one sharp thump on the jump — then stays quiet until the energy
           actually falls before it can fire again. That fall is what separates a drum
-          hit from a long bass note, and it's why risers and sound-effect swells can't
-          fake a beat.
+          hit from a long bass note — and it's why most risers and sound-effect
+          swells never get past it.
         </p>
         <svg viewBox="0 0 400 110" role="img" aria-label="Diagram: energy spikes sharply and falls, the engine fires at the peak and re-arms after the fall">
           <polyline points="0,95 60,93 90,90 110,18 130,80 170,92 210,90 230,14 250,78 300,92 400,94"
@@ -424,23 +424,23 @@
 
       <div class="b b-accent span2">
         <h3 class="big">Any motor.</h3>
-        <p>Haptiq checks once what your motor can do — composed pulses, timed amplitude, or plain on-off — and always speaks its best language.</p>
+        <p>Haptiq checks once what your motor can do — composed pulses, timed amplitude, or plain on-off — and speaks to it in its own language.</p>
       </div>
 
       <div class="b span2">
         <span class="tag">AOT lookahead</span>
         <h3>A beat ahead</h3>
-        <p>The scheduler measures your motor's real spin-up time and pre-fires each kick by exactly that lead — so the vibration peaks on the beat, not a beat late.</p>
+        <p>The scheduler pre-fires each kick by your motor's measured spin-up time, so the motor is already moving when the audio hits — live-only detection would land a beat late.</p>
       </div>
       <div class="b span2">
         <span class="tag">Character</span>
         <h3>SNAP → HEAVY</h3>
-        <p>Every kick is a decaying strike-train you can shape: a 35ms SNAP tick or a 240ms HEAVY thump that keeps moving through a table or mattress.</p>
+        <p>Every kick is a decaying strike-train you can shape: a 35ms SNAP tick or a 240ms HEAVY thump whose re-strikes keep the motor moving through surface damping.</p>
       </div>
       <div class="b span2">
         <span class="tag">Teach it</span>
         <h3>See the beat, place the kick</h3>
-        <p>When a song fools auto-detection, the visual editor shows the waveform, every transient, and the beat grid — tap a peak and the kick snaps to the exact hit.</p>
+        <p>When a song fools auto-detection, the visual editor shows the waveform, every transient, and the beat grid — tap a peak and the kick snaps to the nearest real hit.</p>
       </div>
     </div>
   </div>
@@ -548,7 +548,7 @@
       <div class="b span2"><h3>Sleep timer</h3><p>15, 30 or 60 minutes, then everything goes quiet — motor included.</p></div>
       <div class="b span2"><h3>Equalizer picker</h3><p>Lists the EQ apps installed on your phone and opens the one you choose.</p></div>
       <div class="b span2"><h3>Now Playing, YT style</h3><p>The mini-player morphs into full screen — tap, drag, or fling it open, flick sideways to skip tracks.</p></div>
-      <div class="b span2"><h3>Kick preview scrubber</h3><p>The seek bar shows exactly where each kick will pre-fire before you enable lookahead.</p></div>
+      <div class="b span2"><h3>Kick preview scrubber</h3><p>The seek bar marks where each mapped kick will pre-fire, so you can see the map before you trust it.</p></div>
       <div class="b span2"><h3>Per-song kick maps</h3><p>Teach any track once — the map is saved with the song and takes over from auto-detection.</p></div>
     </div>
   </div>
