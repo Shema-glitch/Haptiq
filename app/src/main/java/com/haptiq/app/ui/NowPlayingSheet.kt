@@ -7,6 +7,7 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -216,6 +217,20 @@ fun NowPlayingSheet(
                         }
                     )
                 }
+                    // Tap-to-open on the docked bar (YT Music-style). Clean taps never
+                    // reach detectDragGestures — onDragEnd only fires after the touch
+                    // crosses slop, so the old isTap branch inside onDragEnd was dead
+                    // code. This sibling detector fires on a still tap; children (the
+                    // mini-player's play button) consume their own downs, so tapping
+                    // those toggles playback instead of expanding.
+                    .pointerInput(currentSong.id) {
+                        detectTapGestures {
+                            if (progress.value < 0.05f) {
+                                onExpandedChange(true)
+                                scope.launch { progress.animateTo(1f, morphSpring) }
+                            }
+                        }
+                    }
         ) {
             // ── Background cross-fade: flat card while docked, ambient gradient once
             // expanded. Two overlaid layers rather than swapping a single Modifier so

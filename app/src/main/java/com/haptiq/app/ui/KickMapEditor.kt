@@ -8,7 +8,6 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -17,7 +16,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -28,10 +26,13 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -41,7 +42,6 @@ import com.haptiq.app.data.Song
 import com.haptiq.app.ui.theme.*
 import coil.compose.AsyncImage
 import kotlin.math.roundToInt
-import kotlinx.coroutines.launch
 
 /**
  * Full-screen visual kick-map editor — the replacement for blind tap-along teaching.
@@ -163,8 +163,13 @@ fun KickMapEditorOverlay(
                 // Pinch zoom: 1× = full-resolution bar spacing, up to 6× for fine placement.
                 val zoomState = remember { mutableStateOf(1f) }
                 val contentWDp = stepDp * energy.size * zoomState.value
-                val scrollState = rememberScrollState()
-                val scope = rememberCoroutineScope()
+                // Manual scroll position (px). A plain ScrollState would clamp every
+                // delta to its maxValue — and maxValue only updates when a real
+                // scrollable container owns the state — so pan/zoom/jump all froze at
+                // 0. This is clamped by hand against the actual content width instead.
+                var scrollPx by remember { mutableStateOf(0f) }
+                var viewportWpx by remember { mutableStateOf(0f) }
+                val haptics = LocalHapticFeedback.current
                 val scrubHitSlopPx = with(LocalDensity.current) { 24.dp.toPx() }
                 // pointerInput closures capture their first-frame values; these keep the
                 // live progress/callbacks current without restarting an in-progress gesture.
@@ -181,7 +186,8 @@ fun KickMapEditorOverlay(
                         .pointerInput(Unit) {
                             detectTapGestures { offset ->
                                 val fraction = (offset.x / size.width).coerceIn(0f, 1f)
-                                scope.launch { scrollState.scrollTo((scrollState.maxValue * fraction).toInt()) }
+                                val contentW = stepPx * zoomState.value * energy.size
+                                scrollPx = ((contentW - viewportWpx).coerceAtLeast(0f)) * fraction
                             }
                         }
                         .pointerInput(Unit) {
@@ -228,9 +234,9 @@ fun KickMapEditorOverlay(
                         drawLine(ColorPrimary, Offset(progress * size.width, 0f), Offset(progress * size.width, size.height), 2.dp.toPx())
                         // Viewport indicator over the detail's visible window (zoom-aware).
                         val contentWpx = stepPx * energy.size * zoomState.value
-                        val detailWpx = (contentWpx - scrollState.maxValue).coerceAtLeast(1f)
-                        val indicatorLeft = size.width * (scrollState.value / contentWpx)
-                        val indicatorWidth = size.width * (detailWpx / contentWpx)
+                        val viewW = viewportWpx.coerceAtLeast(1f)
+                        val indicatorLeft = size.width * (scrollPx / contentWpx)
+                        val indicatorWidth = size.width * (viewW / contentWpx)
                         drawRect(
                             color = ColorPrimary.copy(alpha = 0.12f),
                             topLeft = Offset(indicatorLeft, 0f),
@@ -242,105 +248,112 @@ fun KickMapEditorOverlay(
                 // ── Detail: full-resolution waveform with one unified gesture handler.
                 // Pinch zooms (1–6×) around the pinch point, single-finger drag pans,
                 // dragging from the playhead handle scrubs (seek + haptic audition),
-                // and a clean tap places/removes a kick pin. The canvas is translated by
-                // the scroll offset via graphicsLayer, so pointer coordinates arrive in
-                // content space and the drawing needs no manual offset. ──
+                // and a clean tap places/removes a kick pin. Gestures live on the
+                // viewport Box (not the translated canvas), so pointer positions are
+                // viewport-local and the scroll offset is added explicitly — no
+                // dependence on how graphicsLayer translates hit testing. ──
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f)
                         .clipToBounds()
+                        .onSizeChanged { viewportWpx = it.width.toFloat() }
+                        .pointerInput(energy.size, onsets.size) {
+                            awaitEachGesture {
+                                val down = awaitFirstDown(requireUnconsumed = false)
+                                var isPinch = false
+                                var isTap = true
+                                var scrubbing = false
+                                var totalDrag = 0f
+                                var lastDist = 0f
+                                var scrollNow = scrollPx
+                                val slop = viewConfiguration.touchSlop
+                                val contentW = stepPx * zoomState.value * energy.size
+                                val maxScroll = (contentW - viewportWpx).coerceAtLeast(0f)
+                                val playheadViewportX = currentProgress * contentW - scrollNow
+                                val nearPlayhead =
+                                    kotlin.math.abs(down.position.x - playheadViewportX) <= scrubHitSlopPx
+
+                                while (true) {
+                                    val event = awaitPointerEvent()
+                                    val pressed = event.changes.filter { it.pressed }
+
+                                    if (pressed.size >= 2) {
+                                        // Pinch: zoom around the centroid, keeping the
+                                        // content under the fingers stationary.
+                                        isPinch = true
+                                        isTap = false
+                                        scrubbing = false
+                                        val c0 = pressed[0]
+                                        val c1 = pressed[1]
+                                        val dist = (c1.position - c0.position).getDistance()
+                                        val centroidX = (c0.position.x + c1.position.x) / 2f
+                                        if (lastDist > 0f && dist > 0f) {
+                                            val factor = dist / lastDist
+                                            if (factor != 1f) {
+                                                val oldContentX = scrollNow + centroidX
+                                                zoomState.value = (zoomState.value * factor).coerceIn(1f, 6f)
+                                                val newContent = stepPx * zoomState.value * energy.size
+                                                val newMax = (newContent - viewportWpx).coerceAtLeast(0f)
+                                                scrollNow = (oldContentX * factor - centroidX).coerceIn(0f, newMax)
+                                                scrollPx = scrollNow
+                                            }
+                                        }
+                                        lastDist = dist
+                                        event.changes.forEach { it.consume() }
+                                    } else if (pressed.size == 1) {
+                                        val change = pressed[0]
+                                        val drag = change.positionChange()
+                                        if (isPinch) { isPinch = false; lastDist = 0f }
+                                        if (scrubbing) {
+                                            val w = stepPx * zoomState.value * energy.size
+                                            currentOnScrub(((scrollNow + change.position.x) / w).coerceIn(0f, 1f))
+                                            change.consume()
+                                        } else if (nearPlayhead) {
+                                            // Drag from the playhead handle scrubs (seek +
+                                            // haptic audition); a still tap stays a tap.
+                                            totalDrag += drag.x
+                                            if (!scrubbing && kotlin.math.abs(totalDrag) > slop) scrubbing = true
+                                            if (scrubbing) {
+                                                isTap = false
+                                                val w = stepPx * zoomState.value * energy.size
+                                                currentOnScrub(((scrollNow + change.position.x) / w).coerceIn(0f, 1f))
+                                                change.consume()
+                                            }
+                                        } else {
+                                            // Plain pan — one finger drags the waveform.
+                                            totalDrag += drag.x
+                                            if (kotlin.math.abs(totalDrag) > slop && isTap) isTap = false
+                                            if (!isTap) {
+                                                scrollNow = (scrollNow - drag.x).coerceIn(0f, maxScroll)
+                                                scrollPx = scrollNow
+                                                change.consume()
+                                            }
+                                        }
+                                    }
+                                    if (event.changes.all { !it.pressed }) break
+                                }
+
+                                if (isTap && !scrubbing) {
+                                    // Clean tap (no drag, no pinch): place/remove a pin,
+                                    // snapped to the nearest real transient.
+                                    val contentX = down.position.x + scrollNow
+                                    val bucket = (contentX / (stepPx * zoomState.value))
+                                        .toInt().coerceIn(0, energy.size - 1)
+                                    val tapMs = (bucket * frameMs + frameMs / 2).toInt()
+                                    haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    currentOnTogglePin(
+                                        TrackEnergyAnalyzer.snapKickPlacement(tapMs, onsets, energy)
+                                    )
+                                }
+                            }
+                        }
                 ) {
                     Canvas(
                         modifier = Modifier
                             .width(contentWDp)
                             .fillMaxHeight()
-                            .graphicsLayer { translationX = -scrollState.value.toFloat() }
-                            .pointerInput(energy.size, onsets.size) {
-                                awaitEachGesture {
-                                    val down = awaitFirstDown(requireUnconsumed = false)
-                                    var isPinch = false
-                                    var isTap = true
-                                    var scrubbing = false
-                                    var totalDrag = 0f
-                                    var lastDist = 0f
-                                    var scrollNow = scrollState.value.toFloat()
-                                    val slop = viewConfiguration.touchSlop
-                                    val contentW = stepPx * zoomState.value * energy.size
-                                    val nearPlayhead =
-                                        kotlin.math.abs(down.position.x - currentProgress * contentW) <= scrubHitSlopPx
-
-                                    while (true) {
-                                        val event = awaitPointerEvent()
-                                        val pressed = event.changes.filter { it.pressed }
-
-                                        if (pressed.size >= 2) {
-                                            // Pinch: zoom around the centroid, keeping the
-                                            // content under the fingers stationary.
-                                            isPinch = true
-                                            isTap = false
-                                            scrubbing = false
-                                            val c0 = pressed[0]
-                                            val c1 = pressed[1]
-                                            val dist = (c1.position - c0.position).getDistance()
-                                            val centroidX = (c0.position.x + c1.position.x) / 2f
-                                            if (lastDist > 0f && dist > 0f) {
-                                                val factor = dist / lastDist
-                                                if (factor != 1f) {
-                                                    val oldContentX = scrollNow + centroidX
-                                                    zoomState.value = (zoomState.value * factor).coerceIn(1f, 6f)
-                                                    scrollNow = (oldContentX * factor - centroidX)
-                                                        .coerceIn(0f, scrollState.maxValue.toFloat())
-                                                    scrollState.dispatchRawDelta(scrollNow - scrollState.value)
-                                                }
-                                            }
-                                            lastDist = dist
-                                            event.changes.forEach { it.consume() }
-                                        } else if (pressed.size == 1) {
-                                            val change = pressed[0]
-                                            val drag = change.positionChange()
-                                            if (isPinch) { isPinch = false; lastDist = 0f }
-                                            if (scrubbing) {
-                                                val w = stepPx * zoomState.value * energy.size
-                                                currentOnScrub((change.position.x / w).coerceIn(0f, 1f))
-                                                change.consume()
-                                            } else if (nearPlayhead) {
-                                                // Drag from the playhead handle scrubs (seek +
-                                                // haptic audition); a still tap stays a tap.
-                                                totalDrag += drag.x
-                                                if (!scrubbing && kotlin.math.abs(totalDrag) > slop) scrubbing = true
-                                                if (scrubbing) {
-                                                    isTap = false
-                                                    val w = stepPx * zoomState.value * energy.size
-                                                    currentOnScrub((change.position.x / w).coerceIn(0f, 1f))
-                                                    change.consume()
-                                                }
-                                            } else {
-                                                // Plain pan — one finger drags the waveform.
-                                                totalDrag += drag.x
-                                                if (kotlin.math.abs(totalDrag) > slop && isTap) isTap = false
-                                                if (!isTap) {
-                                                    scrollNow += -drag.x
-                                                    scrollState.dispatchRawDelta(-drag.x)
-                                                    change.consume()
-                                                }
-                                            }
-                                        }
-                                        if (event.changes.all { !it.pressed }) break
-                                    }
-
-                                    if (isTap && !scrubbing) {
-                                        // Clean tap (no drag, no pinch): place/remove a pin,
-                                        // snapped to the nearest real transient.
-                                        val bucket = (down.position.x / (stepPx * zoomState.value))
-                                            .toInt().coerceIn(0, energy.size - 1)
-                                        val tapMs = (bucket * frameMs + frameMs / 2).toInt()
-                                        currentOnTogglePin(
-                                            TrackEnergyAnalyzer.snapKickPlacement(tapMs, onsets, energy)
-                                        )
-                                    }
-                                }
-                            }
+                            .graphicsLayer { translationX = -scrollPx }
                     ) {
                         val z = zoomState.value
                         val barWpx = barW.toPx() * z
@@ -391,7 +404,7 @@ fun KickMapEditorOverlay(
                     verticalArrangement = Arrangement.spacedBy(Spacing.sm)
                 ) {
                     Text(
-                        text = "Pinch to zoom · drag the playhead to scrub · tap a peak to mark a kick",
+                        text = "Pinch to zoom · drag the playhead to scrub · tap a peak or use At playhead",
                         style = MaterialTheme.typography.bodySmall,
                         color = ColorOnSurface60
                     )
@@ -409,6 +422,30 @@ fun KickMapEditorOverlay(
                         }
                         IconButton(onClick = onRestart) {
                             Icon(Icons.Default.Replay, contentDescription = "Restart from beginning", tint = ColorOnSurface60)
+                        }
+                        FilledTonalButton(
+                            onClick = {
+                                // Place a pin exactly where the playhead is (snapped to the
+                                // nearest real transient). Before anything has played the
+                                // playhead sits at 0ms, so fall back to the center of the
+                                // visible waveform instead of the left edge.
+                                val targetMs = if (currentProgress > 0.01f) {
+                                    (currentProgress * totalMs).toInt()
+                                } else {
+                                    val centerContentX = scrollPx + viewportWpx / 2f
+                                    val centerBucket = (centerContentX / (stepPx * zoomState.value))
+                                        .toInt().coerceIn(0, energy.size - 1)
+                                    (centerBucket * frameMs + frameMs / 2).toInt()
+                                }
+                                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                currentOnTogglePin(
+                                    TrackEnergyAnalyzer.snapKickPlacement(targetMs, onsets, energy)
+                                )
+                            }
+                        ) {
+                            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(Spacing.xxs))
+                            Text("At playhead", style = MaterialTheme.typography.labelLarge)
                         }
                         Spacer(Modifier.weight(1f))
                         OutlinedButton(
