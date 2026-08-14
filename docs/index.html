@@ -267,7 +267,7 @@
 <a class="skip-link" href="#main">Skip to content</a>
 
 <div class="ticker" aria-hidden="true">
-  open source · <b>v1.11 “aftershock”</b> · two haptic engines · no ads · no accounts · built &amp; feel-tested on a budget phone
+  open source · <b>v1.15 “lookahead”</b> · beat-synced kick pre-fire · two haptic engines · no ads · no accounts · built &amp; feel-tested on a budget phone
 </div>
 
 <div class="nav-dock">
@@ -324,17 +324,20 @@
   <h1>Feel the music <span class="accent">you already have</span></h1>
   <p class="hero-sub">
     Haptiq is a free Android music player that turns your phone's vibration motor
-    into a tiny subwoofer. It listens while a song plays and taps the kick drum and
-    hums the bassline against your palm — live, in time, on your own files.
+    into a tiny subwoofer. It listens while a song plays, looks a beat ahead, and
+    taps the kick drum and hums the bassline against your palm — live, in time,
+    on your own files.
   </p>
   <div class="hero-cta">
-    <a class="btn btn-primary" href="https://github.com/Shema-glitch/Haptiq/releases">Download on GitHub</a>
+    <a class="btn btn-primary" href="https://github.com/Shema-glitch/Haptiq/releases/latest/download/Haptiq-v1.15-test.apk">Download the APK</a>
+    <a class="btn" href="https://github.com/Shema-glitch/Haptiq/releases">All releases</a>
     <button class="btn" id="demo-btn" type="button">Feel a demo</button>
   </div>
   <p class="demo-hint" id="demo-hint">The demo vibrates your phone — open this page on Android to try it.</p>
   <div class="hero-stats">
     <span><b>20/s</b> spectrum reads</span>
     <span><b>2</b> haptic engines</span>
+    <span><b>4</b> kick characters</span>
     <span><b>0</b> ads &amp; accounts</span>
     <span><b>100%</b> on-device</span>
   </div>
@@ -423,6 +426,22 @@
         <h3 class="big">Any motor.</h3>
         <p>Haptiq checks once what your motor can do — composed pulses, timed amplitude, or plain on-off — and always speaks its best language.</p>
       </div>
+
+      <div class="b span2">
+        <span class="tag">AOT lookahead</span>
+        <h3>A beat ahead</h3>
+        <p>The scheduler measures your motor's real spin-up time and pre-fires each kick by exactly that lead — so the vibration peaks on the beat, not a beat late.</p>
+      </div>
+      <div class="b span2">
+        <span class="tag">Character</span>
+        <h3>SNAP → HEAVY</h3>
+        <p>Every kick is a decaying strike-train you can shape: a 35ms SNAP tick or a 240ms HEAVY thump that keeps moving through a table or mattress.</p>
+      </div>
+      <div class="b span2">
+        <span class="tag">Teach it</span>
+        <h3>See the beat, place the kick</h3>
+        <p>When a song fools auto-detection, the visual editor shows the waveform, every transient, and the beat grid — tap a peak and the kick snaps to the exact hit.</p>
+      </div>
     </div>
   </div>
 </section>
@@ -459,6 +478,12 @@
             <span class="mock-toggle on">KICK</span>
             <span class="mock-toggle on">BASS</span>
           </div>
+          <div class="mock-toggles">
+            <span class="mock-toggle on">THUMP</span>
+            <span class="mock-toggle">PUNCH</span>
+            <span class="mock-toggle">SNAP</span>
+            <span class="mock-toggle">HEAVY</span>
+          </div>
           <div class="mock-row">
             <span class="mock-label">Kick intensity</span>
             <span class="mock-track"><span class="mock-fill amber" style="width:72%"></span></span>
@@ -480,7 +505,7 @@
             <span class="mock-val">43–86</span>
           </div>
         </div>
-        <p>Separate strength for each engine — they work in adaptive mode too. Frequency ranges, trigger thresholds and engine switches are all live while the song plays.</p>
+        <p>Separate strength for each engine, a kick-character axis (SNAP → PUNCH → THUMP → HEAVY), and live thresholds — every knob works while the song plays.</p>
       </div>
       <div class="b span3">
         <span class="tag">Visual</span>
@@ -489,8 +514,18 @@
       </div>
       <div class="b span3">
         <span class="tag">Presets</span>
-        <h3>Four starting points</h3>
-        <p>Deep Bass, Punch, Concert and Soft Pulse — pick a character, then bend it with the sliders.</p>
+        <h3>Four kick characters</h3>
+        <p>THUMP, PUNCH, HEAVY and SNAP set character and intensity together — pick one, then bend it with the sliders.</p>
+      </div>
+      <div class="b span3">
+        <span class="tag">Teach kicks</span>
+        <h3>Map any song visually</h3>
+        <p>The waveform editor shows the bass envelope, every detected transient, and the beat grid. Tap peaks to pin kicks — each snaps to the real hit — or scrub the playhead and hit “At playhead”.</p>
+      </div>
+      <div class="b span3">
+        <span class="tag">Shareable</span>
+        <h3>Maps you can send</h3>
+        <p>Export a taught map to a file with the song's title, artist and kick times, and import it on any device — the same kicks, exactly placed.</p>
       </div>
     </div>
   </div>
@@ -512,6 +547,9 @@
       <div class="b span2"><h3>Speed &amp; volume</h3><p>0.5×–2× playback speed; the in-app volume slider stays in sync with the hardware keys.</p></div>
       <div class="b span2"><h3>Sleep timer</h3><p>15, 30 or 60 minutes, then everything goes quiet — motor included.</p></div>
       <div class="b span2"><h3>Equalizer picker</h3><p>Lists the EQ apps installed on your phone and opens the one you choose.</p></div>
+      <div class="b span2"><h3>Now Playing, YT style</h3><p>The mini-player morphs into full screen — tap, drag, or fling it open, flick sideways to skip tracks.</p></div>
+      <div class="b span2"><h3>Kick preview scrubber</h3><p>The seek bar shows exactly where each kick will pre-fire before you enable lookahead.</p></div>
+      <div class="b span2"><h3>Per-song kick maps</h3><p>Teach any track once — the map is saved with the song and takes over from auto-detection.</p></div>
     </div>
   </div>
 </section>
@@ -556,9 +594,25 @@
         <div class="tl-ver">v1.10</div>
         <p>The haptic feel overhaul: bass became a continuous envelope-following rumble instead of an on-off buzz, and the kick got its punch back.</p>
       </div>
-      <div class="tl-item now">
-        <div class="tl-ver">v1.11 — current</div>
+      <div class="tl-item">
+        <div class="tl-ver">v1.11</div>
         <p>Separate kick and bass intensity controls, a re-arm gate that stops sound-effect swells from faking beats, 808 handling, and per-motor capability detection.</p>
+      </div>
+      <div class="tl-item">
+        <div class="tl-ver">v1.12</div>
+        <p>Haptic latency fixes, AOT kick lookahead with a beat grid, a kick-onset seek-bar overlay, and a motion + contrast audit with reduced-motion support.</p>
+      </div>
+      <div class="tl-item">
+        <div class="tl-ver">v1.13</div>
+        <p>The kick-character axis — SNAP, PUNCH, THUMP, HEAVY — rendered as decaying strike-trains, presets renamed to match, and a smarter adaptive engine with a surface feedback loop.</p>
+      </div>
+      <div class="tl-item">
+        <div class="tl-ver">v1.14</div>
+        <p>The beat-grid drift fix (tempo detection that hugs the music instead of quantizing), a motor-calibrated pre-fire lead, and teach kicks — the first version of the waveform editor.</p>
+      </div>
+      <div class="tl-item now">
+        <div class="tl-ver">v1.15 — current</div>
+        <p>The editor became a real tool: pan, pinch-zoom, drag-to-scrub audition and an “At playhead” button — plus shareable kick maps and a mini player that opens with a tap.</p>
       </div>
     </div>
 
@@ -578,10 +632,11 @@
     <h2>Open source, on GitHub.</h2>
     <div class="dl-box">
       <p>
-        Haptiq isn't on the Play Store yet. Grab the newest APK from the Releases
-        page, or clone the repository and install it with a phone plugged in:
+        Haptiq isn't on the Play Store yet. Grab the latest test APK straight from
+        the release below, or clone the repository and install it with a phone plugged in:
       </p>
-      <a class="btn btn-primary" href="https://github.com/Shema-glitch/Haptiq/releases">Releases</a>
+      <a class="btn btn-primary" href="https://github.com/Shema-glitch/Haptiq/releases/latest/download/Haptiq-v1.15-test.apk">Download APK (v1.15 test)</a>
+      <a class="btn" href="https://github.com/Shema-glitch/Haptiq/releases">All releases</a>
       <a class="btn" href="https://github.com/Shema-glitch/Haptiq">Source code</a>
       <br>
       <span class="code">git clone https://github.com/Shema-glitch/Haptiq && cd Haptiq && ./gradlew installDebug</span>
