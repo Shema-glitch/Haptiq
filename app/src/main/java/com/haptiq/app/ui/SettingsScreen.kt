@@ -246,8 +246,9 @@ fun SettingsScreen(
                     }.getOrDefault("unknown")
                 }
                 SettingsRow(
-                    icon = Icons.Default.Info,
-                    iconColor = ColorOnSurface60,
+                    // The diamond mark keeps its facet colors via Color.Unspecified.
+                    icon = HaptiqDiamondVector,
+                    iconColor = Color.Unspecified,
                     title = "About",
                     subtitle = "Haptiq ${com.haptiq.app.BuildConfig.RELEASE_CODENAME} " +
                         "v${com.haptiq.app.BuildConfig.VERSION_NAME}\n" +

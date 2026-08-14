@@ -74,6 +74,19 @@ fun SplashScreen(onTimeout: () -> Unit) {
         a
     }
 
+    // Diamond mark reveal — leads the wordmark by a beat so the mark lands
+    // first and the letters follow under it.
+    val markAlpha by animateFloatAsState(
+        targetValue = 1f,
+        animationSpec = tweenUnlessReduced(500, delayMillis = 100),
+        label = "mark_alpha"
+    )
+    val markScale by animateFloatAsState(
+        targetValue = 1f,
+        animationSpec = tweenUnlessReduced(500, delayMillis = 100),
+        label = "mark_scale"
+    )
+
     // Letter reveal animation
     val letters = "HAPTIQ"
     val letterAlphas = letters.mapIndexed { index, _ ->
@@ -124,6 +137,16 @@ fun SplashScreen(onTimeout: () -> Unit) {
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier.alpha(overallAlpha)
         ) {
+            // The Haptiq diamond mark — same gem as the launcher icon.
+            HaptiqDiamondMark(
+                modifier = Modifier
+                    .size(72.dp)
+                    .alpha(markAlpha)
+                    .scale(markScale)
+            )
+
+            Spacer(Modifier.height(Spacing.md))
+
             // HAPTIQ text — letter by letter reveal
             Row(
                 horizontalArrangement = Arrangement.Center,
