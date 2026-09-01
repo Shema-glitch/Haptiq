@@ -3,14 +3,13 @@ package com.haptiq.app.ui.theme
 import androidx.compose.ui.unit.dp
 
 /**
- * Haptiq Design Token System
+ * Haptiq Design Token System — Brutalist
  *
  * All spacing, radius, and layout values are defined here.
  * NEVER use raw dp values in screens — always reference these tokens.
  *
- * Scale: 4dp base grid
- * Spacing: 4, 8, 12, 16, 20, 24, 32, 40, 48, 56, 64
- * Radii: 8, 12, 16, 24, Full (pill)
+ * Brutalist: zero radius on everything, thick visible borders,
+ * no shadows, no soft rounding. Structure IS the decoration.
  */
 
 // ─── Spacing ───────────────────────────────────────────────
@@ -29,12 +28,23 @@ object Spacing {
 }
 
 // ─── Corner Radius ─────────────────────────────────────────
+// BRUTALIST: zero radius on everything. No rounding, no pills.
+// Structure IS the decoration — sharp edges, visible borders.
 object Radius {
-    val sm = 8.dp     // Track row, small cards, thumbnails
-    val md = 12.dp    // Cards, chips, FAB shape
-    val lg = 16.dp    // Large cards, artwork container
-    val xl = 24.dp    // Bottom sheet, dialog
-    val pill = 56.dp  // Pill shape (search bar, CTA buttons)
+    val sm = 0.dp     // Everything is square
+    val md = 0.dp
+    val lg = 0.dp
+    val xl = 0.dp
+    val pill = 0.dp   // No pill shapes in brutalism
+}
+
+// ─── Border Width ──────────────────────────────────────────
+// Thick, visible borders are the primary depth/structure signal
+// in brutalist design. Replaces shadows entirely.
+object BorderWidth {
+    val thin = 1.dp     // Dividers between grouped items
+    val medium = 2.dp   // Cards, buttons, chips — the default
+    val thick = 3.dp    // Emphasized elements, active states
 }
 
 // ─── Component Sizes ───────────────────────────────────────
@@ -62,12 +72,13 @@ object ComponentSize {
 }
 
 // ─── Elevation ─────────────────────────────────────────────
+// Brutalist: no shadows. Depth comes from thick borders only.
 object Elevation {
     val none = 0.dp
-    val low = 4.dp    // Subtle card lift
-    val medium = 8.dp // FAB shadow
-    val high = 12.dp  // Artwork card shadow
-    val hero = 24.dp  // Large artwork shadow
+    val low = 0.dp
+    val medium = 0.dp
+    val high = 0.dp
+    val hero = 0.dp
 }
 
 // ─── Layout ────────────────────────────────────────────────

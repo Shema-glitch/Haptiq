@@ -95,9 +95,12 @@ fun LibraryScreen(
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.xs)) {
                 // Sort menu
                 Box {
+                    // Brutalist: square, thick border
                     IconButton(
                         onClick = { showSortMenu = true },
-                        modifier = Modifier.background(ColorSurface, CircleShape)
+                        modifier = Modifier
+                            .background(ColorSurface)
+                            .border(BorderWidth.medium, ColorOnSurface)
                     ) {
                         Icon(Icons.Default.SwapVert, contentDescription = "Sort tracks", tint = ColorOnSurface)
                     }
@@ -124,14 +127,15 @@ fun LibraryScreen(
                 }
                 // Search toggle — collapsing search to an icon keeps the default
                 // screen calm; the field slides open only when asked for.
+                // Brutalist: square, thick border
                 IconButton(
                     onClick = {
                         if (searchExpanded) onSearchQueryChanged("")
                         searchExpanded = !searchExpanded
                     },
-                    modifier = Modifier.background(
-                        if (searchExpanded) ColorSurfaceVariant else ColorSurface, CircleShape
-                    )
+                    modifier = Modifier
+                        .background(if (searchExpanded) ColorSurfaceVariant else ColorSurface)
+                        .border(BorderWidth.medium, ColorOnSurface)
                 ) {
                     Icon(
                         if (searchExpanded) Icons.Default.Close else Icons.Default.Search,
@@ -140,10 +144,13 @@ fun LibraryScreen(
                     )
                 }
                 // Refresh/Scan button
+                // Brutalist: square, thick border
                 IconButton(
                     onClick = onScanDevice,
                     enabled = !state.isScanning,
-                    modifier = Modifier.background(ColorSurface, CircleShape)
+                    modifier = Modifier
+                        .background(ColorSurface)
+                        .border(BorderWidth.medium, ColorOnSurface)
                 ) {
                     if (state.isScanning) {
                         CircularProgressIndicator(
@@ -291,6 +298,8 @@ fun LibraryScreen(
                         )
                     }
                     item {
+                        // Horizontal scrolling row — mirrors the changelog carousel
+                        // on the marketing site.
                         LazyRow(
                             horizontalArrangement = Arrangement.spacedBy(Spacing.md),
                             contentPadding = PaddingValues(bottom = Spacing.xs)
@@ -517,6 +526,7 @@ fun MediaCard(
         1f
     }
 
+    // Brutalist: thick black border, square corners.
     Column(
         modifier = Modifier
             .width(ComponentSize.artworkCard)
@@ -526,12 +536,9 @@ fun MediaCard(
         Box(
             modifier = Modifier
                 .size(ComponentSize.artworkCard)
-                .shadow(Elevation.high, RoundedCornerShape(Radius.md))
-                .clip(RoundedCornerShape(Radius.md))
                 .border(
-                    width = if (isActiveHaptic) pulseBorderWidthFactor.dp else 0.dp,
-                    color = if (isActiveHaptic) ColorHapticAccent else Color.Transparent,
-                    shape = RoundedCornerShape(Radius.md)
+                    width = if (isActiveHaptic) BorderWidth.thick else BorderWidth.medium,
+                    color = if (isActiveHaptic) ColorHapticAccent else ColorOnSurface
                 )
         ) {
             ArtworkImage(
@@ -566,13 +573,13 @@ fun MediaCard(
                     )
                 }
             }
+            // Brutalist: square haptic indicator
             if (isActiveHaptic) {
                 Box(
                     modifier = Modifier
                         .padding(Spacing.xxs)
                         .size(Spacing.xxs)
-                        .background(ColorHapticAccent, CircleShape)
-                        .shadow(Elevation.low, CircleShape)
+                        .background(ColorHapticAccent)
                         .align(Alignment.TopStart)
                 )
             }

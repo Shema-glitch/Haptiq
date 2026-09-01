@@ -123,13 +123,15 @@ fun PlayerScreen(
         // Ambient glow behind artwork — the gradient already fades to transparent;
         // the old Modifier.blur on top of it clipped to rectangular bounds and
         // produced a visible box edge on-device.
+        // Ambient glow: kick orange represents the haptic energy radiating
+        // from the player — the kick is the live engine, so the glow is orange.
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(if (isShortScreen) 220.dp else 350.dp)
                 .background(
                     Brush.verticalGradient(
-                        colors = listOf(ColorHapticAccent.copy(alpha = 0.06f), Color.Transparent)
+                        colors = listOf(ColorKick.copy(alpha = 0.06f), Color.Transparent)
                     )
                 )
                 .align(Alignment.TopCenter)
@@ -142,17 +144,18 @@ fun PlayerScreen(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             // ─── Drag handle ────────────────────────────────────
-            // The screen already dismisses on a downward drag; this pill is the
-            // affordance that tells users the sheet can be pulled down at all.
+            // Brutalist: thick bar, no rounding.
             Box(
                 modifier = Modifier
                     .padding(top = Spacing.xs)
-                    .width(36.dp)
+                    .width(40.dp)
                     .height(4.dp)
-                    .background(ColorOutline, CircleShape)
+                    .background(ColorOnSurface)
             )
 
             // ─── Top Bar ────────────────────────────────────────
+            // Sharp, minimal — the design system uses hairline dividers, not
+            // elevated chrome. Down chevron matches the drag gesture.
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -160,39 +163,31 @@ fun PlayerScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Back button in a circular outline capsule
+                // Brutalist: square button, thick border
                 IconButton(
                     onClick = onCollapse,
                     modifier = Modifier
                         .size(ComponentSize.touchTarget)
-                        .shadow(Elevation.low, CircleShape)
-                        .background(ColorSurface, CircleShape)
-                        .border(1.dp, ColorOutline, CircleShape)
+                        .background(ColorSurface)
+                        .border(BorderWidth.medium, ColorOnSurface)
                 ) {
-                    // Downward chevron, not a back arrow: this screen is a sheet that
-                    // slides up and drags down — the icon should match the gesture.
                     Icon(Icons.Default.KeyboardArrowDown, "Minimize", tint = ColorOnSurface, modifier = Modifier.size(24.dp))
                 }
 
                 Text(
-                    text = "NOW PLAYING",
-                    fontSize = 11.sp,
-                    color = ColorOnSurface60,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 2.sp
+                    text = "Now playing",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = ColorOnSurface60
                 )
 
-                // Invisible twin of the back button so "NOW PLAYING" stays centered.
-                // Haptic Studio is reached through the haptic pill below — a gear up
-                // here read as generic app settings, not the tuning dashboard.
+                // Invisible twin so "Now playing" stays centered.
                 Spacer(Modifier.size(ComponentSize.touchTarget))
             }
 
             Spacer(Modifier.weight(if (isShortScreen) 0.05f else 0.15f))
 
             // ─── Artwork ────────────────────────────────────────
-            // 82% width, not full-bleed: full-width artwork ate all the vertical
-            // slack and crammed the top bar against the drag handle.
+            // Brutalist: thick black border, square corners.
             val artworkModifier = if (isShortScreen) {
                 Modifier.size(180.dp)
             } else {
@@ -200,11 +195,8 @@ fun PlayerScreen(
             }
             Box(
                 modifier = artworkModifier
-                    .shadow(Elevation.hero, RoundedCornerShape(24.dp))
-                    .clip(RoundedCornerShape(24.dp))
+                    .border(BorderWidth.medium, ColorOnSurface)
             ) {
-                // Crossfade keyed on artwork, not song id: consecutive tracks off the
-                // same album share art and shouldn't blink through a fade.
                 Crossfade(
                     targetState = currentSong.artworkUrl,
                     animationSpec = tween(durationMillis = 450),
@@ -215,7 +207,7 @@ fun PlayerScreen(
                         contentDescription = "Album Artwork",
                         modifier = Modifier.fillMaxSize(),
                         iconSize = if (isShortScreen) 48.dp else 64.dp,
-                        cornerRadius = 24.dp,
+                        cornerRadius = Radius.lg,
                         fallbackLabel = currentSong.title
                     )
                 }
@@ -224,6 +216,7 @@ fun PlayerScreen(
             Spacer(Modifier.weight(if (isShortScreen) 0.05f else 0.15f))
 
             // ─── Centered Track Info ────────────────────────────
+            // Title in Space Grotesk (headline styles use it), artist in Inter.
             Column(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalAlignment = Alignment.CenterHorizontally
@@ -282,18 +275,18 @@ fun PlayerScreen(
                     )
                 }
                 Spacer(Modifier.width(16.dp))
-                // Queue — a labelled "Up Next" pill, not a bare icon. Testers kept
-                // missing the queue entirely when it was just a QueueMusic glyph among
-                // the others; the label makes "what's coming next" discoverable.
+                // Queue — brutalist: square, thick border.
                 Surface(
                     onClick = { showQueue = true },
-                    shape = RoundedCornerShape(percent = 50),
-                    color = ColorSurfaceVariant,
+                    shape = RoundedCornerShape(Radius.sm),
+                    color = ColorSurface,
                     contentColor = ColorOnSurface,
-                    modifier = Modifier.height(36.dp)
+                    modifier = Modifier
+                        .height(36.dp)
+                        .border(BorderWidth.medium, ColorOnSurface)
                 ) {
                     Row(
-                        modifier = Modifier.padding(horizontal = Spacing.md),
+                        modifier = Modifier.padding(horizontal = Spacing.sm),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(Spacing.xs)
                     ) {
@@ -336,21 +329,22 @@ fun PlayerScreen(
                     ),
                     modifier = Modifier.fillMaxWidth().height(48.dp),
                     thumb = {
+                        // Brutalist: square thumb, thick border.
                         SliderDefaults.Thumb(
                             interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
                             colors = SliderDefaults.colors(thumbColor = Color.White),
                             modifier = Modifier
                                 .size(20.dp)
-                                .shadow(Elevation.medium, CircleShape)
-                                .border(2.dp, ColorPrimary, CircleShape)
+                                .border(BorderWidth.medium, ColorOnSurface)
                         )
                     },
                     track = { sliderState ->
                         if (seekEnergy != null && seekEnergy.isNotEmpty()) {
                             // Amber only while the envelope is live haptic data;
-                            // with haptics off it reverts to the neutral brand clay.
-                            val playedColor = if (state.hapticActive) ColorHapticAccent else ColorPrimary
-                            val restColor = ColorOutlineVariant
+                            // with haptics off it reverts to the neutral brand clay.                                // Kick orange when haptics are live (the waveform IS the
+                                // kick energy); neutral when haptics are off.
+                                val playedColor = if (state.hapticActive) ColorKick else ColorPrimary
+                                val restColor = ColorOutlineVariant
                             Canvas(Modifier.fillMaxWidth().height(28.dp)) {
                                 val barW = 3.dp.toPx()
                                 val gap = 2.dp.toPx()
@@ -373,7 +367,7 @@ fun PlayerScreen(
                                     )
                                 }
                                 // Kick-onset overlay: one vertical tick per AOT-map kick.
-                                // Amber = the beat grid will let lookahead pre-fire it there;
+                                // Orange = the beat grid will let lookahead pre-fire it there;
                                 // faint = off-beat, rejected by the double-check. Visible
                                 // whether or not the toggle is on — it's the preview of
                                 // exactly where the AOT map would pre-fire.
@@ -382,7 +376,7 @@ fun PlayerScreen(
                                     state.seekKickMarkers.forEach { marker ->
                                         val x = (marker.positionMs.toFloat() / totalMs) * size.width
                                         drawLine(
-                                            color = if (marker.onBeat) ColorHapticAccent.copy(alpha = 0.85f)
+                                            color = if (marker.onBeat) ColorKick.copy(alpha = 0.85f)
                                             else ColorOnSurface60.copy(alpha = 0.35f),
                                             start = Offset(x, 0f),
                                             end = Offset(x, size.height),
@@ -406,14 +400,25 @@ fun PlayerScreen(
                         }
                     }
                 )
+                // Timestamps in JetBrains Mono — only real numbers get mono.
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = Spacing.xxs),
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Text(state.currentTimeText, style = MaterialTheme.typography.labelSmall, color = ColorOnSurface60)
-                    Text(state.remainingTimeText, style = MaterialTheme.typography.labelSmall, color = ColorOnSurface60)
+                    Text(
+                        state.currentTimeText,
+                        fontFamily = JetBrainsMonoFamily,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = ColorOnSurface60
+                    )
+                    Text(
+                        state.remainingTimeText,
+                        fontFamily = JetBrainsMonoFamily,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = ColorOnSurface60
+                    )
                 }
             }
 
@@ -448,23 +453,20 @@ fun PlayerScreen(
                     )
                 }
 
-                // Play/Pause circular FAB with premium shadow. A plain Icon swap here
-                // read as jarring — an instant vector cut with no motion at all — so
-                // the press gets a spring squash and the icon itself cross-fades
-                // in/out with a small scale pop instead of just replacing.
+                // Play/Pause FAB — brutalist: square, kick orange, thick border.
                 val fabInteraction = remember { MutableInteractionSource() }
                 val isFabPressed by fabInteraction.collectIsPressedAsState()
                 val fabScale by animateFloatAsState(
-                    targetValue = if (isFabPressed) 0.90f else 1f,
+                    targetValue = if (isFabPressed) 0.92f else 1f,
                     animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
                     label = "fab_scale"
                 )
                 Box(
                     modifier = Modifier
-                        .size(if (isShortScreen) 60.dp else 68.dp)
+                        .size(if (isShortScreen) 56.dp else 64.dp)
                         .graphicsLayer { scaleX = fabScale; scaleY = fabScale }
-                        .shadow(Elevation.high, CircleShape, ambientColor = ColorPrimary, spotColor = ColorPrimary)
-                        .background(ColorPrimary, CircleShape)
+                        .background(ColorKick)
+                        .border(BorderWidth.thick, ColorOnSurface)
                         .clickable(
                             interactionSource = fabInteraction,
                             indication = null,
@@ -546,12 +548,17 @@ fun PlayerScreen(
                     ),
                     modifier = Modifier.weight(1f).height(24.dp)
                 )
-                // Speed pill cycles 0.5× → 1× → 1.25× → 1.5× → 2×
+                // Speed chip — brutalist: square, thick border, mono text.
                 Surface(
                     onClick = { onSetSpeed(nextSpeed(state.playbackSpeed)) },
-                    shape = RoundedCornerShape(percent = 50),
-                    color = if (state.playbackSpeed != 1f) ColorPrimary.copy(alpha = 0.18f) else ColorSurfaceVariant,
-                    modifier = Modifier.height(32.dp)
+                    shape = RoundedCornerShape(Radius.sm),
+                    color = if (state.playbackSpeed != 1f) ColorKick else ColorSurface,
+                    modifier = Modifier
+                        .height(32.dp)
+                        .border(
+                            BorderWidth.medium,
+                            ColorOnSurface
+                        )
                 ) {
                     Box(
                         modifier = Modifier
@@ -561,8 +568,9 @@ fun PlayerScreen(
                     ) {
                         Text(
                             formatSpeed(state.playbackSpeed),
+                            fontFamily = JetBrainsMonoFamily,
                             style = MaterialTheme.typography.labelMedium,
-                            color = if (state.playbackSpeed != 1f) ColorPrimary else ColorOnSurface
+                            color = if (state.playbackSpeed != 1f) ColorOnPrimary else ColorOnSurface
                         )
                     }
                 }
@@ -571,16 +579,17 @@ fun PlayerScreen(
             Spacer(Modifier.weight(if (isShortScreen) 0.1f else 0.3f))
 
             // ─── Haptic Engine Row ──────────────────────────────
-            // Two controls, two clear jobs: tapping the row opens the Haptic Studio
-            // (label + chevron = navigation); the switch — and only the switch —
-            // toggles haptics on/off.
+            // Brutalist: thick border, square, teal when active.
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(CircleShape)
+                    .border(
+                        BorderWidth.medium,
+                        ColorOnSurface
+                    )
                     .clickable(onClick = onHapticStudioClicked),
-                color = if (state.hapticActive) ColorHapticAccent.copy(alpha = 0.12f) else ColorOutline.copy(alpha = 0.3f),
-                shape = CircleShape
+                color = if (state.hapticActive) ColorBass else ColorSurface,
+                shape = RoundedCornerShape(Radius.sm)
             ) {
                 Row(
                     modifier = Modifier.padding(horizontal = Spacing.md, vertical = Spacing.sm),
@@ -590,18 +599,18 @@ fun PlayerScreen(
                     Icon(
                         Icons.Default.Vibration,
                         null,
-                        tint = if (state.hapticActive) ColorHapticAccent else ColorOnSurface60,
+                        tint = if (state.hapticActive) ColorOnPrimary else ColorOnSurface60,
                         modifier = Modifier.size(ComponentSize.iconMedium)
                     )
                     Text(
                         "Haptic Studio",
                         style = MaterialTheme.typography.labelLarge,
-                        color = if (state.hapticActive) ColorHapticAccent else ColorOnSurface60
+                        color = if (state.hapticActive) ColorOnPrimary else ColorOnSurface60
                     )
                     Icon(
                         Icons.Default.ChevronRight,
                         "Open Haptic Studio",
-                        tint = if (state.hapticActive) ColorHapticAccent else ColorOnSurface60,
+                        tint = if (state.hapticActive) ColorOnPrimary else ColorOnSurface60,
                         modifier = Modifier.size(ComponentSize.iconSmall)
                     )
                     Spacer(Modifier.weight(1f))
@@ -610,7 +619,7 @@ fun PlayerScreen(
                         onCheckedChange = onToggleHaptics,
                         colors = SwitchDefaults.colors(
                             checkedThumbColor = ColorSurface,
-                            checkedTrackColor = ColorPrimary,
+                            checkedTrackColor = ColorOnSurface,
                             uncheckedThumbColor = ColorOnSurface60,
                             uncheckedTrackColor = ColorBackground
                         )
@@ -681,7 +690,7 @@ private fun WaveformRenderingShimmer() {
         s
     }
     val base = ColorOutlineVariant
-    val highlight = ColorHapticAccent
+    val highlight = ColorKick
     Canvas(Modifier.fillMaxWidth().height(28.dp)) {
         val barW = 3.dp.toPx()
         val gap = 2.dp.toPx()

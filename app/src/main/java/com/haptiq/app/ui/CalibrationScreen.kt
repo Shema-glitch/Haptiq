@@ -87,10 +87,12 @@ fun CalibrationScreen(
                 animationSpec = HaptiqMotion.fastSpring(),
                 label = "pulse_press_scale"
             )
+            // Kick orange for the test pulse — the pulse fires the kick engine,
+            // so its button should match the kick legend color.
             Button(
                 onClick = onPlayTestPulse,
                 interactionSource = pulseInteraction,
-                colors = ButtonDefaults.buttonColors(containerColor = ColorSurfaceVariant, contentColor = ColorOnSurface),
+                colors = ButtonDefaults.buttonColors(containerColor = ColorKick, contentColor = ColorOnPrimary),
                 shape = RoundedCornerShape(Radius.md),
                 modifier = Modifier
                     .fillMaxWidth()
@@ -118,7 +120,7 @@ fun CalibrationScreen(
                                 onClick = { onStrengthSelected(strength) },
                                 label = { Text(strength) },
                                 colors = FilterChipDefaults.filterChipColors(
-                                    selectedContainerColor = ColorPrimary,
+                                    selectedContainerColor = ColorKick,
                                     selectedLabelColor = ColorOnPrimary,
                                     containerColor = ColorSurface,
                                     labelColor = ColorOnSurface
@@ -145,7 +147,7 @@ fun CalibrationScreen(
                 },
                 enabled = state.calibrationStep >= 2,
                 interactionSource = saveInteraction,
-                colors = ButtonDefaults.buttonColors(containerColor = ColorPrimary, contentColor = ColorOnPrimary),
+                colors = ButtonDefaults.buttonColors(containerColor = ColorKick, contentColor = ColorOnPrimary),
                 shape = RoundedCornerShape(Radius.md),
                 modifier = Modifier
                     .fillMaxWidth()

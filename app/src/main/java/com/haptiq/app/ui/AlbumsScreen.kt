@@ -2,6 +2,7 @@ package com.haptiq.app.ui
 
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
@@ -28,6 +29,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.haptiq.app.data.Song
 import com.haptiq.app.ui.theme.*
@@ -234,13 +236,13 @@ private fun AlbumHeroTile(
         label = "hero_press_scale"
     )
 
+    // Brutalist: thick black border, square corners.
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .aspectRatio(1.8f)
             .graphicsLayer { scaleX = scale; scaleY = scale }
-            .shadow(Elevation.high, RoundedCornerShape(Radius.lg))
-            .clip(RoundedCornerShape(Radius.lg))
+            .border(BorderWidth.medium, ColorOnSurface)
             .clickable(interactionSource = interaction, indication = null, onClick = onClick)
             .testTag("albums_hero")
     ) {
@@ -271,10 +273,9 @@ private fun AlbumHeroTile(
                 .padding(Layout.cardInternalPadding)
         ) {
             Text(
-                text = "MOST TRACKS",
+                text = "Most tracks",
                 style = MaterialTheme.typography.labelSmall,
-                color = ColorHapticAccent,
-                letterSpacing = 1.5.sp
+                color = ColorHapticAccent
             )
             Spacer(Modifier.height(Spacing.xxs))
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -316,18 +317,17 @@ private fun AlbumGridCard(
         label = "card_press_scale"
     )
 
+    // Brutalist: thick border, square grid tile.
     Column(
         modifier = Modifier
             .graphicsLayer { scaleX = scale; scaleY = scale }
-            .clip(RoundedCornerShape(Radius.md))
+            .border(BorderWidth.medium, ColorOnSurface)
             .clickable(interactionSource = interaction, indication = null, onClick = onClick)
     ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(1f)
-                .shadow(Elevation.medium, RoundedCornerShape(Radius.md))
-                .clip(RoundedCornerShape(Radius.md))
         ) {
             ArtworkImage(
                 model = artworkUrl,

@@ -10,18 +10,23 @@ import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 
 private val HaptiqDarkColorScheme = darkColorScheme(
+    // Primary = Kick accent (orange)
     primary                 = ColorPrimary,
     onPrimary               = ColorOnPrimary,
     primaryContainer        = ColorPrimaryContainer,
     onPrimaryContainer      = ColorOnPrimaryContainer,
 
+    // Secondary = Bass accent (teal)
     secondary               = ColorHapticAccent,
     onSecondary             = ColorBackground,
     secondaryContainer      = ColorSurfaceContainerHigh,
     onSecondaryContainer    = ColorOnSurface,
 
+    // Background = Near-black
     background              = ColorBackground,
     onBackground            = ColorOnBackground,
+
+    // Surface = Black-2
     surface                 = ColorSurface,
     onSurface               = ColorOnSurface,
     surfaceVariant          = ColorSurfaceVariant,
@@ -30,6 +35,7 @@ private val HaptiqDarkColorScheme = darkColorScheme(
     surfaceContainerHigh    = ColorSurfaceContainerHigh,
     surfaceContainerLow     = ColorSurfaceContainerLow,
 
+    // Hairline dividers
     outline                 = ColorOutline,
     outlineVariant          = ColorOutlineVariant,
 
@@ -46,15 +52,16 @@ fun HaptiqTheme(content: @Composable () -> Unit) {
             WindowCompat.setDecorFitsSystemWindows(window, false)
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
                 @Suppress("DEPRECATION")
-                window.statusBarColor = android.graphics.Color.argb(180, 33, 29, 26)
+                window.statusBarColor = android.graphics.Color.parseColor("#0E0D0C")
                 @Suppress("DEPRECATION")
-                window.navigationBarColor = android.graphics.Color.argb(180, 33, 29, 26)
+                window.navigationBarColor = android.graphics.Color.parseColor("#0E0D0C")
             }
         }
     }
     MaterialTheme(
         colorScheme = HaptiqDarkColorScheme,
         typography  = Typography,
+        shapes      = HaptiqShapes,
         content     = content
     )
 }

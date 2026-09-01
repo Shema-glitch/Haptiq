@@ -6,14 +6,11 @@ import androidx.compose.material3.Shapes
 import androidx.compose.ui.unit.dp
 
 /**
- * Fills the `HaptiqShapes` symbol referenced by Theme.kt's
- * `MaterialTheme(shapes = HaptiqShapes, ...)` call. Sized directly off
- * your real Radius scale in DesignTokens.kt — no new values introduced.
+ * Haptiq Shape System — Brutalist
  *
- * Note: Radius.pill (56.dp) intentionally equals ComponentSize.buttonHeight
- * / searchBarHeight (56.dp) in your DesignTokens.kt, so any full-height
- * pill-shaped button/search bar becomes a true stadium shape automatically
- * — that's already correct, kept as-is here.
+ * Zero radius on everything. No rounding, no pills, no soft edges.
+ * Structure IS the decoration — thick borders and sharp corners
+ * create the visual hierarchy.
  */
 val HaptiqShapes = Shapes(
     extraSmall = RoundedCornerShape(Radius.sm),
@@ -24,28 +21,14 @@ val HaptiqShapes = Shapes(
 )
 
 /**
- * Expressive one-off shapes for specific components — this is where the
- * "35 new shape options" concept from the Android 16 doc actually shows
- * up: differentiating surface *types* by shape, not just color.
+ * One-off shapes — all square in brutalist mode.
  */
 object ExpressiveShapes {
-    /** Subtle rounded rectangle for the floating bottom nav — and, per the
-     *  Paper Tactile system, also the search bar, so the two persistent
-     *  chrome elements read as one shape language instead of a pill fighting
-     *  a rounded rect. */
-    val navPill = RoundedCornerShape(Radius.xl)
-
-    /** Mini player — rounded only on top so it reads as flush-docked
-     *  above the nav pill rather than a floating card colliding with it. */
+    val navPill = RoundedCornerShape(Radius.sm)
     val miniPlayerTop = RoundedCornerShape(
-        topStart = Radius.lg, topEnd = Radius.lg,
+        topStart = Radius.md, topEnd = Radius.md,
         bottomStart = 0.dp, bottomEnd = 0.dp
     )
-
-    /** Now Playing hero artwork — larger, softer rounding than a track row. */
-    val heroArtwork = RoundedCornerShape(Radius.xl)
-
-    /** Cut-corner accent for one signature moment (e.g. Calibration's
-     *  test-pulse card) — used sparingly, not app-wide. */
+    val heroArtwork = RoundedCornerShape(Radius.lg)
     val cutAccent = CutCornerShape(topStart = Radius.md, bottomEnd = Radius.md)
 }

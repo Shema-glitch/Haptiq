@@ -50,11 +50,10 @@ fun SettingsScreen(
             verticalArrangement = Arrangement.spacedBy(Spacing.xs)
         ) {
             Text(
-                text = "PREFERENCES",
+                text = "Preferences",
                 style = MaterialTheme.typography.labelSmall,
                 color = ColorOnSurface60,
-                letterSpacing = 1.5.sp,
-                fontWeight = FontWeight.Bold,
+                fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.padding(horizontal = Spacing.xxs)
             )
 
@@ -108,11 +107,10 @@ fun SettingsScreen(
         // Playback section
         Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
             Text(
-                text = "PLAYBACK",
+                text = "Playback",
                 style = MaterialTheme.typography.labelSmall,
                 color = ColorOnSurface60,
-                letterSpacing = 1.5.sp,
-                fontWeight = FontWeight.Bold,
+                fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.padding(horizontal = Spacing.xxs)
             )
             Column(
@@ -147,11 +145,10 @@ fun SettingsScreen(
         // Library section
         Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
             Text(
-                text = "LIBRARY",
+                text = "Library",
                 style = MaterialTheme.typography.labelSmall,
                 color = ColorOnSurface60,
-                letterSpacing = 1.5.sp,
-                fontWeight = FontWeight.Bold,
+                fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.padding(horizontal = Spacing.xxs)
             )
             Column(
@@ -220,11 +217,10 @@ fun SettingsScreen(
             verticalArrangement = Arrangement.spacedBy(Spacing.xs)
         ) {
             Text(
-                text = "INFORMATION",
+                text = "Information",
                 style = MaterialTheme.typography.labelSmall,
                 color = ColorOnSurface60,
-                letterSpacing = 1.5.sp,
-                fontWeight = FontWeight.Bold,
+                fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.padding(horizontal = Spacing.xxs)
             )
 

@@ -117,6 +117,8 @@ fun HapticStudioScreen(
                 // Not fixed either: it swells with the music's real energy and
                 // drifts slowly side to side, so the hero reads as breathing.
                 if (state.hapticActive) {
+                    // Kick orange for the visualizer glow — the hero breathes in
+                    // kick color since kick is the live engine.
                     val energy = state.visualizerBands.average().toFloat()
                     val glowScale by animateFloatAsState(
                         targetValue = if (state.isPlaying) 0.85f + energy * 0.7f else 0.85f,
@@ -148,7 +150,7 @@ fun HapticStudioScreen(
                             .background(
                                 Brush.radialGradient(
                                     colors = listOf(
-                                        ColorHapticAccent.copy(alpha = 0.14f),
+                                        ColorKick.copy(alpha = 0.14f),
                                         Color.Transparent
                                     )
                                 )
@@ -167,6 +169,7 @@ fun HapticStudioScreen(
                 ) {
                     state.visualizerBands.forEach { energy ->
                         val barScale = if (state.hapticActive && state.isPlaying) energy.coerceAtLeast(0.06f) else 0.1f
+                        // Brutalist: square bars, no rounding
                         Box(
                             modifier = Modifier
                                 .weight(1f)
@@ -174,11 +177,10 @@ fun HapticStudioScreen(
                                 .background(
                                     Brush.verticalGradient(
                                         listOf(
-                                            if (state.hapticActive) ColorHapticAccent else ColorOnSurface60,
-                                            (if (state.hapticActive) ColorHapticAccent else ColorOnSurface60).copy(alpha = 0.3f)
+                                            if (state.hapticActive) ColorKick else ColorOnSurface60,
+                                            (if (state.hapticActive) ColorKick else ColorOnSurface60).copy(alpha = 0.3f)
                                         )
-                                    ),
-                                    RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp)
+                                    )
                                 )
                         )
                     }
@@ -193,12 +195,12 @@ fun HapticStudioScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+                        // Brutalist: square status dot
                         Box(
                             Modifier
                                 .size(8.dp)
                                 .background(
-                                    if (state.hapticActive) ColorHapticAccent else ColorOnSurface60,
-                                    CircleShape
+                                    if (state.hapticActive) ColorKick else ColorOnSurface60
                                 )
                         )
                         Text(
@@ -216,7 +218,7 @@ fun HapticStudioScreen(
                         onCheckedChange = onToggleHaptics,
                         colors = SwitchDefaults.colors(
                             checkedThumbColor = ColorSurface,
-                            checkedTrackColor = ColorPrimary,
+                            checkedTrackColor = ColorKick,
                             uncheckedThumbColor = ColorOnSurface60,
                             uncheckedTrackColor = ColorSurfaceVariant
                         )
@@ -234,11 +236,10 @@ fun HapticStudioScreen(
                 verticalArrangement = Arrangement.spacedBy(Spacing.xs)
             ) {
                 Text(
-                    text = "HAPTIC PRESETS",
+                    text = "Haptic presets",
                     style = MaterialTheme.typography.labelSmall,
                     color = ColorOnSurface60,
-                    letterSpacing = 1.5.sp,
-                    fontWeight = FontWeight.Bold,
+                    fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.padding(horizontal = Spacing.xxs)
                 )
 
@@ -258,9 +259,9 @@ fun HapticStudioScreen(
                                 )
                             },
                             colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = ColorPrimary.copy(alpha = 0.12f),
-                                selectedLabelColor = ColorPrimary,
-                                selectedLeadingIconColor = ColorPrimary,
+                                selectedContainerColor = ColorKick.copy(alpha = 0.12f),
+                                selectedLabelColor = ColorKick,
+                                selectedLeadingIconColor = ColorKick,
                                 containerColor = ColorSurface,
                                 labelColor = ColorOnSurface
                             )
@@ -270,35 +271,37 @@ fun HapticStudioScreen(
             }
 
             // Section 3: Intensity Slider
-            Card(
+    // Brutalist: thick border, square, no shadow
+    Card(
+        modifier = Modifier.fillMaxWidth().border(BorderWidth.medium, ColorOnSurface),
+        colors = CardDefaults.cardColors(containerColor = ColorSurface),
+        shape = RoundedCornerShape(Radius.md)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(Spacing.md),
+            verticalArrangement = Arrangement.spacedBy(Spacing.md)
+        ) {
+            Row(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = ColorSurface),
-                shape = RoundedCornerShape(Radius.md)
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(Spacing.md),
-                    verticalArrangement = Arrangement.spacedBy(Spacing.md)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "Intensity",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = ColorOnSurface,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(
-                            text = "${state.intensity}%",
-                            style = MaterialTheme.typography.titleLarge,
-                            color = ColorHapticAccent,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
+                Text(
+                    text = "Intensity",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = ColorOnSurface,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = "${state.intensity}%",
+                    fontFamily = JetBrainsMonoFamily,
+                    style = MaterialTheme.typography.titleLarge,
+                    color = ColorKick,
+                    fontWeight = FontWeight.Bold
+                )
+            }
 
                     // Horizontal layout with range slider, decrement and increment buttons
                     Row(
@@ -404,10 +407,11 @@ private fun TuningDashboardCard(
         label = "chevron_rotation"
     )
 
+    // Brutalist: thick black border, square
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .border(1.dp, ColorOutline, RoundedCornerShape(Radius.md)),
+            .border(BorderWidth.medium, ColorOnSurface),
         colors = CardDefaults.cardColors(containerColor = ColorSurface),
         shape = RoundedCornerShape(Radius.md)
     ) {
@@ -432,11 +436,10 @@ private fun TuningDashboardCard(
                     modifier = Modifier.size(ComponentSize.iconSmall)
                 )
                 Text(
-                    text = "TUNING DASHBOARD",
+                    text = "Tuning dashboard",
                     style = MaterialTheme.typography.labelMedium,
                     color = ColorOnSurface,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 1.5.sp
+                    fontWeight = FontWeight.SemiBold
                 )
             }
 
@@ -449,7 +452,7 @@ private fun TuningDashboardCard(
                         contentPadding = PaddingValues(horizontal = Spacing.sm)
                     ) {
                         Text(
-                            "RESET",
+                            "Reset",
                             style = MaterialTheme.typography.labelSmall,
                             color = ColorPrimary
                         )
@@ -696,26 +699,28 @@ private fun TuningDashboardCard(
 
                 // ── ENGINE MUTES ─────────────────────────────────────────────────────
                 Text(
-                    text = "ENGINES",
+                    text = "Engines",
                     style = MaterialTheme.typography.labelSmall,
                     color = ColorOnSurface60,
-                    letterSpacing = 1.5.sp
+                    fontWeight = FontWeight.SemiBold
                 )
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(Spacing.sm)
                 ) {
                     EngineToggleChip(
-                        label = "KICK",
+                        label = "Kick",
                         icon = Icons.Default.FlashOn,
                         enabled = tuning.isKickEnabled,
+                        accentColor = ColorKick,
                         modifier = Modifier.weight(1f),
                         onToggle = { onAction(HaptiqUiAction.SetKickEnabled(it)) }
                     )
                     EngineToggleChip(
-                        label = "BASS",
+                        label = "Bass",
                         icon = Icons.Default.GraphicEq,
                         enabled = false,
+                        accentColor = ColorBass,
                         locked = true,
                         modifier = Modifier.weight(1f),
                         onToggle = {}
@@ -724,10 +729,10 @@ private fun TuningDashboardCard(
 
                 // ── KICK TUNING ──────────────────────────────────────────────
                 Text(
-                    text = "KICK TRANSIENTS",
+                    text = "Kick transients",
                     style = MaterialTheme.typography.labelSmall,
                     color = ColorOnSurface60,
-                    letterSpacing = 1.5.sp
+                    fontWeight = FontWeight.SemiBold
                 )
                 // Kick character — the hit-longevity axis: how long the motor is driven
                 // as a decaying strike-train. Snap reads as a click in the hand; Heavy
@@ -744,8 +749,8 @@ private fun TuningDashboardCard(
                                 Text("${char.label} · ${char.displayMs}ms")
                             },
                             colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = ColorPrimary.copy(alpha = 0.12f),
-                                selectedLabelColor = ColorPrimary,
+                                selectedContainerColor = ColorKick.copy(alpha = 0.12f),
+                                selectedLabelColor = ColorKick,
                                 containerColor = ColorSurface,
                                 labelColor = ColorOnSurface
                             ),
@@ -754,27 +759,30 @@ private fun TuningDashboardCard(
                     }
                 }
                 TuningSliderRow(
-                    label = "KICK INTENSITY",
+                    label = "Kick intensity",
                     value = tuning.kickGain,
                     range = 0.5f..2.0f,
                     displayValue = String.format("%.1fx", tuning.kickGain),
                     description = "Strength of the kick punch. Works in both adaptive and manual mode.",
+                    accentColor = ColorKick,
                     onValueChange = { onAction(HaptiqUiAction.SetKickGain(it)) }
                 )
                 TuningSliderRow(
-                    label = "KICK THRESHOLD",
+                    label = "Kick threshold",
                     value = tuning.kickThreshold,
                     range = 0.01f..0.50f,
                     displayValue = String.format("%.2f", tuning.kickThreshold),
                     description = "Sensitivity of kick detection. Lower values trigger more easily on subtle beats.",
+                    accentColor = ColorKick,
                     onValueChange = { onAction(HaptiqUiAction.SetKickThreshold(it)) }
                 )
                 TuningSliderRow(
-                    label = "KICK FREQ MIN BIN",
+                    label = "Kick freq min bin",
                     value = tuning.kickFreqMinBin.toFloat(),
                     range = 1f..15f,
                     displayValue = "Bin ${tuning.kickFreqMinBin} (~${tuning.kickFreqMinBin * 43}Hz)",
                     description = "Lowest frequency to watch for kick impact.",
+                    accentColor = ColorKick,
                     onValueChange = {
                         onAction(HaptiqUiAction.SetKickFreqRange(
                             it.toInt().coerceIn(1, tuning.kickFreqMaxBin),
@@ -783,11 +791,12 @@ private fun TuningDashboardCard(
                     }
                 )
                 TuningSliderRow(
-                    label = "KICK FREQ MAX BIN",
+                    label = "Kick freq max bin",
                     value = tuning.kickFreqMaxBin.toFloat(),
                     range = 1f..15f,
                     displayValue = "Bin ${tuning.kickFreqMaxBin} (~${tuning.kickFreqMaxBin * 43}Hz)",
                     description = "Highest frequency included in kick transient analysis.",
+                    accentColor = ColorKick,
                     onValueChange = {
                         onAction(HaptiqUiAction.SetKickFreqRange(
                             tuning.kickFreqMinBin,
@@ -803,10 +812,10 @@ private fun TuningDashboardCard(
                 // disabled copy of the old controls. Kick is the one supported engine
                 // for now.
                 Text(
-                    text = "BASS DRONE",
+                    text = "Bass drone",
                     style = MaterialTheme.typography.labelSmall,
                     color = ColorOnSurface60,
-                    letterSpacing = 1.5.sp
+                    fontWeight = FontWeight.SemiBold
                 )
                 Column(
                     modifier = Modifier
@@ -845,13 +854,13 @@ private fun TuningDashboardCard(
 
                 // ── GLOBAL ────────────────────────────────────────────────
                 Text(
-                    text = "GLOBAL GATE",
+                    text = "Global gate",
                     style = MaterialTheme.typography.labelSmall,
                     color = ColorOnSurface60,
-                    letterSpacing = 1.5.sp
+                    fontWeight = FontWeight.SemiBold
                 )
                 TuningSliderRow(
-                    label = "NOISE FLOOR GATE",
+                    label = "Noise floor gate",
                     value = tuning.noiseFloorGate,
                     range = 0.30f..0.95f,
                     displayValue = String.format("%.2f", tuning.noiseFloorGate),
@@ -869,12 +878,14 @@ private fun EngineToggleChip(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     enabled: Boolean,
     modifier: Modifier = Modifier,
+    // Each engine gets its own accent color: kick = orange, bass = teal.
+    accentColor: Color = ColorHapticAccent,
     // Locked engines (bass, mid-rework) show a "SOON" badge instead of a live switch
     // and ignore taps — the toggle exists in code but isn't a real control from here.
     locked: Boolean = false,
     onToggle: (Boolean) -> Unit
 ) {
-    val bgColor = if (enabled) ColorHapticAccent else ColorSurface
+    val bgColor = if (enabled) accentColor else ColorSurface
     val contentColor = if (locked) ColorOnSurface60.copy(alpha = 0.6f) else if (enabled) ColorOnPrimary else ColorOnSurface60
 
     Row(
@@ -913,7 +924,7 @@ private fun EngineToggleChip(
                 modifier = Modifier.height(Spacing.xl),
                 colors = SwitchDefaults.colors(
                     checkedThumbColor = ColorSurface,
-                    checkedTrackColor = ColorOnPrimary,
+                    checkedTrackColor = accentColor,
                     uncheckedThumbColor = ColorOnSurface60,
                     uncheckedTrackColor = ColorSurfaceVariant
                 )
@@ -929,6 +940,9 @@ private fun TuningSliderRow(
     range: ClosedFloatingPointRange<Float>,
     displayValue: String,
     description: String? = null,
+    // Engine-specific accent: kick sliders get orange, bass sliders get teal,
+    // global sliders get the muted accent.
+    accentColor: Color = ColorHapticAccent,
     onValueChange: (Float) -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -941,14 +955,14 @@ private fun TuningSliderRow(
                 text = label,
                 style = MaterialTheme.typography.labelSmall,
                 color = ColorOnSurface,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 1.sp
+                fontWeight = FontWeight.SemiBold
             )
             Text(
                 text = displayValue,
                 style = MaterialTheme.typography.labelSmall,
-                color = ColorHapticAccent,
-                fontWeight = FontWeight.Bold
+                fontFamily = JetBrainsMonoFamily,
+                color = accentColor,
+                fontWeight = FontWeight.SemiBold
             )
         }
 
@@ -967,8 +981,8 @@ private fun TuningSliderRow(
             onValueChange = onValueChange,
             valueRange = range,
             colors = SliderDefaults.colors(
-                thumbColor = ColorPrimary,
-                activeTrackColor = ColorPrimary,
+                thumbColor = accentColor,
+                activeTrackColor = accentColor,
                 inactiveTrackColor = ColorOutlineVariant
             ),
             modifier = Modifier.fillMaxWidth()

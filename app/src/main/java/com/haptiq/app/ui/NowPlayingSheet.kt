@@ -6,6 +6,7 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
@@ -137,8 +138,10 @@ fun NowPlayingSheet(
                 .offset(x = marginDp, y = topOffsetDp)
                 .width(maxWidth - marginDp * 2)
                 .height(heightDp)
-                .shadow(if (p < 0.98f) Elevation.high else 0.dp, RoundedCornerShape(cornerDp))
-                .clip(RoundedCornerShape(cornerDp))
+                .border(
+                    if (p > 0.5f) BorderWidth.medium else BorderWidth.thin,
+                    ColorOnSurface
+                )
                 .pointerInput(currentSong.id) {
                     var totalX = 0f
                     var totalY = 0f
@@ -335,14 +338,21 @@ private fun MiniPlayerContent(
             .padding(horizontal = Spacing.md),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        ArtworkImage(
-            currentSong.artworkUrl,
-            null,
-            Modifier.size(ComponentSize.artworkMedium),
-            iconSize = ComponentSize.iconMedium,
-            cornerRadius = Radius.sm,
-            fallbackLabel = currentSong.title
-        )
+        // Brutalist: square artwork, thick border
+        Box(
+            modifier = Modifier
+                .size(ComponentSize.artworkMedium)
+                .border(BorderWidth.medium, ColorOnSurface)
+        ) {
+            ArtworkImage(
+                currentSong.artworkUrl,
+                null,
+                Modifier.fillMaxSize(),
+                iconSize = ComponentSize.iconMedium,
+                cornerRadius = 0.dp,
+                fallbackLabel = currentSong.title
+            )
+        }
         Spacer(Modifier.width(Spacing.md))
         Column(Modifier.weight(1f)) {
             Text(
@@ -358,13 +368,13 @@ private fun MiniPlayerContent(
                         Modifier
                             .size(6.dp)
                             .clip(CircleShape)
-                            .background(ColorHapticAccent.copy(alpha = dotAlpha))
+                            .background(ColorBass.copy(alpha = dotAlpha))
                     )
                     Spacer(Modifier.width(Spacing.xxs))
                     Text(
                         "Haptic Active",
                         style = MaterialTheme.typography.labelSmall,
-                        color = ColorHapticAccent,
+                        color = ColorBass,
                         maxLines = 1
                     )
                 } else {
@@ -385,12 +395,13 @@ private fun MiniPlayerContent(
             IconButton(onClick = onPrev, modifier = Modifier.size(ComponentSize.touchTarget)) {
                 Icon(Icons.Default.SkipPrevious, "Previous", tint = ColorOnSurface, modifier = Modifier.size(ComponentSize.iconLarge))
             }
+            // Brutalist: square play button, thick border
             IconButton(
                 onClick = onTogglePlayPause,
                 modifier = Modifier
                     .size(ComponentSize.touchTarget)
-                    .clip(CircleShape)
-                    .background(ColorSurfaceVariant.copy(alpha = 0.5f))
+                    .background(ColorSurface)
+                    .border(BorderWidth.medium, ColorOnSurface)
             ) {
                 androidx.compose.animation.AnimatedContent(
                     targetState = isPlaying,

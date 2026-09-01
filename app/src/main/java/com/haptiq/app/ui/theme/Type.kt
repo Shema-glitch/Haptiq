@@ -11,7 +11,12 @@ import androidx.compose.ui.unit.sp
 import com.haptiq.app.R
 
 /**
- * Haptiq Typography System — M3 Expressive scale
+ * Haptiq Typography System — Marketing Site Design System
+ *
+ * Three font families, each with a clear role:
+ *  Space Grotesk  → Display/headlines (600–700 weight)
+ *  Inter          → Body/UI text (400–600 weight)
+ *  JetBrains Mono → Technical values only (Hz, ms, ×, dB) — NEVER plain labels
  *
  * Hierarchy:
  *  Display  → App wordmark "HAPTIQ", hero empty states
@@ -27,6 +32,17 @@ private val provider = GoogleFont.Provider(
     certificates      = R.array.com_google_android_gms_fonts_certs
 )
 
+// ─── Font Families ────────────────────────────────────────────
+
+/** Space Grotesk — Display/headlines. Weight 600–700. */
+val SpaceGroteskFont = GoogleFont("Space Grotesk")
+val SpaceGroteskFamily = FontFamily(
+    Font(googleFont = SpaceGroteskFont, fontProvider = provider, weight = FontWeight.Medium),
+    Font(googleFont = SpaceGroteskFont, fontProvider = provider, weight = FontWeight.SemiBold),
+    Font(googleFont = SpaceGroteskFont, fontProvider = provider, weight = FontWeight.Bold),
+)
+
+/** Inter — Body/UI text. Weight 400–600. */
 val InterFont = GoogleFont("Inter")
 val InterFamily = FontFamily(
     Font(googleFont = InterFont, fontProvider = provider, weight = FontWeight.Normal),
@@ -34,54 +50,61 @@ val InterFamily = FontFamily(
     Font(googleFont = InterFont, fontProvider = provider, weight = FontWeight.SemiBold),
     Font(googleFont = InterFont, fontProvider = provider, weight = FontWeight.Bold),
     Font(googleFont = InterFont, fontProvider = provider, weight = FontWeight.ExtraBold),
-    // The Splash wordmark renders at Black (900); without the 900 face in the
-    // family, Compose silently substitutes the closest registered weight (800).
     Font(googleFont = InterFont, fontProvider = provider, weight = FontWeight.Black),
 )
 
+/** JetBrains Mono — Technical values only. Never use for plain labels. */
+val JetBrainsMonoFont = GoogleFont("JetBrains Mono")
+val JetBrainsMonoFamily = FontFamily(
+    Font(googleFont = JetBrainsMonoFont, fontProvider = provider, weight = FontWeight.Normal),
+    Font(googleFont = JetBrainsMonoFont, fontProvider = provider, weight = FontWeight.Medium),
+)
+
+// ─── Typography Scale ─────────────────────────────────────────
+
 val Typography = Typography(
     // ─── Display ─────────────────────────────────────────────
-    // Used for: "HAPTIQ" wordmark, hero states
+    // Used for: "HAPTIQ" wordmark, hero states — Space Grotesk
     displayLarge = TextStyle(
-        fontFamily   = InterFamily,
-        fontWeight   = FontWeight.ExtraBold,
+        fontFamily   = SpaceGroteskFamily,
+        fontWeight   = FontWeight.Bold,
         fontSize     = 48.sp,
         lineHeight   = 56.sp,
         letterSpacing = (-0.25).sp
     ),
     displayMedium = TextStyle(
-        fontFamily   = InterFamily,
+        fontFamily   = SpaceGroteskFamily,
         fontWeight   = FontWeight.Bold,
         fontSize     = 36.sp,
         lineHeight   = 44.sp,
         letterSpacing = 0.sp
     ),
     displaySmall = TextStyle(
-        fontFamily   = InterFamily,
-        fontWeight   = FontWeight.Bold,
+        fontFamily   = SpaceGroteskFamily,
+        fontWeight   = FontWeight.SemiBold,
         fontSize     = 28.sp,
         lineHeight   = 36.sp,
         letterSpacing = 0.sp
     ),
 
     // ─── Headline ────────────────────────────────────────────
-    // Used for: Now Playing track title, screen-level headers
+    // Used for: Now Playing track title, screen-level headers — Space Grotesk
     headlineLarge = TextStyle(
-        fontFamily   = InterFamily,
+        fontFamily   = SpaceGroteskFamily,
         fontWeight   = FontWeight.Bold,
         fontSize     = 32.sp,
         lineHeight   = 40.sp,
         letterSpacing = 0.sp
     ),
     headlineMedium = TextStyle(
-        fontFamily   = InterFamily,
-        fontWeight   = FontWeight.Bold,
+        fontFamily   = SpaceGroteskFamily,
+        fontWeight   = FontWeight.SemiBold,
         fontSize     = 26.sp,
         lineHeight   = 34.sp,
         letterSpacing = 0.sp
     ),
     headlineSmall = TextStyle(
-        fontFamily   = InterFamily,
+        fontFamily   = SpaceGroteskFamily,
         fontWeight   = FontWeight.SemiBold,
         fontSize     = 22.sp,
         lineHeight   = 28.sp,
@@ -89,7 +112,7 @@ val Typography = Typography(
     ),
 
     // ─── Title ───────────────────────────────────────────────
-    // Used for: Section headers ("Recently Played"), artist names
+    // Used for: Section headers ("Recently Played"), artist names — Inter
     titleLarge = TextStyle(
         fontFamily   = InterFamily,
         fontWeight   = FontWeight.SemiBold,
@@ -113,7 +136,7 @@ val Typography = Typography(
     ),
 
     // ─── Body ────────────────────────────────────────────────
-    // Used for: Track list descriptions, settings subtitles
+    // Used for: Track list descriptions, settings subtitles — Inter
     bodyLarge = TextStyle(
         fontFamily   = InterFamily,
         fontWeight   = FontWeight.Normal,
@@ -137,7 +160,7 @@ val Typography = Typography(
     ),
 
     // ─── Label ───────────────────────────────────────────────
-    // Used for: Song count chips, timestamps, metadata, nav labels
+    // Used for: Song count chips, timestamps, metadata, nav labels — Inter
     labelLarge = TextStyle(
         fontFamily   = InterFamily,
         fontWeight   = FontWeight.SemiBold,
