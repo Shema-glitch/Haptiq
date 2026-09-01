@@ -168,10 +168,9 @@ fun SplashScreen(onTimeout: () -> Unit) {
 
             // Tagline
             Text(
-                text = "Feel the Music",
+                text = "Feel the music",
                 style = MaterialTheme.typography.titleMedium,
                 color = ColorOnSurface60,
-                letterSpacing = 4.sp,
                 modifier = Modifier.alpha(subtitleAlpha)
             )
 
