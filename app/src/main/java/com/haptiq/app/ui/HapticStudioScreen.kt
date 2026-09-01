@@ -26,6 +26,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.haptiq.app.audio.HapticTuningState
@@ -322,11 +323,21 @@ fun HapticStudioScreen(
                             onValueChange = { onIntensityChanged(it.toInt()) },
                             valueRange = 0f..100f,
                             colors = SliderDefaults.colors(
-                                thumbColor = ColorPrimary,
-                                activeTrackColor = ColorPrimary,
+                                thumbColor = ColorKick,
+                                activeTrackColor = ColorKick,
                                 inactiveTrackColor = ColorOutlineVariant
                             ),
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier.weight(1f),
+                            thumb = {
+                                // Brutalist: square thumb with thick border, matching PlayerScreen.
+                                SliderDefaults.Thumb(
+                                    interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                                    colors = SliderDefaults.colors(thumbColor = ColorKick),
+                                    modifier = Modifier
+                                        .size(20.dp)
+                                        .border(BorderWidth.medium, ColorOnSurface)
+                                )
+                            }
                         )
 
                         // Fix T3: increased from 36dp to 48dp for accessibility compliance
@@ -742,11 +753,30 @@ private fun TuningDashboardCard(
                     horizontalArrangement = Arrangement.spacedBy(Spacing.xs)
                 ) {
                     KickCharacter.entries.forEach { char ->
+                        val isSelected = tuning.kickCharacter == char
+                        // Breathing animation: selected chip pulses subtly to feel alive.
+                        val breatheScale by animateFloatAsState(
+                            targetValue = if (isSelected) 1f else 0.97f,
+                            animationSpec = spring(
+                                dampingRatio = Spring.DampingRatioMediumBouncy,
+                                stiffness = Spring.StiffnessLow
+                            ),
+                            label = "kick_chip_scale_${char.name}"
+                        )
+                        // Border opacity breathes with the chip
+                        val borderAlpha by animateFloatAsState(
+                            targetValue = if (isSelected) 1f else 0f,
+                            animationSpec = tween(300),
+                            label = "kick_chip_border_${char.name}"
+                        )
                         FilterChip(
-                            selected = tuning.kickCharacter == char,
+                            selected = isSelected,
                             onClick = { onAction(HaptiqUiAction.SetKickCharacter(char)) },
                             label = {
-                                Text("${char.label} · ${char.displayMs}ms")
+                                Text(
+                                    "${char.label} \u00b7 ${char.displayMs}ms",
+                                    fontFamily = JetBrainsMonoFamily
+                                )
                             },
                             colors = FilterChipDefaults.filterChipColors(
                                 selectedContainerColor = ColorKick.copy(alpha = 0.12f),
@@ -754,7 +784,18 @@ private fun TuningDashboardCard(
                                 containerColor = ColorSurface,
                                 labelColor = ColorOnSurface
                             ),
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier
+                                .weight(1f)
+                                .graphicsLayer {
+                                    scaleX = breatheScale
+                                    scaleY = breatheScale
+                                }
+                                .then(
+                                    if (isSelected) Modifier.border(
+                                        BorderWidth.medium,
+                                        ColorKick.copy(alpha = borderAlpha)
+                                    ) else Modifier
+                                )
                         )
                     }
                 }
@@ -933,6 +974,7 @@ private fun EngineToggleChip(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun TuningSliderRow(
     label: String,
@@ -985,7 +1027,17 @@ private fun TuningSliderRow(
                 activeTrackColor = accentColor,
                 inactiveTrackColor = ColorOutlineVariant
             ),
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth(),
+            thumb = {
+                // Brutalist: square thumb with thick border, matching PlayerScreen.
+                SliderDefaults.Thumb(
+                    interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                    colors = SliderDefaults.colors(thumbColor = accentColor),
+                    modifier = Modifier
+                        .size(20.dp)
+                        .border(BorderWidth.medium, ColorOnSurface)
+                )
+            }
         )
     }
 }
