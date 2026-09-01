@@ -268,13 +268,11 @@ private fun PlayAllFavoritesTile(
         label = "play_all_press_scale"
     )
 
-    // Brutalist: thick black border, square corners.
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .aspectRatio(2f)
             .graphicsLayer { scaleX = scale; scaleY = scale }
-            .border(BorderWidth.medium, ColorOnSurface)
             .clickable(interactionSource = interaction, indication = null, onClick = onPlayAll)
             .testTag("favorites_play_all")
     ) {
@@ -361,11 +359,9 @@ private fun FavoriteGridTile(
         label = "favorite_tile_press_scale"
     )
 
-    // Brutalist: thick border, square grid tile.
     Column(
         modifier = Modifier
             .graphicsLayer { scaleX = scale; scaleY = scale }
-            .border(BorderWidth.medium, ColorOnSurface)
             .clickable(interactionSource = interaction, indication = null, onClick = onClick)
             .testTag("favorite_tile_${song.id}")
     ) {

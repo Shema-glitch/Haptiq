@@ -272,9 +272,8 @@ fun HapticStudioScreen(
             }
 
             // Section 3: Intensity Slider
-    // Brutalist: thick border, square, no shadow
     Card(
-        modifier = Modifier.fillMaxWidth().border(BorderWidth.medium, ColorOnSurface),
+        modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = ColorSurface),
         shape = RoundedCornerShape(Radius.md)
     ) {
@@ -418,11 +417,8 @@ private fun TuningDashboardCard(
         label = "chevron_rotation"
     )
 
-    // Brutalist: thick black border, square
     Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .border(BorderWidth.medium, ColorOnSurface),
+        modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = ColorSurface),
         shape = RoundedCornerShape(Radius.md)
     ) {

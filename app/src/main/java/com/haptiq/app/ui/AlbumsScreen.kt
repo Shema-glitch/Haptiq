@@ -236,13 +236,11 @@ private fun AlbumHeroTile(
         label = "hero_press_scale"
     )
 
-    // Brutalist: thick black border, square corners.
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .aspectRatio(1.8f)
             .graphicsLayer { scaleX = scale; scaleY = scale }
-            .border(BorderWidth.medium, ColorOnSurface)
             .clickable(interactionSource = interaction, indication = null, onClick = onClick)
             .testTag("albums_hero")
     ) {
@@ -317,11 +315,9 @@ private fun AlbumGridCard(
         label = "card_press_scale"
     )
 
-    // Brutalist: thick border, square grid tile.
     Column(
         modifier = Modifier
             .graphicsLayer { scaleX = scale; scaleY = scale }
-            .border(BorderWidth.medium, ColorOnSurface)
             .clickable(interactionSource = interaction, indication = null, onClick = onClick)
     ) {
         Box(

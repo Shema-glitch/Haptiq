@@ -95,12 +95,9 @@ fun LibraryScreen(
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.xs)) {
                 // Sort menu
                 Box {
-                    // Brutalist: square, thick border
                     IconButton(
                         onClick = { showSortMenu = true },
-                        modifier = Modifier
-                            .background(ColorSurface)
-                            .border(BorderWidth.medium, ColorOnSurface)
+                        modifier = Modifier.background(ColorSurface)
                     ) {
                         Icon(Icons.Default.SwapVert, contentDescription = "Sort tracks", tint = ColorOnSurface)
                     }
@@ -127,15 +124,12 @@ fun LibraryScreen(
                 }
                 // Search toggle — collapsing search to an icon keeps the default
                 // screen calm; the field slides open only when asked for.
-                // Brutalist: square, thick border
                 IconButton(
                     onClick = {
                         if (searchExpanded) onSearchQueryChanged("")
                         searchExpanded = !searchExpanded
                     },
-                    modifier = Modifier
-                        .background(if (searchExpanded) ColorSurfaceVariant else ColorSurface)
-                        .border(BorderWidth.medium, ColorOnSurface)
+                    modifier = Modifier.background(if (searchExpanded) ColorSurfaceVariant else ColorSurface)
                 ) {
                     Icon(
                         if (searchExpanded) Icons.Default.Close else Icons.Default.Search,
@@ -144,13 +138,10 @@ fun LibraryScreen(
                     )
                 }
                 // Refresh/Scan button
-                // Brutalist: square, thick border
                 IconButton(
                     onClick = onScanDevice,
                     enabled = !state.isScanning,
-                    modifier = Modifier
-                        .background(ColorSurface)
-                        .border(BorderWidth.medium, ColorOnSurface)
+                    modifier = Modifier.background(ColorSurface)
                 ) {
                     if (state.isScanning) {
                         CircularProgressIndicator(
@@ -512,21 +503,8 @@ fun MediaCard(
     onClick: () -> Unit,
     onToggleFavorite: () -> Unit
 ) {
-    // The border only breathes on the card that is actually playing haptics — an
-    // idle row must not run an infinite animation for every card on screen.
-    val pulseBorderWidthFactor = if (isActiveHaptic) {
-        val t = rememberInfiniteTransition(label = "haptic_pulse")
-        val f by t.animateFloat(
-            initialValue = 1.0f, targetValue = 2.0f,
-            animationSpec = infiniteRepeatable(tween(1000, easing = EaseInOut), RepeatMode.Reverse),
-            label = "pulse_border_width"
-        )
-        f
-    } else {
-        1f
-    }
-
-    // Brutalist: thick black border, square corners.
+    // Only the actively-playing card runs an animation — idle cards must not
+    // create an infinite transition.
     Column(
         modifier = Modifier
             .width(ComponentSize.artworkCard)
@@ -610,15 +588,12 @@ fun TrackRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(Radius.md))
             .background(if (isCurrentPlaying) ColorSurfaceVariant else Color.Transparent)
             .clickable(onClick = onClick)
-            // Tighter rows: 44dp art + 8dp vertical padding ≈ 60dp tall vs. the old
-            // ~80dp, so a long library scrolls in far fewer swipes.
             .padding(horizontal = Spacing.sm, vertical = Spacing.xs),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(Modifier.size(ComponentSize.artworkSmall).clip(RoundedCornerShape(Radius.sm)), contentAlignment = Alignment.Center) {
+        Box(Modifier.size(ComponentSize.artworkSmall), contentAlignment = Alignment.Center) {
             ArtworkImage(song.artworkUrl, null, Modifier.fillMaxSize(), iconSize = ComponentSize.iconSmall, cornerRadius = Radius.sm, fallbackLabel = song.title)
             if (isCurrentPlaying && isPlaying) {
                 val infiniteTransition = rememberInfiniteTransition(label = "bouncing_bars")
