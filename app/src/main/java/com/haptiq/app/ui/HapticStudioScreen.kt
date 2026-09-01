@@ -272,17 +272,10 @@ fun HapticStudioScreen(
             }
 
             // Section 3: Intensity Slider
-    Card(
+    Column(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = ColorSurface),
-        shape = RoundedCornerShape(Radius.md)
+        verticalArrangement = Arrangement.spacedBy(Spacing.md)
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(Spacing.md),
-            verticalArrangement = Arrangement.spacedBy(Spacing.md)
-        ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -345,9 +338,7 @@ fun HapticStudioScreen(
                             modifier = Modifier.size(ComponentSize.touchTarget)
                         ) {
                             Icon(imageVector = Icons.Default.Add, contentDescription = "Increase intensity", tint = ColorOnSurface60)
-                        }
-                    }
-                }
+                        }                }
             }
 
             // Section 5: Haptic Tuning Dashboard
@@ -857,8 +848,6 @@ private fun TuningDashboardCard(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(Radius.md))
-                        .background(ColorSurface)
                         .padding(Spacing.md),
                     verticalArrangement = Arrangement.spacedBy(Spacing.xxs)
                 ) {

@@ -58,10 +58,7 @@ fun SettingsScreen(
             )
 
             Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(Radius.md))
-                    .background(ColorSurface)
+                modifier = Modifier.fillMaxWidth()
             ) {
                 // Battery Saver mapping
                 SettingsRowWithSwitch(
@@ -114,10 +111,7 @@ fun SettingsScreen(
                 modifier = Modifier.padding(horizontal = Spacing.xxs)
             )
             Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(Radius.md))
-                    .background(ColorSurface)
+                modifier = Modifier.fillMaxWidth()
             ) {
                 SettingsRowWithSwitch(
                     icon = Icons.Default.TouchApp,
@@ -152,10 +146,7 @@ fun SettingsScreen(
                 modifier = Modifier.padding(horizontal = Spacing.xxs)
             )
             Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(Radius.md))
-                    .background(ColorSurface)
+                modifier = Modifier.fillMaxWidth()
             ) {
                 // Cycles Off → 15s → 30s → 60s, like the sleep timer
                 SettingsRow(
@@ -225,10 +216,7 @@ fun SettingsScreen(
             )
 
             Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(Radius.md))
-                    .background(ColorSurface)
+                modifier = Modifier.fillMaxWidth()
             ) {
                 val context = androidx.compose.ui.platform.LocalContext.current
                 // lastUpdateTime = when THIS apk was sideloaded; the one signal that
