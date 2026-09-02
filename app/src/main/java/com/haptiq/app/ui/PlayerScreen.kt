@@ -575,7 +575,7 @@ fun PlayerScreen(
                 }
             }
 
-            // ─── Volume + Speed row ─────────────────────────────
+            // ─── Volume row ───────────────────────────────────
             Row(
                 modifier = Modifier.fillMaxWidth().padding(top = Spacing.sm),
                 verticalAlignment = Alignment.CenterVertically,
@@ -626,7 +626,8 @@ fun PlayerScreen(
                 }
             }
 
-            Spacer(Modifier.weight(if (isShortScreen) 0.1f else 0.3f))
+            // ─── Major functional group break ──────────────────
+            Spacer(Modifier.height(Spacing.xl))
 
             // ─── Haptic Engine Row ──────────────────────────────
             // Core feature — elevated touch target, distinct background.

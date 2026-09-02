@@ -588,8 +588,9 @@ fun TrackRow(
             .fillMaxWidth()
             .background(if (isCurrentPlaying) ColorSurfaceVariant else Color.Transparent)
             .clickable(onClick = onClick)
-            .padding(horizontal = Spacing.sm, vertical = Spacing.xs),
-        verticalAlignment = Alignment.CenterVertically
+            .padding(horizontal = Spacing.md, vertical = Spacing.xs),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.sm)
     ) {
         Box(Modifier.size(ComponentSize.artworkSmall), contentAlignment = Alignment.Center) {
             ArtworkImage(song.artworkUrl, null, Modifier.fillMaxSize(), iconSize = ComponentSize.iconSmall, cornerRadius = Radius.sm, fallbackLabel = song.title)
@@ -604,7 +605,6 @@ fun TrackRow(
                 }
             }
         }
-        Spacer(Modifier.width(Spacing.sm))
         Column(Modifier.weight(1f)) {
             // The playing row already announces itself via the container highlight and
             // the equalizer overlay on its artwork — a third and fourth signal (clay

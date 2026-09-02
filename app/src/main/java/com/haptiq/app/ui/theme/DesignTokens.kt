@@ -12,19 +12,20 @@ import androidx.compose.ui.unit.dp
  * no shadows, no soft rounding. Structure IS the decoration.
  */
 
-// ─── Spacing ───────────────────────────────────────────────
+// ─── Spacing Scale (base-4) ─────────────────────────────────
+// Every padding/margin value in the app should reference one of these.
+// No arbitrary one-off dp values in composables going forward.
 object Spacing {
-    val xxs = 4.dp    // Icon-to-text micro gap
-    val xs = 8.dp     // Tight gap between related items
-    val sm = 12.dp    // Chip padding, small gaps
-    val md = 16.dp    // Standard content padding, list item padding
-    val lg = 20.dp    // Section internal padding
-    val xl = 24.dp    // Screen horizontal padding, section gaps
-    val xxl = 32.dp   // Large section separator
-    val xxxl = 40.dp  // Hero spacing (empty state icon to text)
-    val huge = 48.dp  // Empty state text to button
-    val massive = 56.dp // Button height, search bar height
-    val giant = 64.dp   // Album art thumbnail, FAB size
+    val xxs = 4.dp    // Hairline gaps (icon-to-label inside a tight chip)
+    val xs = 8.dp     // Tightly related elements (icon + its own label)
+    val sm = 12.dp    // Related actions (heart icon to queue-add icon)
+    val md = 16.dp    // Standard padding inside cards/rows, internal gaps
+    val lg = 24.dp    // Gap between distinct sections on the same screen
+    val xl = 32.dp    // Gap between major functional groups
+    val xxl = 40.dp   // Empty state hero spacing
+    val xxxl = 48.dp  // Empty state text to button
+    val huge = 56.dp  // Button height, search bar height
+    val giant = 64.dp // Album art thumbnail, FAB size
 }
 
 // ─── Corner Radius ─────────────────────────────────────────
@@ -83,10 +84,10 @@ object Elevation {
 
 // ─── Layout ────────────────────────────────────────────────
 object Layout {
-    val screenHorizontalPadding = Spacing.xl        // 24dp
+    val screenHorizontalPadding = Spacing.md        // 16dp
     val screenVerticalPadding = Spacing.md           // 16dp
     val contentMaxWidth = 480.dp                      // Max content width for readability
-    val sectionGap = Spacing.xl                       // 24dp between sections
+    val sectionGap = Spacing.lg                       // 24dp between sections
     val itemGap = Spacing.xs                          // 8dp between list items
     val cardInternalPadding = Spacing.md              // 16dp inside cards
     val chipGap = Spacing.xs                          // 8dp between chips
