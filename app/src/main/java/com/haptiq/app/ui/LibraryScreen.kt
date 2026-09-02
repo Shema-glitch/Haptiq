@@ -336,6 +336,32 @@ fun LibraryScreen(
                     }
                 }
 
+                // Shuffle All button — shows when no track is playing
+                if (filteredSongs.isNotEmpty() && state.currentSong == null && state.searchQuery.isEmpty()) {
+                    item {
+                        Button(
+                            onClick = {
+                                onSongSelected(filteredSongs, 0)
+                                onAction(HaptiqUiAction.ToggleShuffle)
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = ColorSurface,
+                                contentColor = ColorOnSurface
+                            ),
+                            shape = RoundedCornerShape(Radius.sm),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(
+                                Icons.Default.Shuffle,
+                                contentDescription = null,
+                                modifier = Modifier.size(ComponentSize.iconMedium)
+                            )
+                            Spacer(Modifier.width(Spacing.sm))
+                            Text("Shuffle all", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+
                 // Track list — swipe a row right to queue it as "play next"
                 if (filteredSongs.isNotEmpty()) {
                     itemsIndexed(filteredSongs, key = { _, song -> song.id }) { index, song ->
@@ -382,6 +408,8 @@ fun LibraryScreen(
             // ─── A–Z fast-scroll rail ────────────────────────────
             // Only for big, alphabetically sorted lists — on duration sort the
             // letters would be meaningless jump targets.
+            // Fixed position: inset from right edge, vertically centered below
+            // the "All Tracks" header so it never overlaps content.
             if (showRail) {
                 AlphabetRail(
                     letters = letterIndexMap.keys.toList(),
@@ -392,8 +420,34 @@ fun LibraryScreen(
                             }
                         }
                     },
-                    modifier = Modifier.align(Alignment.CenterEnd)
+                    modifier = Modifier
+                        .align(Alignment.CenterEnd)
+                        .padding(end = Spacing.xs, top = 80.dp)
                 )
+            }
+
+            // Shuffle FAB — appears when scrolled past the header
+            val showShuffleFab = listState.firstVisibleItemIndex > 1 &&
+                filteredSongs.isNotEmpty() && state.searchQuery.isEmpty()
+            if (showShuffleFab) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(end = Spacing.md, bottom = ComponentSize.miniPlayerHeight + Spacing.md)
+                        .size(ComponentSize.touchTarget)
+                        .background(ColorPrimary)
+                        .clickable {
+                            onSongSelected(filteredSongs, 0)
+                            onAction(HaptiqUiAction.ToggleShuffle)
+                        }
+                ) {
+                    Icon(
+                        Icons.Default.Shuffle,
+                        contentDescription = "Shuffle all",
+                        tint = ColorOnPrimary,
+                        modifier = Modifier.size(ComponentSize.iconMedium)
+                    )
+                }
             }
 
             // First-run gesture tutorial — overlays the library once, teaches the
@@ -409,7 +463,7 @@ fun LibraryScreen(
                     }
                 )
             }
-            }
+            } // Box
         }
         }
     }

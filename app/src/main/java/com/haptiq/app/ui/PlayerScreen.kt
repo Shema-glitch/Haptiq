@@ -166,18 +166,22 @@ fun PlayerScreen(
         // Ambient glow behind artwork — kick orange represents the haptic
         // energy radiating from the player. Bass hum: slow continuous breathing
         // scale + alpha when haptics are live. Reduced motion: frozen frame.
+        // Circular radial gradient — no edge artifacts, never clips to status bar.
         Box(
             modifier = Modifier
-                .fillMaxWidth()
-                .height(if (isShortScreen) 220.dp else 350.dp)
+                .size(if (isShortScreen) 280.dp else 400.dp)
                 .graphicsLayer {
                     scaleX = bassHumScale
                     scaleY = bassHumScale
-                    alpha = bassHumAlpha / 0.06f // normalize around the base alpha
+                    alpha = bassHumAlpha / 0.06f
                 }
                 .background(
-                    Brush.verticalGradient(
-                        colors = listOf(ColorKick.copy(alpha = bassHumAlpha), Color.Transparent)
+                    Brush.radialGradient(
+                        colors = listOf(
+                            ColorKick.copy(alpha = bassHumAlpha),
+                            ColorKick.copy(alpha = bassHumAlpha * 0.4f),
+                            Color.Transparent
+                        )
                     )
                 )
                 .align(Alignment.TopCenter)
@@ -391,8 +395,8 @@ fun PlayerScreen(
                                 val playedColor = if (state.hapticActive) ColorKick else ColorPrimary
                                 val restColor = ColorOutlineVariant
                             Canvas(Modifier.fillMaxWidth().height(28.dp)) {
-                                val barW = 3.dp.toPx()
-                                val gap = 2.dp.toPx()
+                                val barW = 4.dp.toPx()
+                                val gap = 1.5.dp.toPx()
                                 val bars = (size.width / (barW + gap)).toInt().coerceAtLeast(1)
                                 val minH = 3.dp.toPx()
                                 for (i in 0 until bars) {
@@ -411,21 +415,18 @@ fun PlayerScreen(
                                         cornerRadius = CornerRadius(barW / 2f)
                                     )
                                 }
-                                // Kick-onset overlay: one vertical tick per AOT-map kick.
-                                // Orange = the beat grid will let lookahead pre-fire it there;
-                                // faint = off-beat, rejected by the double-check. Visible
-                                // whether or not the toggle is on — it's the preview of
-                                // exactly where the AOT map would pre-fire.
+                                // Kick-onset markers: vertical ticks at kick positions.
+                                // Thicker strokes, better spacing — less condensed.
                                 val totalMs = (state.currentSong?.durationSeconds ?: 0) * 1000L
                                 if (totalMs > 0 && state.seekKickMarkers.isNotEmpty()) {
                                     state.seekKickMarkers.forEach { marker ->
                                         val x = (marker.positionMs.toFloat() / totalMs) * size.width
                                         drawLine(
-                                            color = if (marker.onBeat) ColorKick.copy(alpha = 0.85f)
-                                            else ColorOnSurface60.copy(alpha = 0.35f),
-                                            start = Offset(x, 0f),
-                                            end = Offset(x, size.height),
-                                            strokeWidth = if (marker.onBeat) 2.dp.toPx() else 1.dp.toPx()
+                                            color = if (marker.onBeat) ColorKick.copy(alpha = 0.9f)
+                                            else ColorOnSurface60.copy(alpha = 0.3f),
+                                            start = Offset(x, 2.dp.toPx()),
+                                            end = Offset(x, size.height - 2.dp.toPx()),
+                                            strokeWidth = if (marker.onBeat) 2.5.dp.toPx() else 1.5.dp.toPx()
                                         )
                                     }
                                 }
@@ -744,8 +745,8 @@ private fun WaveformRenderingShimmer() {
     val base = ColorOutlineVariant
     val highlight = ColorKick
     Canvas(Modifier.fillMaxWidth().height(28.dp)) {
-        val barW = 3.dp.toPx()
-        val gap = 2.dp.toPx()
+        val barW = 4.dp.toPx()
+        val gap = 1.5.dp.toPx()
         val bars = (size.width / (barW + gap)).toInt().coerceAtLeast(1)
         val restH = 6.dp.toPx()
         for (i in 0 until bars) {
