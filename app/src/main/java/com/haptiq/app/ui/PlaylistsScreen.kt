@@ -145,6 +145,7 @@ fun PlaylistsScreen(
         PlaylistNameDialog(
             title = "New playlist",
             confirmLabel = "Create",
+            initialName = "New Playlist",
             onConfirm = { onAction(HaptiqUiAction.CreatePlaylist(it)); showCreateDialog = false },
             onDismiss = { showCreateDialog = false }
         )
@@ -190,7 +191,7 @@ private fun PlaylistRow(
         Column(Modifier.weight(1f)) {
             Text(playlist.name, style = MaterialTheme.typography.titleMedium, color = ColorOnSurface, maxLines = 1)
             Text(
-                countLabel(playlist.songCount, "song"),
+                if (playlist.songCount == 0) "0 songs — add some to get started" else countLabel(playlist.songCount, "song"),
                 style = MaterialTheme.typography.bodyMedium,
                 color = ColorOnSurface60
             )

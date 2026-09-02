@@ -96,8 +96,7 @@ fun LibraryScreen(
                 // Sort menu
                 Box {
                     IconButton(
-                        onClick = { showSortMenu = true },
-                        modifier = Modifier.background(ColorSurface)
+                        onClick = { showSortMenu = true }
                     ) {
                         Icon(Icons.Default.SwapVert, contentDescription = "Sort tracks", tint = ColorOnSurface)
                     }
@@ -128,8 +127,7 @@ fun LibraryScreen(
                     onClick = {
                         if (searchExpanded) onSearchQueryChanged("")
                         searchExpanded = !searchExpanded
-                    },
-                    modifier = Modifier.background(if (searchExpanded) ColorSurfaceVariant else ColorSurface)
+                    }
                 ) {
                     Icon(
                         if (searchExpanded) Icons.Default.Close else Icons.Default.Search,
@@ -140,8 +138,7 @@ fun LibraryScreen(
                 // Refresh/Scan button
                 IconButton(
                     onClick = onScanDevice,
-                    enabled = !state.isScanning,
-                    modifier = Modifier.background(ColorSurface)
+                    enabled = !state.isScanning
                 ) {
                     if (state.isScanning) {
                         CircularProgressIndicator(
@@ -331,7 +328,8 @@ fun LibraryScreen(
                             Text(
                                 countLabel(filteredSongs.size, "song"),
                                 style = MaterialTheme.typography.labelSmall,
-                                color = ColorOnSurface60
+                                color = ColorOnSurface60,
+                                modifier = Modifier.padding(end = 28.dp)
                             )
                         }
                         Spacer(Modifier.height(Spacing.xs))

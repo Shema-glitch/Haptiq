@@ -271,8 +271,7 @@ fun PlayerScreen(
                     text = currentSong.title,
                     style = if (isShortScreen) MaterialTheme.typography.headlineSmall else MaterialTheme.typography.headlineMedium,
                     color = ColorOnSurface,
-                    maxLines = 1,
-                    modifier = Modifier.basicMarquee()
+                    maxLines = 2
                 )
                 Spacer(Modifier.height(4.dp))
                 Text(
@@ -518,7 +517,6 @@ fun PlayerScreen(
                             scaleX = s; scaleY = s
                         }
                         .background(ColorKick)
-                        .border(BorderWidth.thick, ColorOnSurface)
                         .clickable(
                             interactionSource = fabInteraction,
                             indication = null,
@@ -631,16 +629,17 @@ fun PlayerScreen(
             Spacer(Modifier.weight(if (isShortScreen) 0.1f else 0.3f))
 
             // ─── Haptic Engine Row ──────────────────────────────
-            // Brutalist: thin border, square, teal when active.
+            // Core feature — elevated touch target, distinct background.
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .height(ComponentSize.buttonHeight)
                     .border(
                         BorderWidth.thin,
-                        ColorOutline
+                        if (state.hapticActive) ColorBass else ColorOutline
                     )
                     .clickable(onClick = onHapticStudioClicked),
-                color = if (state.hapticActive) ColorBass else ColorSurface,
+                color = if (state.hapticActive) ColorBass.copy(alpha = 0.15f) else ColorSurface,
                 shape = RoundedCornerShape(Radius.sm)
             ) {
                 Row(
