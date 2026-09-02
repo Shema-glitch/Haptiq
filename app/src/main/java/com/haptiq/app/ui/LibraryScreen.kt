@@ -515,8 +515,8 @@ fun MediaCard(
             modifier = Modifier
                 .size(ComponentSize.artworkCard)
                 .border(
-                    width = if (isActiveHaptic) BorderWidth.thick else BorderWidth.medium,
-                    color = if (isActiveHaptic) ColorHapticAccent else ColorOnSurface
+                    width = if (isActiveHaptic) BorderWidth.medium else BorderWidth.thin,
+                    color = if (isActiveHaptic) ColorHapticAccent else ColorOutline
                 )
         ) {
             ArtworkImage(
@@ -868,6 +868,6 @@ fun BouncingEqualizerBar(transition: InfiniteTransition, delayMillis: Int, targe
         animationSpec = infiniteRepeatable(tween(600, delayMillis = delayMillis, easing = EaseInOutSine), RepeatMode.Reverse),
         label = "bar_height"
     )
-    Box(Modifier.width(3.dp).height(barHeight.dp).background(ColorHapticAccent, RoundedCornerShape(topStart = 1.dp, topEnd = 1.dp)))
+    Box(Modifier.width(3.dp).height(barHeight.dp).background(ColorHapticAccent))
 }
 

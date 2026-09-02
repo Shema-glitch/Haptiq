@@ -215,7 +215,7 @@ fun PlayerScreen(
                     modifier = Modifier
                         .size(ComponentSize.touchTarget)
                         .background(ColorSurface)
-                        .border(BorderWidth.medium, ColorOnSurface)
+                        .border(BorderWidth.thin, ColorOutline)
                 ) {
                     Icon(Icons.Default.KeyboardArrowDown, "Minimize", tint = ColorOnSurface, modifier = Modifier.size(24.dp))
                 }
@@ -241,7 +241,7 @@ fun PlayerScreen(
             }
             Box(
                 modifier = artworkModifier
-                    .border(BorderWidth.medium, ColorOnSurface)
+                    .border(BorderWidth.thin, ColorOutline)
             ) {
                 Crossfade(
                     targetState = currentSong.artworkUrl,
@@ -329,7 +329,7 @@ fun PlayerScreen(
                     contentColor = ColorOnSurface,
                     modifier = Modifier
                         .height(36.dp)
-                        .border(BorderWidth.medium, ColorOnSurface)
+                        .border(BorderWidth.thin, ColorOutline)
                 ) {
                     Row(
                         modifier = Modifier.padding(horizontal = Spacing.sm),
@@ -381,7 +381,7 @@ fun PlayerScreen(
                             colors = SliderDefaults.colors(thumbColor = Color.White),
                             modifier = Modifier
                                 .size(20.dp)
-                                .border(BorderWidth.medium, ColorOnSurface)
+                                .border(BorderWidth.thin, ColorOutline)
                         )
                     },
                     track = { sliderState ->
@@ -594,13 +594,13 @@ fun PlayerScreen(
                     onValueChange = onSetVolume,
                     valueRange = 0f..1f,
                     colors = SliderDefaults.colors(
-                        thumbColor = ColorOnSurface,
-                        activeTrackColor = ColorPrimary,
+                        thumbColor = ColorKick,
+                        activeTrackColor = ColorKick,
                         inactiveTrackColor = ColorOutlineVariant
                     ),
                     modifier = Modifier.weight(1f).height(24.dp)
                 )
-                // Speed chip — brutalist: square, thick border, mono text.
+                // Speed chip — brutalist: square, thin border, mono text.
                 Surface(
                     onClick = { onSetSpeed(nextSpeed(state.playbackSpeed)) },
                     shape = RoundedCornerShape(Radius.sm),
@@ -608,8 +608,8 @@ fun PlayerScreen(
                     modifier = Modifier
                         .height(32.dp)
                         .border(
-                            BorderWidth.medium,
-                            ColorOnSurface
+                            BorderWidth.thin,
+                            ColorOutline
                         )
                 ) {
                     Box(
@@ -631,13 +631,13 @@ fun PlayerScreen(
             Spacer(Modifier.weight(if (isShortScreen) 0.1f else 0.3f))
 
             // ─── Haptic Engine Row ──────────────────────────────
-            // Brutalist: thick border, square, teal when active.
+            // Brutalist: thin border, square, teal when active.
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()
                     .border(
-                        BorderWidth.medium,
-                        ColorOnSurface
+                        BorderWidth.thin,
+                        ColorOutline
                     )
                     .clickable(onClick = onHapticStudioClicked),
                 color = if (state.hapticActive) ColorBass else ColorSurface,

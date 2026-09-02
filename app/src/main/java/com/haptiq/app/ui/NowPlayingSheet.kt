@@ -137,8 +137,8 @@ fun NowPlayingSheet(
                 .width(maxWidth - marginDp * 2)
                 .height(heightDp)
                 .border(
-                    if (p > 0.5f) BorderWidth.medium else BorderWidth.thin,
-                    ColorOnSurface
+                    if (p > 0.5f) BorderWidth.thin else BorderWidth.thin,
+                    ColorOutline
                 )
                 .pointerInput(currentSong.id) {
                     var totalX = 0f
@@ -336,11 +336,11 @@ private fun MiniPlayerContent(
             .padding(horizontal = Spacing.md),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Brutalist: square artwork, thick border
+        // Brutalist: square artwork, thin border
         Box(
             modifier = Modifier
                 .size(ComponentSize.artworkMedium)
-                .border(BorderWidth.medium, ColorOnSurface)
+                .border(BorderWidth.thin, ColorOutline)
         ) {
             ArtworkImage(
                 currentSong.artworkUrl,
@@ -365,7 +365,6 @@ private fun MiniPlayerContent(
                     Box(
                         Modifier
                             .size(6.dp)
-                            .clip(CircleShape)
                             .background(ColorBass.copy(alpha = dotAlpha))
                     )
                     Spacer(Modifier.width(Spacing.xxs))
@@ -393,13 +392,13 @@ private fun MiniPlayerContent(
             IconButton(onClick = onPrev, modifier = Modifier.size(ComponentSize.touchTarget)) {
                 Icon(Icons.Default.SkipPrevious, "Previous", tint = ColorOnSurface, modifier = Modifier.size(ComponentSize.iconLarge))
             }
-            // Brutalist: square play button, thick border
+            // Brutalist: square play button, thin border, orange when playing
             IconButton(
                 onClick = onTogglePlayPause,
                 modifier = Modifier
                     .size(ComponentSize.touchTarget)
-                    .background(ColorSurface)
-                    .border(BorderWidth.medium, ColorOnSurface)
+                    .background(if (isPlaying) ColorKick else ColorSurface)
+                    .border(BorderWidth.thin, if (isPlaying) ColorKick else ColorOutline)
             ) {
                 androidx.compose.animation.AnimatedContent(
                     targetState = isPlaying,
@@ -412,7 +411,7 @@ private fun MiniPlayerContent(
                     Icon(
                         if (playing) Icons.Default.Pause else Icons.Default.PlayArrow,
                         if (playing) "Pause" else "Play",
-                        tint = ColorOnSurface,
+                        tint = if (playing) ColorOnPrimary else ColorOnSurface,
                         modifier = Modifier.size(ComponentSize.iconMedium)
                     )
                 }

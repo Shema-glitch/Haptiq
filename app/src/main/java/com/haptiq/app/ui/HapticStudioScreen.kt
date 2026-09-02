@@ -327,7 +327,7 @@ fun HapticStudioScreen(
                                     colors = SliderDefaults.colors(thumbColor = ColorKick),
                                     modifier = Modifier
                                         .size(20.dp)
-                                        .border(BorderWidth.medium, ColorOnSurface)
+                                        .border(BorderWidth.thin, ColorOutline)
                                 )
                             }
                         )
@@ -408,11 +408,7 @@ private fun TuningDashboardCard(
         label = "chevron_rotation"
     )
 
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = ColorSurface),
-        shape = RoundedCornerShape(Radius.md)
-    ) {
+    Column(modifier = Modifier.fillMaxWidth()) {
         // Header row — always visible, tapping it toggles the panel
         Row(
             modifier = Modifier
@@ -516,7 +512,7 @@ private fun TuningDashboardCard(
                         onCheckedChange = { onAction(HaptiqUiAction.SetAdaptiveEnabled(it)) },
                         colors = SwitchDefaults.colors(
                             checkedThumbColor = ColorSurface,
-                            checkedTrackColor = ColorPrimary,
+                            checkedTrackColor = ColorBass,
                             uncheckedThumbColor = ColorOnSurface60,
                             uncheckedTrackColor = ColorSurfaceVariant
                         )
@@ -563,7 +559,7 @@ private fun TuningDashboardCard(
                         onCheckedChange = { onAction(HaptiqUiAction.SetSurfaceAdaptiveEnabled(it)) },
                         colors = SwitchDefaults.colors(
                             checkedThumbColor = ColorSurface,
-                            checkedTrackColor = ColorPrimary,
+                            checkedTrackColor = ColorBass,
                             uncheckedThumbColor = ColorOnSurface60,
                             uncheckedTrackColor = ColorSurfaceVariant
                         )
@@ -623,7 +619,7 @@ private fun TuningDashboardCard(
                         onCheckedChange = { onAction(HaptiqUiAction.SetAotLookaheadEnabled(it)) },
                         colors = SwitchDefaults.colors(
                             checkedThumbColor = ColorSurface,
-                            checkedTrackColor = ColorPrimary,
+                            checkedTrackColor = ColorBass,
                             uncheckedThumbColor = ColorOnSurface60,
                             uncheckedTrackColor = ColorSurfaceVariant
                         )
@@ -757,10 +753,18 @@ private fun TuningDashboardCard(
                             selected = isSelected,
                             onClick = { onAction(HaptiqUiAction.SetKickCharacter(char)) },
                             label = {
-                                Text(
-                                    "${char.label} \u00b7 ${char.displayMs}ms",
-                                    fontFamily = JetBrainsMonoFamily
-                                )
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Text(
+                                        char.label,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                    Text(
+                                        "${char.displayMs}ms",
+                                        fontFamily = JetBrainsMonoFamily,
+                                        style = MaterialTheme.typography.labelSmall
+                                    )
+                                }
                             },
                             colors = FilterChipDefaults.filterChipColors(
                                 selectedContainerColor = ColorKick.copy(alpha = 0.12f),
@@ -1017,7 +1021,7 @@ private fun TuningSliderRow(
                     colors = SliderDefaults.colors(thumbColor = accentColor),
                     modifier = Modifier
                         .size(20.dp)
-                        .border(BorderWidth.medium, ColorOnSurface)
+                        .border(BorderWidth.thin, ColorOutline)
                 )
             }
         )

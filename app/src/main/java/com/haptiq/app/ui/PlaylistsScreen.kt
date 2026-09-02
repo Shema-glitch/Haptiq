@@ -17,6 +17,7 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PlaylistPlay
+import androidx.compose.material.icons.filled.QueueMusic
 import androidx.compose.material.icons.filled.RemoveCircleOutline
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -96,15 +97,46 @@ fun PlaylistsScreen(
                 verticalArrangement = Arrangement.spacedBy(Spacing.xs),
                 contentPadding = PaddingValues(bottom = Spacing.xl)
             ) {
-                items(state.playlists, key = { it.id }) { playlist ->
-                    PlaylistRow(
-                        playlist = playlist,
-                        onClick = { onPlaylistOpened(playlist.id) },
-                        onRename = { renameTarget = playlist },
-                        onDelete = { onAction(HaptiqUiAction.DeletePlaylist(playlist.id)) }
-                    )
+                if (state.playlists.isEmpty()) {
+                    item {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(Spacing.xxxl),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Icon(
+                                    Icons.Default.QueueMusic,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(ComponentSize.iconHero),
+                                    tint = ColorOnSurface60
+                                )
+                                Spacer(Modifier.height(Spacing.lg))
+                                Text(
+                                    "No playlists yet",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = ColorOnSurface
+                                )
+                                Spacer(Modifier.height(Spacing.xs))
+                                Text(
+                                    "Create one to organize your music",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = ColorOnSurface60
+                                )
+                            }
+                        }
+                    }
+                } else {
+                    items(state.playlists, key = { it.id }) { playlist ->
+                        PlaylistRow(
+                            playlist = playlist,
+                            onClick = { onPlaylistOpened(playlist.id) },
+                            onRename = { renameTarget = playlist },
+                            onDelete = { onAction(HaptiqUiAction.DeletePlaylist(playlist.id)) }
+                        )
+                    }
                 }
-                item { Spacer(Modifier.height(Spacing.xxl)) }
             }
         }
     }
