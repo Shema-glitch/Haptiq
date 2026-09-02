@@ -113,11 +113,16 @@ fun PlayerScreen(
     }
 
     // ── Kick pulse: sharp scale burst when play/pause is pressed ──
+    val reducedMotion = isReducedMotionEnabled()
     val kickPulse = remember { Animatable(0f) }
     LaunchedEffect(state.isPlaying) {
         if (state.hapticActive) {
             kickPulse.snapTo(0f)
-            kickPulse.animateTo(1f, tween(350, easing = FastOutSlowInEasing))
+            if (reducedMotion) {
+                kickPulse.snapTo(1f)
+            } else {
+                kickPulse.animateTo(1f, tween(350, easing = FastOutSlowInEasing))
+            }
         }
     }
 
@@ -499,7 +504,7 @@ fun PlayerScreen(
                 val isFabPressed by fabInteraction.collectIsPressedAsState()
                 val fabPressScale by animateFloatAsState(
                     targetValue = if (isFabPressed) 0.92f else 1f,
-                    animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
+                    animationSpec = HaptiqMotion.expressiveSpring(),
                     label = "fab_press_scale"
                 )
                 // Kick pulse: sharp scale burst on play — the signature "thump" moment
@@ -527,8 +532,8 @@ fun PlayerScreen(
                     AnimatedContent(
                         targetState = state.isPlaying,
                         transitionSpec = {
-                            (scaleIn(initialScale = 0.6f, animationSpec = tween(180)) + fadeIn(tween(140)))
-                                .togetherWith(scaleOut(targetScale = 0.6f, animationSpec = tween(140)) + fadeOut(tween(100)))
+                            (scaleIn(initialScale = 0.6f, animationSpec = tween(150)) + fadeIn(tween(120)))
+                                .togetherWith(scaleOut(targetScale = 0.6f, animationSpec = tween(120)) + fadeOut(tween(90)))
                         },
                         label = "play_pause_icon"
                     ) { isPlaying ->

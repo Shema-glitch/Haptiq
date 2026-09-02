@@ -28,6 +28,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import com.haptiq.app.ui.theme.*
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -164,7 +165,11 @@ fun GestureTutorialOverlay(
                 Row(horizontalArrangement = Arrangement.spacedBy(Spacing.xs)) {
                     for (i in 0..lastStep) {
                         val active = i == step
-                        val dotWidth by animateDpAsState(if (active) 20.dp else 6.dp, label = "dot")
+                        val dotWidth by animateDpAsState(
+                            if (active) 20.dp else 6.dp,
+                            animationSpec = HaptiqMotion.expressiveSpring(),
+                            label = "dot"
+                        )
                         Box(
                             Modifier
                                 .height(6.dp)

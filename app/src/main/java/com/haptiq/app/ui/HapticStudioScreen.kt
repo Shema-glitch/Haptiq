@@ -744,16 +744,13 @@ private fun TuningDashboardCard(
                         // Breathing animation: selected chip pulses subtly to feel alive.
                         val breatheScale by animateFloatAsState(
                             targetValue = if (isSelected) 1f else 0.97f,
-                            animationSpec = spring(
-                                dampingRatio = Spring.DampingRatioMediumBouncy,
-                                stiffness = Spring.StiffnessLow
-                            ),
+                            animationSpec = HaptiqMotion.expressiveSpring(),
                             label = "kick_chip_scale_${char.name}"
                         )
                         // Border opacity breathes with the chip
                         val borderAlpha by animateFloatAsState(
                             targetValue = if (isSelected) 1f else 0f,
-                            animationSpec = tween(300),
+                            animationSpec = HaptiqMotion.standardSpring(),
                             label = "kick_chip_border_${char.name}"
                         )
                         FilterChip(

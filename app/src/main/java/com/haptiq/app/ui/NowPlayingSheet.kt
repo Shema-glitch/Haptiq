@@ -1,10 +1,8 @@
 package com.haptiq.app.ui
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.togetherWith
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.spring
+import androidx.compose.animation.*
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -319,12 +317,12 @@ private fun MiniPlayerContent(
         isReducedMotionEnabled() -> 0.7f
         !hapticActive -> 1f
         else -> {
-            val infinitePulse = androidx.compose.animation.core.rememberInfiniteTransition(label = "glow_pulse")
+            val infinitePulse = rememberInfiniteTransition(label = "glow_pulse")
             val a by infinitePulse.animateFloat(
                 initialValue = 0.45f, targetValue = 0.95f,
-                animationSpec = androidx.compose.animation.core.infiniteRepeatable(
-                    androidx.compose.animation.core.tween(2200, easing = androidx.compose.animation.core.EaseInOut),
-                    androidx.compose.animation.core.RepeatMode.Reverse
+                animationSpec = infiniteRepeatable(
+                    tween(2200, easing = EaseInOut),
+                    RepeatMode.Reverse
                 ),
                 label = "dot_alpha"
             )
@@ -406,8 +404,8 @@ private fun MiniPlayerContent(
                 androidx.compose.animation.AnimatedContent(
                     targetState = isPlaying,
                     transitionSpec = {
-                        (androidx.compose.animation.scaleIn(initialScale = 0.6f, animationSpec = androidx.compose.animation.core.tween(160)) + androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(120)))
-                            .togetherWith(androidx.compose.animation.scaleOut(targetScale = 0.6f, animationSpec = androidx.compose.animation.core.tween(120)) + androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(90)))
+                        (scaleIn(initialScale = 0.6f, animationSpec = tween(150)) + fadeIn(tween(120)))
+                            .togetherWith(scaleOut(targetScale = 0.6f, animationSpec = tween(120)) + fadeOut(tween(90)))
                     },
                     label = "mini_play_pause_icon"
                 ) { playing ->

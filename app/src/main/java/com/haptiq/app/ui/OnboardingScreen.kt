@@ -274,6 +274,7 @@ private fun OnboardingPageContent(
 
     // Tap burst — an extra ring that fires outward when the visual is tapped
     val burst = remember { Animatable(0f) }
+    val reducedMotion = isReducedMotionEnabled()
 
     fun feelIt() {
         val effect = when (pageIndex) {
@@ -295,7 +296,11 @@ private fun OnboardingPageContent(
         } catch (_: Exception) { /* some OEM ROMs throw on amplitude control */ }
         scope.launch {
             burst.snapTo(0f)
-            burst.animateTo(1f, tween(600, easing = LinearOutSlowInEasing))
+            if (reducedMotion) {
+                burst.snapTo(1f)
+            } else {
+                burst.animateTo(1f, tween(600, easing = LinearOutSlowInEasing))
+            }
         }
     }
 

@@ -828,8 +828,8 @@ fun SwipeToQueueRow(
                 androidx.compose.animation.AnimatedVisibility(
                     visible = justQueued,
                     enter = androidx.compose.animation.slideInHorizontally { -it } +
-                        androidx.compose.animation.fadeIn(tween(180)),
-                    exit = androidx.compose.animation.fadeOut(tween(220)),
+                        androidx.compose.animation.fadeIn(tween(150)),
+                    exit = androidx.compose.animation.fadeOut(tween(120)),
                     modifier = Modifier.matchParentSize()
                 ) {
                     Row(
