@@ -387,11 +387,21 @@ class HaptiqViewModel @Inject constructor(
         // Check DND status on launch
         refreshDndStatus()
 
-        // Load the library once per process — scanDevice() populates the hot
-        // songRepository.allSongs StateFlow collected above, so this doesn't need
-        // its own separate state wiring.
+        // Load the library: cache first (instant), then background rescan.
+        // Cache gives recently-played and favorites something to resolve against
+        // immediately — no blank "scanning" screen on cold start.
         if (!songRepository.isLoaded()) {
-            viewModelScope.launch { performScan(initialStatus = "Starting scan…") }
+            val cacheLoaded = songRepository.loadFromCache()
+            if (cacheLoaded) {
+                // Cache loaded — restore playback session silently.
+                // The background rescan below will update if anything changed.
+                viewModelScope.launch {
+                    playerManager.restoreSession(songRepository.allSongs.value)
+                }
+            }
+            // Background rescan: updates the song list if files were added/removed.
+            // Silent — no scanning UI unless the user explicitly taps refresh.
+            viewModelScope.launch { performBackgroundRescan() }
         }
     }
 
@@ -420,6 +430,21 @@ class HaptiqViewModel @Inject constructor(
                 it.copy(isScanning = false, scanError = e.message ?: "Scan failed. Please try again.")
             }
         }
+    }
+
+    /**
+     * Silent background rescan — updates the song list if files were added/removed
+     * since the cache was written. No scanning UI, no toast.
+     */
+    private suspend fun performBackgroundRescan() {
+        try {
+            val oldIds = songRepository.allSongs.value.map { it.id }.toSet()
+            val songs = songRepository.scanDevice()
+            val newIds = songs.map { it.id }.toSet()
+            if (oldIds != newIds) {
+                playerManager.restoreSession(songs)
+            }
+        } catch (_: Exception) { /* silent */ }
     }
 
     /**

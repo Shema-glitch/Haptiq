@@ -1,6 +1,8 @@
 package com.haptiq.app.data
 
 import android.content.Context
+import android.util.Log
+import androidx.core.content.edit
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -9,6 +11,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
+import org.json.JSONObject
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -18,10 +22,19 @@ class SongRepository @Inject constructor(
     private val mediaStoreScanner: MediaStoreScanner,
     private val userSettings: UserSettingsStore
 ) {
+    companion object {
+        private const val TAG = "SongRepository"
+        private const val PREFS_NAME = "haptiq_library"
+        private const val KEY_SONGS_JSON = "songs_json"
+        private const val KEY_SONGS_COUNT = "songs_count"
+    }
+
     // Hot, always-current — unlike a one-shot cold Flow, every collector sees every
     // future scanDevice() result too, not just whatever was true at first collection.
     private val _songs = MutableStateFlow<List<Song>>(emptyList())
     val allSongs: StateFlow<List<Song>> = _songs.asStateFlow()
+
+    private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
     private var hasLoaded = false
 
@@ -37,14 +50,76 @@ class SongRepository @Inject constructor(
     }
 
     /**
+     * Load cached songs from disk (instant). Returns true if cache existed.
+     * Must be called before scanDevice() so recently-played can resolve IDs.
+     */
+    fun loadFromCache(): Boolean {
+        if (hasLoaded) return true
+        val json = prefs.getString(KEY_SONGS_JSON, null)
+        if (json.isNullOrEmpty()) return false
+        return try {
+            val arr = JSONArray(json)
+            val songs = mutableListOf<Song>()
+            for (i in 0 until arr.length()) {
+                val obj = arr.getJSONObject(i)
+                songs.add(
+                    Song(
+                        id = obj.getString("id"),
+                        title = obj.getString("title"),
+                        artist = obj.getString("artist"),
+                        durationSeconds = obj.getInt("durationSeconds"),
+                        artworkUrl = obj.optString("artworkUrl", ""),
+                        audioUrl = obj.getString("audioUrl")
+                    )
+                )
+            }
+            _songs.value = songs
+            hasLoaded = true
+            Log.d(TAG, "Loaded ${songs.size} songs from cache")
+            true
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to load songs from cache: ${e.message}")
+            false
+        }
+    }
+
+    /**
+     * Save the current song list to disk so it survives process restarts.
+     */
+    private fun saveToCache(songs: List<Song>) {
+        try {
+            val arr = JSONArray()
+            for (song in songs) {
+                arr.put(JSONObject().apply {
+                    put("id", song.id)
+                    put("title", song.title)
+                    put("artist", song.artist)
+                    put("durationSeconds", song.durationSeconds)
+                    put("artworkUrl", song.artworkUrl)
+                    put("audioUrl", song.audioUrl)
+                })
+            }
+            prefs.edit {
+                putString(KEY_SONGS_JSON, arr.toString())
+                putInt(KEY_SONGS_COUNT, songs.size)
+            }
+            Log.d(TAG, "Saved ${songs.size} songs to cache")
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to save songs to cache: ${e.message}")
+        }
+    }
+
+    /**
      * Scan the device for audio files and update [allSongs].
      * Runs on IO — MediaStore queries are blocking and must never run on Main.
+     * Saves results to disk cache for instant load on next launch.
      * Returns the scanned songs, or throws on failure.
      */
     suspend fun scanDevice(onProgress: ((Int, String) -> Unit)? = null): List<Song> = withContext(Dispatchers.IO) {
         val songs = mediaStoreScanner.scanForAudio(userSettings.minDurationSec, onProgress)
         _songs.value = songs
         hasLoaded = true
+        saveToCache(songs)
         songs
     }
 
@@ -61,6 +136,7 @@ class SongRepository @Inject constructor(
         val loader = coil.Coil.imageLoader(context)
         loader.memoryCache?.clear()
         loader.diskCache?.clear()
+        prefs.edit { remove(KEY_SONGS_JSON); remove(KEY_SONGS_COUNT) }
         rescan()
     }
 }
