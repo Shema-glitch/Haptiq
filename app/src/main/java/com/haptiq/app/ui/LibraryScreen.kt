@@ -273,7 +273,7 @@ fun LibraryScreen(
                 verticalArrangement = Arrangement.spacedBy(Spacing.xs),
                 // Bottom breathing room so the last track clears the mini-player
                 // instead of sitting flush against it.
-                contentPadding = PaddingValues(bottom = Spacing.xl)
+                contentPadding = PaddingValues(bottom = ComponentSize.miniPlayerHeight + Spacing.xl)
             ) {
                 // Recently Played — real play history from Room, newest first.
                 // (Previously rendered state.songs.take(5): the first five scan

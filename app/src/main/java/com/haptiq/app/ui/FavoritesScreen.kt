@@ -123,7 +123,7 @@ fun FavoritesScreen(
         } else {
             LazyVerticalGrid(
                 columns = GridCells.Fixed(2),
-                contentPadding = PaddingValues(top = Spacing.md, bottom = Spacing.xl),
+                contentPadding = PaddingValues(top = Spacing.md, bottom = ComponentSize.miniPlayerHeight + Spacing.xl),
                 horizontalArrangement = Arrangement.spacedBy(Spacing.md),
                 verticalArrangement = Arrangement.spacedBy(Spacing.md)
             ) {

@@ -470,8 +470,6 @@ private fun StudioVisual() {
     Column(
         modifier = Modifier
             .size(width = 170.dp, height = 130.dp)
-            .background(ColorSurface, RoundedCornerShape(Radius.lg))
-            .border(1.dp, ColorOutlineVariant.copy(alpha = 0.5f), RoundedCornerShape(Radius.lg))
             .padding(horizontal = Spacing.lg),
         verticalArrangement = Arrangement.spacedBy(Spacing.lg, Alignment.CenterVertically)
     ) {

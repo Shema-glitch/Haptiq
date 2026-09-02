@@ -2,6 +2,7 @@ package com.haptiq.app.ui
 
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
+import androidx.compose.ui.util.lerp
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.border
 import androidx.compose.foundation.background
@@ -111,6 +112,43 @@ fun PlayerScreen(
         }
     }
 
+    // ── Kick pulse: sharp scale burst when play/pause is pressed ──
+    val kickPulse = remember { Animatable(0f) }
+    LaunchedEffect(state.isPlaying) {
+        if (state.hapticActive) {
+            kickPulse.snapTo(0f)
+            kickPulse.animateTo(1f, tween(350, easing = FastOutSlowInEasing))
+        }
+    }
+
+    // ── Bass hum: slow continuous breathing glow when haptics are live ──
+    val bassHumScale = if (!state.hapticActive || isReducedMotionEnabled()) 1f else {
+        val t = rememberInfiniteTransition(label = "bass_hum")
+        val s by t.animateFloat(
+            initialValue = 0.92f,
+            targetValue = 1.08f,
+            animationSpec = infiniteRepeatable(
+                tween(3200, easing = FastOutSlowInEasing),
+                RepeatMode.Reverse
+            ),
+            label = "bass_hum_scale"
+        )
+        s
+    }
+    val bassHumAlpha = if (!state.hapticActive || isReducedMotionEnabled()) 0.06f else {
+        val t = rememberInfiniteTransition(label = "bass_hum")
+        val a by t.animateFloat(
+            initialValue = 0.04f,
+            targetValue = 0.10f,
+            animationSpec = infiniteRepeatable(
+                tween(3200, easing = FastOutSlowInEasing),
+                RepeatMode.Reverse
+            ),
+            label = "bass_hum_alpha"
+        )
+        a
+    }
+
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
@@ -120,18 +158,21 @@ fun PlayerScreen(
         val screenHeight = maxHeight
         val isShortScreen = screenHeight < 680.dp
 
-        // Ambient glow behind artwork — the gradient already fades to transparent;
-        // the old Modifier.blur on top of it clipped to rectangular bounds and
-        // produced a visible box edge on-device.
-        // Ambient glow: kick orange represents the haptic energy radiating
-        // from the player — the kick is the live engine, so the glow is orange.
+        // Ambient glow behind artwork — kick orange represents the haptic
+        // energy radiating from the player. Bass hum: slow continuous breathing
+        // scale + alpha when haptics are live. Reduced motion: frozen frame.
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(if (isShortScreen) 220.dp else 350.dp)
+                .graphicsLayer {
+                    scaleX = bassHumScale
+                    scaleY = bassHumScale
+                    alpha = bassHumAlpha / 0.06f // normalize around the base alpha
+                }
                 .background(
                     Brush.verticalGradient(
-                        colors = listOf(ColorKick.copy(alpha = 0.06f), Color.Transparent)
+                        colors = listOf(ColorKick.copy(alpha = bassHumAlpha), Color.Transparent)
                     )
                 )
                 .align(Alignment.TopCenter)
@@ -456,15 +497,21 @@ fun PlayerScreen(
                 // Play/Pause FAB — brutalist: square, kick orange, thick border.
                 val fabInteraction = remember { MutableInteractionSource() }
                 val isFabPressed by fabInteraction.collectIsPressedAsState()
-                val fabScale by animateFloatAsState(
+                val fabPressScale by animateFloatAsState(
                     targetValue = if (isFabPressed) 0.92f else 1f,
                     animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
-                    label = "fab_scale"
+                    label = "fab_press_scale"
                 )
+                // Kick pulse: sharp scale burst on play — the signature "thump" moment
+                val kickBurstScale = lerp(1f, 1.12f, kickPulse.value)
+                val kickBurstAlpha = lerp(0.35f, 0f, kickPulse.value)
                 Box(
                     modifier = Modifier
                         .size(if (isShortScreen) 56.dp else 64.dp)
-                        .graphicsLayer { scaleX = fabScale; scaleY = fabScale }
+                        .graphicsLayer {
+                            val s = fabPressScale * kickBurstScale
+                            scaleX = s; scaleY = s
+                        }
                         .background(ColorKick)
                         .border(BorderWidth.thick, ColorOnSurface)
                         .clickable(

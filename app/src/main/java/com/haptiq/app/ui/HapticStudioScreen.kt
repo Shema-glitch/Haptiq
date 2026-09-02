@@ -842,7 +842,7 @@ private fun TuningDashboardCard(
                 Text(
                     text = "Bass drone",
                     style = MaterialTheme.typography.labelSmall,
-                    color = ColorOnSurface60,
+                    color = ColorBass,
                     fontWeight = FontWeight.SemiBold
                 )
                 Column(
@@ -858,13 +858,13 @@ private fun TuningDashboardCard(
                         Icon(
                             Icons.Default.Construction,
                             contentDescription = null,
-                            tint = ColorOnSurface60,
+                            tint = ColorBass,
                             modifier = Modifier.size(ComponentSize.iconSmall)
                         )
                         Text(
                             "Coming back soon",
                             style = MaterialTheme.typography.labelMedium,
-                            color = ColorOnSurface,
+                            color = ColorBass,
                             fontWeight = FontWeight.Bold
                         )
                     }
