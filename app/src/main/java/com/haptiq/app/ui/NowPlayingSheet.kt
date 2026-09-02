@@ -398,7 +398,7 @@ private fun MiniPlayerContent(
                 modifier = Modifier
                     .size(ComponentSize.touchTarget)
                     .background(if (isPlaying) ColorKick else ColorSurface)
-                    .border(BorderWidth.thin, if (isPlaying) ColorKick else ColorOutline)
+
             ) {
                 androidx.compose.animation.AnimatedContent(
                     targetState = isPlaying,

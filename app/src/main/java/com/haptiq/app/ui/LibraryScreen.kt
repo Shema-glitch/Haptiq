@@ -514,7 +514,7 @@ fun MediaCard(
                 .size(ComponentSize.artworkCard)
                 .border(
                     width = if (isActiveHaptic) BorderWidth.medium else BorderWidth.thin,
-                    color = if (isActiveHaptic) ColorHapticAccent else ColorOutline
+                    color = if (isActiveHaptic) ColorKick else ColorOutline
                 )
         ) {
             ArtworkImage(
